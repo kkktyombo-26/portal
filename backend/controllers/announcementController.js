@@ -12,7 +12,7 @@ exports.getAnnouncements = async (req, res, next) => {
                     g.name as group_name
              FROM announcements a
              JOIN users u ON a.author_id = u.id
-             LEFT JOIN groups g ON a.group_id = g.id
+             LEFT JOIN \`groups\` g ON a.group_id = g.id
              ORDER BY a.created_at DESC`;
     } else {
       // Members/leaders see church-wide + their group announcements
@@ -20,7 +20,7 @@ exports.getAnnouncements = async (req, res, next) => {
                     g.name as group_name
              FROM announcements a
              JOIN users u ON a.author_id = u.id
-             LEFT JOIN groups g ON a.group_id = g.id
+             LEFT JOIN \`groups\` g ON a.group_id = g.id
              WHERE a.scope = 'church'
                 OR (a.scope = 'group' AND a.group_id = ?)
              ORDER BY a.created_at DESC`;

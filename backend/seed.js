@@ -23,17 +23,17 @@ async function seed() {
       await conn.execute('SET FOREIGN_KEY_CHECKS = 0');
       await conn.execute('TRUNCATE TABLE announcements');
       await conn.execute('TRUNCATE TABLE users');
-      await conn.execute('TRUNCATE TABLE groups');
+      await conn.execute('TRUNCATE TABLE `groups`');
       await conn.execute('SET FOREIGN_KEY_CHECKS = 1');
       console.log('🗑️  Cleared all data\n');
     }
 
     // Groups
     console.log('Creating groups...');
-    const [g1] = await conn.execute("INSERT INTO groups (name, name_sw, type, description) VALUES ('Choir', 'Kwaya', 'choir', 'Church choir group')");
-    const [g2] = await conn.execute("INSERT INTO groups (name, name_sw, type, description) VALUES ('Youth', 'Vijana', 'youth', 'Youth fellowship')");
-    const [g3] = await conn.execute("INSERT INTO groups (name, name_sw, type, description) VALUES ('Elders', 'Wazee', 'elders', 'Church elders council')");
-    const [g4] = await conn.execute("INSERT INTO groups (name, name_sw, type, description) VALUES ('Women', 'Wanawake', 'women', 'Women fellowship')");
+    const [g1] = await conn.execute("INSERT INTO `groups` (name, name_sw, type, description) VALUES ('Choir', 'Kwaya', 'choir', 'Church choir group')");
+    const [g2] = await conn.execute("INSERT INTO `groups` (name, name_sw, type, description) VALUES ('Youth', 'Vijana', 'youth', 'Youth fellowship')");
+    const [g3] = await conn.execute("INSERT INTO `groups` (name, name_sw, type, description) VALUES ('Elders', 'Wazee', 'elders', 'Church elders council')");
+    const [g4] = await conn.execute("INSERT INTO `groups` (name, name_sw, type, description) VALUES ('Women', 'Wanawake', 'women', 'Women fellowship')");
     console.log('✓ Groups created\n');
 
     // Users
@@ -42,31 +42,31 @@ async function seed() {
 
     const [pastor] = await conn.execute(
       'INSERT INTO users (full_name, email, password, role, phone) VALUES (?, ?, ?, ?, ?)',
-      ['Pastor John Mwangi', 'pastor@church.com', await hash('pastor123'), 'pastor', '+255712000001']
+      ['Pastor John Swai', 'pastor@church.com', await hash('pastor123'), 'pastor', '+255712000001']
     );
     await conn.execute(
       'INSERT INTO users (full_name, email, password, role, group_id, phone) VALUES (?, ?, ?, ?, ?, ?)',
-      ['Elder Samuel Osei', 'elder@church.com', await hash('elder123'), 'elder', g3.insertId, '+255712000002']
+      ['Elder Samuel Mwaipaja', 'elder@church.com', await hash('elder123'), 'elder', g3.insertId, '+255712000002']
     );
     await conn.execute(
       'INSERT INTO users (full_name, email, password, role, group_id, phone) VALUES (?, ?, ?, ?, ?, ?)',
-      ['Choir Leader Grace Kimani', 'choir@church.com', await hash('choir123'), 'group_leader', g1.insertId, '+255712000003']
+      ['Choir Leader Grace Massawe', 'choir@church.com', await hash('choir123'), 'group_leader', g1.insertId, '+255712000003']
     );
     await conn.execute(
       'INSERT INTO users (full_name, email, password, role, group_id, phone) VALUES (?, ?, ?, ?, ?, ?)',
-      ['Youth Leader David Banda', 'youth@church.com', await hash('youth123'), 'group_leader', g2.insertId, '+255712000004']
+      ['Youth Leader David Rutta', 'youth@church.com', await hash('youth123'), 'group_leader', g2.insertId, '+255712000004']
     );
     await conn.execute(
       'INSERT INTO users (full_name, email, password, role, group_id, phone) VALUES (?, ?, ?, ?, ?, ?)',
-      ['Mary Njoroge', 'mary@church.com', await hash('member123'), 'member', g1.insertId, '+255712000005']
+      ['Mary Mshana', 'mary@church.com', await hash('member123'), 'member', g1.insertId, '+255712000005']
     );
     await conn.execute(
       'INSERT INTO users (full_name, email, password, role, group_id, phone) VALUES (?, ?, ?, ?, ?, ?)',
-      ['James Mwangi', 'james@church.com', await hash('member123'), 'member', g2.insertId, '+255712000006']
+      ['James Makule', 'james@church.com', await hash('member123'), 'member', g2.insertId, '+255712000006']
     );
     await conn.execute(
       'INSERT INTO users (full_name, email, password, role, group_id, phone) VALUES (?, ?, ?, ?, ?, ?)',
-      ['Sarah Achieng', 'sarah@church.com', await hash('member123'), 'member', g4.insertId, '+255712000007']
+      ['Sarah Binamungu', 'sarah@church.com', await hash('member123'), 'member', g4.insertId, '+255712000007']
     );
     console.log('✓ Users created\n');
 
