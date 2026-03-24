@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply bg-surface font-sans text-ink text-base; margin: 0; }
+  hr   { @apply border-0 border-t border-hairline; height: 0.5px; }
+}
+
+@layer components {
+  .section-label   { @apply text-xs font-semibold text-ink-muted uppercase tracking-widest; }
+  .hairline        { @apply h-px bg-hairline w-full; }
+  .flat-row        { @apply flex items-center gap-3 px-4 py-3 hover:bg-surface transition-colors duration-100 cursor-pointer; }
+  .status-dot      { @apply inline-block w-1.5 h-1.5 rounded-full flex-shrink-0; }
+
+  .field-input     { @apply w-full px-3.5 py-2.5 rounded-md border border-border bg-canvas text-base text-ink placeholder:text-ink-faint focus:outline-none focus:border-ink-muted focus:ring-2 focus:ring-ink/5 transition-all duration-150; }
+  .field-label     { @apply block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5; }
+  .field-error     { @apply text-xs text-danger mt-1; }
+
+  .btn-primary     { @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-ink text-white text-sm font-semibold hover:bg-ink-muted active:bg-ink transition-colors duration-100 disabled:opacity-40 disabled:cursor-not-allowed select-none; }
+  .btn-secondary   { @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md border border-border bg-canvas text-ink text-sm font-semibold hover:bg-surface transition-colors duration-100 select-none; }
+  .btn-danger      { @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-danger text-white text-sm font-semibold hover:opacity-90 transition-opacity duration-100 select-none; }
+  .btn-ghost       { @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium text-ink-muted hover:bg-parchment hover:text-ink transition-colors duration-100 select-none; }
+
+  .modal-overlay   { @apply fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-5 animate-fade-in; }
+  .modal-panel     { @apply bg-canvas rounded-xl w-full max-w-modal shadow-modal animate-scale-in overflow-hidden; }
+  .modal-header    { @apply flex items-center justify-between px-6 py-5 border-b border-hairline; }
+  .modal-body      { @apply px-6 py-5; }
+
+  .toast           { @apply fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-lg shadow text-sm font-semibold animate-slide-up; }
+
+  .role-badge      { @apply inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ink-muted; }
+
+  /* Card — only for genuinely card-shaped content */
+  .card            { @apply bg-canvas border border-hairline rounded-xl p-5; }
+}
+
+@layer utilities {
+  .stagger-1 { animation-delay: 30ms; }
+  .stagger-2 { animation-delay: 60ms; }
+  .stagger-3 { animation-delay: 90ms; }
+  .stagger-4 { animation-delay: 120ms; }
+  .stagger-5 { animation-delay: 150ms; }
+  .stagger-6 { animation-delay: 180ms; }
+}

@@ -1,0 +1,12 @@
+node_modules/
+*/node_modules/
+.env
+*/.env
+.next/
+*/build/
+*.log
+.DS_Store
+Thumbs.db
+
+client_secret.json
+token.json
