@@ -5,25 +5,21 @@ const bcrypt = require('bcryptjs');
 const getMembers = async (req, res, next) => {
   try {
     const { role, id, group_id } = req.user;
-
     let sql, params = [];
 
     if (role === 'pastor') {
-      // Pastor sees everyone
       sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.profile_photo,
                     u.is_active, u.created_at, u.last_login,
                     g.name as group_name
              FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
              ORDER BY u.role, u.full_name`;
     } else if (role === 'elder') {
-      // Elders see all members (not pastor)
       sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.profile_photo,
                     u.is_active, u.created_at, g.name as group_name
              FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
              WHERE u.role != 'pastor'
              ORDER BY u.role, u.full_name`;
     } else if (role === 'group_leader') {
-      // Group leaders only see their group members
       sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.profile_photo,
                     u.is_active, u.created_at, g.name as group_name
              FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
@@ -42,7 +38,7 @@ const getMembers = async (req, res, next) => {
 // GET /api/members/:id
 const getMember = async (req, res, next) => {
   try {
-    const { role, group_id } = req.user;
+   const { role, group_id } = req.user;
     const targetId = parseInt(req.params.id);
 
     const [rows] = await db.execute(

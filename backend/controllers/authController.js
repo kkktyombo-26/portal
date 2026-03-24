@@ -41,6 +41,7 @@ exports.login = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+
 // GET /api/auth/me
 exports.me = async (req, res, next) => {
   try {
@@ -48,7 +49,7 @@ exports.me = async (req, res, next) => {
       `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.avatar, u.is_active, u.created_at,
               g.name as group_name, g.type as group_type
        FROM users u
-       LEFT JOIN groups g ON u.group_id = g.id
+       LEFT JOIN \`groups\` g ON u.group_id = g.id
        WHERE u.id = ?`, [req.user.id]
     );
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found.' });

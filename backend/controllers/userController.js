@@ -1,7 +1,6 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 
-// GET /api/users — Pastor sees all, group leaders see their group
 exports.getUsers = async (req, res, next) => {
   try {
     const { role, id: userId, groupId } = req.user;
@@ -9,10 +8,13 @@ exports.getUsers = async (req, res, next) => {
 
     if (role === 'pastor') {
       sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.avatar, u.is_active, u.created_at,
-                    g.name as group_name FROM users u LEFT JOIN groups g ON u.group_id = g.id ORDER BY u.created_at DESC`;
+                    g.name as group_name
+             FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
+             ORDER BY u.created_at DESC`;
     } else if (['elder', 'group_leader'].includes(role)) {
       sql = `SELECT u.id, u.full_name, u.role, u.phone, u.avatar, u.is_active, u.created_at,
-                    g.name as group_name FROM users u LEFT JOIN groups g ON u.group_id = g.id
+                    g.name as group_name
+             FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
              WHERE u.group_id = ? ORDER BY u.created_at DESC`;
       params = [groupId];
     } else {
@@ -24,18 +26,16 @@ exports.getUsers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// GET /api/users/:id
 exports.getUser = async (req, res, next) => {
   try {
     const { role, groupId } = req.user;
     const [rows] = await db.execute(
       `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.avatar, u.is_active, u.created_at,
               g.name as group_name, g.type as group_type
-       FROM users u LEFT JOIN groups g ON u.group_id = g.id WHERE u.id = ?`, [req.params.id]
+       FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id WHERE u.id = ?`, [req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found.' });
     const user = rows[0];
-    // Group leaders can only see their own group members
     if (role === 'group_leader' && user.group_id !== groupId) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
