@@ -40,6 +40,10 @@ export const ROLE_HIERARCHY = {
   member:       1,
 };
 
+
+
+
 export const canManageMembers = (role) => ['pastor', 'elder', 'group_leader'].includes(role);
 export const canBroadcast     = (role) => ['pastor', 'elder', 'group_leader'].includes(role);
 export const canManageGroups  = (role) => role === 'pastor';
+export const canManageSocialMedia = (role) => ['pastor', 'elder'].includes(role); // ← add this

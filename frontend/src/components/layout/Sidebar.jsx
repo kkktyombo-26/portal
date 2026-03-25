@@ -1,7 +1,7 @@
 'use client';
 import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../lib/i18n';
-import { canManageMembers, canManageGroups, canBroadcast } from '../../lib/auth';
+import { canManageMembers, canManageGroups, canBroadcast, canManageSocialMedia } from '../../lib/auth';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -33,13 +33,18 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         canManageGroups(user.role)  && { href: '/dashboard/groups',  label: t('groups'),  icon: '◫' },
       ].filter(Boolean),
     },
-    {
-      label: lang === 'sw' ? 'Mawasiliano' : 'Communication',
-      items: [
-        { href: '/dashboard/announcements', label: t('announcements'), icon: '◎' },
-        { href: '/dashboard/events', label: lang === 'sw' ? 'Ratiba' : 'Schedule', icon: '◷' },
-      ],
+  {
+  label: lang === 'sw' ? 'Mawasiliano' : 'Communication',
+  items: [
+    { href: '/dashboard/announcements', label: t('announcements'), icon: '◎' },
+    { href: '/dashboard/events', label: lang === 'sw' ? 'Ratiba' : 'Schedule', icon: '◷' },
+    canManageSocialMedia(user.role) && {
+      href: '/teams/it',
+      label: lang === 'sw' ? 'Mitandao ya Kijamii' : 'Social Media',
+      icon: '◉',
     },
+  ].filter(Boolean),
+},
     {
       label: lang === 'sw' ? 'Rasilimali' : 'Resources',
       items: [
