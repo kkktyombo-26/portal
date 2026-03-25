@@ -113,6 +113,10 @@ async function getLatestVideos(maxResults = 5) {
   if (cached) return cached;
 
   const channelStats = await getChannelStats();
+
+  // No videos uploaded yet — return empty immediately
+  if (channelStats.videoCount === 0) return [];
+
   const uploadsId = channelStats.uploadsPlaylistId;
 
   const playlistRes = await youtube.playlistItems.list({
@@ -152,6 +156,14 @@ async function getLiveStreamStatus() {
   if (cached) return cached;
 
   const channelStats = await getChannelStats();
+
+  // No videos uploaded yet — can't be live
+  if (channelStats.videoCount === 0) {
+    const result = { isLive: false };
+    cache.set(cacheKey, result, 120);
+    return result;
+  }
+
   const uploadsId = channelStats.uploadsPlaylistId;
 
   let liveResult = { isLive: false };

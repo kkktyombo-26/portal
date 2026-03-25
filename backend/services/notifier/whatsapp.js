@@ -89,6 +89,7 @@ function graphPost(path, body) {
  */
 
 async function sendWhatsApp(message, stream) {
+    console.log('template name is', TEMPLATE_NAME);
   if (!ACCESS_TOKEN)  throw new Error("META_ACCESS_TOKEN not set in .env");
   if (!PHONE_NUM_ID)  throw new Error("WHATSAPP_PHONE_NUMBER_ID not set in .env");
   if (!TEMPLATE_NAME) throw new Error("WHATSAPP_TEMPLATE_NAME not set in .env");
