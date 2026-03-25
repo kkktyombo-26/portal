@@ -11,6 +11,7 @@ const groupRoutes        = require('./routes/groups');
 const eventRoutes        = require('./routes/events');
 const formTemplatesRouter = require('./routes/formTemplates');
 const youtubeRoutes = require("./routes/youtube");
+const waRoutes = require("./routes/whatsapp");
 
 const errorHandler       = require('./middleware/errorHandler');
 
@@ -28,6 +29,8 @@ app.use('/api/announcements', announcementRoutes);
 app.use('/api/groups',        groupRoutes);
 app.use('/api/events',        eventRoutes);
 app.use('/api/form-templates', formTemplatesRouter);
+
+ app.use("/api/whatsapp", waRoutes);
 
 app.use("/api/youtube", youtubeRoutes);
 

@@ -9,7 +9,7 @@ const ROLE_LABELS = {
   pastor:       { en: 'Pastor',       sw: 'Mchungaji' },
   elder:        { en: 'Elder',        sw: 'Mzee' },
   group_leader: { en: 'Group Leader', sw: 'Kiongozi' },
-  member:       { en: 'Member',       sw: 'Mwanachama' },
+  member:       { en: 'Member',       sw: 'Msharika' },
 };
 
 export default function RoleBadge({ role, lang = 'en' }) {
