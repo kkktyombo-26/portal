@@ -80,9 +80,9 @@ exports.deleteUser = async (req, res, next) => {
 // GET /api/users/stats — pastor dashboard stats
 exports.getStats = async (req, res, next) => {
   try {
-    const [[total]]      = await db.execute('SELECT COUNT(*) as count FROM users');
-    const [[active]]     = await db.execute('SELECT COUNT(*) as count FROM users WHERE is_active = 1');
-    const [[groups]]     = await db.execute('SELECT COUNT(*) as count FROM groups');
+    const [[total]]         = await db.execute('SELECT COUNT(*) as count FROM users');
+    const [[active]]        = await db.execute('SELECT COUNT(*) as count FROM users WHERE is_active = 1');
+    const [[groups]]        = await db.execute('SELECT COUNT(*) as count FROM `groups`');
     const [[announcements]] = await db.execute('SELECT COUNT(*) as count FROM announcements WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)');
     res.json({ success: true, data: { totalMembers: total.count, activeMembers: active.count, totalGroups: groups.count, recentAnnouncements: announcements.count } });
   } catch (err) { next(err); }
