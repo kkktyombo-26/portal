@@ -86,4 +86,4 @@ exports.getStats = async (req, res, next) => {
     const [[announcements]] = await db.execute('SELECT COUNT(*) as count FROM announcements WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)');
     res.json({ success: true, data: { totalMembers: total.count, activeMembers: active.count, totalGroups: groups.count, recentAnnouncements: announcements.count } });
   } catch (err) { next(err); }
-};
+}
