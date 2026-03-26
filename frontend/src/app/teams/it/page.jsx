@@ -539,11 +539,12 @@ export default function ChurchDashboard() {
   const totalChecked = Object.values(checked).filter(Boolean).length;
   const pct          = Math.round((totalChecked / totalItems) * 100);
 
-  const tabs = [
-    { id: "channel",   label: t("tab_channel") },
-    { id: "checklist", label: t("tab_checklist") },
-    { id: "whatsapp",  label: t("tab_whatsapp") },
-  ];
+const tabs = [
+  { id: "channel",   label: t("tab_channel") },
+  { id: "checklist", label: t("tab_checklist") },
+  { id: "whatsapp",  label: t("tab_whatsapp") },
+  { id: "upload",    label: t("tab_upload"), href: "/upload" },
+];
 
   const header = (
     <div style={{ background: NAVY, padding: isDesktop ? "20px 28px 0" : "20px 24px 0", borderRadius: isDesktop ? "12px 12px 0 0" : 0 }}>
@@ -594,23 +595,45 @@ export default function ChurchDashboard() {
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 2, marginTop: tab === "checklist" ? 2 : 12 }}>
-        {tabs.map(tab_ => (
-          <button key={tab_.id} onClick={() => setTab(tab_.id)} style={{
-            flex: 1, padding: "9px 8px", border: "none", cursor: "pointer",
-            fontSize: isDesktop ? 13 : 12, fontWeight: 600,
-            background: tab === tab_.id ? "#fff" : "transparent",
-            color: tab === tab_.id ? NAVY : "rgba(255,255,255,0.65)",
-            borderRadius: tab === tab_.id ? "8px 8px 0 0" : 0,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-          }}>
-            {tab_.id === "whatsapp" && (
-              <svg width="13" height="13" viewBox="0 0 27 27" fill={tab === tab_.id ? WA_DARK : "rgba(255,255,255,0.65)"}>
-                <path d="M13.507 0C6.041 0 .013 6.028.013 13.494c0 2.378.627 4.707 1.818 6.745L0 27l6.948-1.809A13.459 13.459 0 0013.507 27C20.973 27 27 20.972 27 13.506 27 6.041 20.973.013 13.507.013z"/>
-              </svg>
-            )}
-            {tab_.label}
-          </button>
-        ))}
+      {tabs.map(tab_ => {
+  const isActive = tab === tab_.id;
+  const sharedStyle = {
+    flex: 1, padding: "9px 8px", border: "none", cursor: "pointer",
+    fontSize: isDesktop ? 13 : 12, fontWeight: 600,
+    background: isActive ? "#fff" : "transparent",
+    color: isActive ? NAVY : "rgba(255,255,255,0.65)",
+    borderRadius: isActive ? "8px 8px 0 0" : 0,
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+    textDecoration: "none",
+  };
+
+  if (tab_.href) {
+    return (
+      <a key={tab_.id} href={tab_.href} style={sharedStyle}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+          stroke="rgba(255,255,255,0.65)" strokeWidth="2.5"
+          strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        {tab_.label}
+      </a>
+    );
+  }
+
+  return (
+    <button key={tab_.id} onClick={() => setTab(tab_.id)} style={sharedStyle}>
+      {tab_.id === "whatsapp" && (
+        <svg width="13" height="13" viewBox="0 0 27 27"
+          fill={isActive ? WA_DARK : "rgba(255,255,255,0.65)"}>
+          <path d="M13.507 0C6.041 0 .013 6.028.013 13.494c0 2.378.627 4.707 1.818 6.745L0 27l6.948-1.809A13.459 13.459 0 0013.507 27C20.973 27 27 20.972 27 13.506 27 6.041 20.973.013 13.507.013z"/>
+        </svg>
+      )}
+      {tab_.label}
+    </button>
+  );
+})}
       </div>
     </div>
   );

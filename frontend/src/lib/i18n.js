@@ -8,6 +8,7 @@ export const translations = {
     announcements:  'Announcements',
     settings:       'Settings',
     logout:         'Sign Out',
+      tab_upload: "Upload",
 
     // ── Auth ─────────────────────────────────────────────────────
     login:          'Sign In',
@@ -200,6 +201,10 @@ export const translations = {
     announcements:  'Matangazo',
     settings:       'Mipangilio',
     logout:         'Toka',
+  
+
+// Swahili
+tab_upload: "Pakia",
 
     // ── Auth ─────────────────────────────────────────────────────
     login:          'Ingia',
