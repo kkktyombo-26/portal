@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { authenticate, authorize } = require('../middleware/auth');
-const { getGroups, createGroup, updateGroup, deleteGroup } = require('../controllers/groupController');
+const { getGroups, createGroup, updateGroup, deleteGroup,getGroup ,getGroupMembers} = require('../controllers/groupController');
 const { body } = require('express-validator');
 const validate = require('../middleware/validate');
 
@@ -13,5 +13,8 @@ router.post('/', [
 ], validate, authorize('pastor'), createGroup);
 router.put('/:id', authorize('pastor'), updateGroup);
 router.delete('/:id', authorize('pastor'), deleteGroup);
+
+router.get('/:id', getGroup);  // add after router.get('/');
+router.get('/:id/members', getGroupMembers);
 
 module.exports = router;

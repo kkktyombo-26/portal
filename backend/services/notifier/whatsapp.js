@@ -90,6 +90,7 @@ function graphPost(path, body) {
 
 async function sendWhatsApp(message, stream) {
     console.log('template name is', TEMPLATE_NAME);
+    console.log('template lang is', TEMPLATE_LANG);
   if (!ACCESS_TOKEN)  throw new Error("META_ACCESS_TOKEN not set in .env");
   if (!PHONE_NUM_ID)  throw new Error("WHATSAPP_PHONE_NUMBER_ID not set in .env");
   if (!TEMPLATE_NAME) throw new Error("WHATSAPP_TEMPLATE_NAME not set in .env");
@@ -98,29 +99,17 @@ async function sendWhatsApp(message, stream) {
   // Use header image only when stream has a thumbnail (live notifications)
   const isLive = !!(stream?.thumbUrl);
 
-  const components = isLive
-    ? [
-        {
-          type: "header",
-          parameters: [{ type: "image", image: { link: stream.thumbUrl } }],
-        },
-        {
-          type: "body",
-          parameters: [
-            { type: "text", text: stream?.title || "Live stream" },
-            { type: "text", text: stream?.url   || "https://youtube.com" },
-          ],
-        },
-      ]
-    : [
-        {
-          type: "body",
-          parameters: [
-            { type: "text", text: stream?.title || "Live stream" },
-            { type: "text", text: stream?.url   || "https://youtube.com" },
-          ],
-        },
-      ];
+const components = [
+  {
+    type: "header",
+    parameters: [{
+      type: "image",
+      image: {
+        link: "https://images.unsplash.com/photo-1438232992991-995b671e4b8d?w=800&q=80"
+      }
+    }],
+  },
+]
 
   const results = await Promise.allSettled(
     RECIPIENTS.map((number) =>

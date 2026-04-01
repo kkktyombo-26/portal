@@ -45,7 +45,7 @@ const CHAT_IDS = (process.env.TELEGRAM_CHAT_IDS || "")
  */
 async function sendTelegram(message, stream) {
   if (!BOT_TOKEN) {
-    throw new Error("TELEGRAM_BOT_TOKEN not set in .env");
+    throw new Error("TELEGRAM_BOT_TOKEN not set in .env")
   }
   if (!CHAT_IDS.length) {
     throw new Error("TELEGRAM_CHAT_IDS not set in .env — add at least one chat ID");
@@ -53,7 +53,7 @@ async function sendTelegram(message, stream) {
 
   const results = await Promise.allSettled(
     CHAT_IDS.map((chatId) => sendToChat(chatId, message, stream))
-  );
+  )
 
   // Report per-chat results
   results.forEach((r, i) => {

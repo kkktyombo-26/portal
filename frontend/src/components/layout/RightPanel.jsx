@@ -96,7 +96,7 @@ function GroupsList({ lang }) {
       .then(r => setGroups(r.data.data || []))
       .catch(() => {});
   }, []);
-
+   if(groups.length !== 0){console.log(groups);}
   if (!groups.length) return null;
 
   return (
@@ -107,7 +107,7 @@ function GroupsList({ lang }) {
       <div className="space-y-0">
         {groups.slice(0, 5).map((g, i) => (
           <div key={g.id}>
-            <Link href={`/dashboard/groups`}
+          <Link href={`/dashboard/groups/${g.id}`}
               className="flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-surface transition-colors duration-100 group">
               {/* Icon — Rule 4: stands alone, small parchment bg is the icon frame not a decoration box */}
               <span className="w-7 h-7 rounded-md bg-parchment border border-hairline flex items-center justify-center text-xs text-ink-muted flex-shrink-0 group-hover:border-border transition-colors">
@@ -128,7 +128,7 @@ function GroupsList({ lang }) {
         ))}
 
         {groups.length > 5 && (
-          <Link href="/dashboard/groups"
+          <Link href="/dashboard/groups/${g.id}"
             className="flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-surface transition-colors duration-100 group mt-1">
             <span className="w-7 h-7 rounded-md bg-surface border border-dashed border-border flex items-center justify-center text-xs text-ink-faint flex-shrink-0">···</span>
             <span className="text-sm font-medium text-ink-muted group-hover:text-ink transition-colors">

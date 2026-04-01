@@ -3,57 +3,290 @@
 /**
  * UploadPage.jsx
  * ─────────────────────────────────────────────────────────────────
- * A step-by-step service upload workflow page.
- * Matches ChurchDashboard navy + gold design tokens.
+ * Service upload workflow — all YouTube operations happen via
+ * direct fetch() calls to the YouTube Data API v3 from the browser.
+ * No local Node scripts required.
  *
- * Steps:
- *   1. Configure service details (date, type, pastor, series)
- *   2. Upload video to YouTube  →  node scripts/upload.js
- *   3. Transcribe locally       →  whisper "file.mp4" --model medium --language sw
- *   4. Add chapters             →  node scripts/transcribe.js --id VIDEO_ID
- *   5. Upload SRT subtitles     →  YouTube Studio manual step
+ * Only Step 3 (Whisper transcription) still runs locally as a CLI
+ * command — everything else is done in-browser.
  *
- * No backend required — shows live command previews and tracks
- * what the user has completed via checkbox confirmation.
+ * Prerequisites:
+ *   • A Google OAuth2 access token with youtube.upload + youtube scope
+ *     (obtain via your existing scripts/authorise.js, then paste it here)
+ *   • The video file selected via <input type="file">
+ *   • The Whisper .srt output file selected via <input type="file">
  * ─────────────────────────────────────────────────────────────────
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 
-// ── Design tokens (match ChurchDashboard) ────────────────────────
-const NAVY     = "#1B3A6B";
-const NAVY_L   = "#2a5298";
-const GOLD     = "#C8A84B";
-const GOLD_L   = "#e0c068";
-const GREEN    = "#1a7a4a";
-const GREEN_L  = "#d1fae5";
-const RED      = "#b91c1c";
-const GRAY_BG  = "#f3f4f6";
-const GRAY_BD  = "#e5e7eb";
-const GRAY_T   = "#6b7280";
-const WHITE    = "#ffffff";
+// ── Design tokens ────────────────────────────────────────────────
+const T = {
+  navy:    "#1B3A6B",
+  navyL:   "#2a5298",
+  gold:    "#C8A84B",
+  goldL:   "#e0c068",
+  green:   "#1a7a4a",
+  greenL:  "#d1fae5",
+  red:     "#b91c1c",
+  grayBg:  "#f3f4f6",
+  grayBd:  "#e5e7eb",
+  grayT:   "#6b7280",
+  white:   "#ffffff",
+};
 
-// ── Step states ───────────────────────────────────────────────────
-const STATUS = { IDLE: "idle", DONE: "done", ACTIVE: "active" };
+const STATUS = { IDLE: "idle", DONE: "done", ACTIVE: "active", LOADING: "loading" };
 
 // ── Helpers ───────────────────────────────────────────────────────
-function today() {
-  return new Date().toISOString().split("T")[0];
-}
+function today() { return new Date().toISOString().split("T")[0]; }
+
 function displayDate(dateStr) {
   return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", {
     year: "numeric", month: "long", day: "numeric",
   });
 }
-function escapePath(p) {
-  // Wrap in quotes; if it has spaces it'll still work
-  return `"${p}"`;
+
+function buildTitle({ type, date, church, pastor, series }) {
+  const d = displayDate(date);
+  const s = series ? ` | ${series}` : "";
+  const templates = {
+    sunday:    `Sunday Service — ${d} | ${church}`,
+    easter:    `Easter Sunday Service ${d} | ${church}`,
+    christmas: `Christmas Service ${d} | ${church}`,
+    special:   `Special Service — ${d} | ${church}`,
+    friday:    `Friday Prayer Night — ${d} | ${church}`,
+    midweek:   `Midweek Service — ${d} | ${church}`,
+  };
+  return (templates[type] || templates.sunday) + s;
 }
 
-// ── Sub-components ────────────────────────────────────────────────
+function buildDescription({ type, church, pastor, series, mpesa, airtel, website, ytUrl }) {
+  const s = series ? ` | ${series}` : "";
+  return `Welcome to ${church}!
+
+${type === "easter" ? "🙏 Celebrating the Resurrection of Jesus Christ this Easter Sunday.\n" : ""}${type === "christmas" ? "🎄 Celebrating the birth of Jesus Christ.\n" : ""}
+📖 Join us as ${pastor} ministers the Word of God.${s}
+
+───────────────────────────────────────
+📍 Join us in person or follow us online:
+   YouTube: ${ytUrl || "https://www.youtube.com/@" + church.replace(/\s+/g, "")}
+   Website: ${website || ""}
+
+💝 Support the Ministry (Online Giving):
+   M-Pesa:   ${mpesa || ""}
+   Airtel:   ${airtel || ""}
+───────────────────────────────────────
+
+👍 Like, Subscribe & Share this video with family and friends.
+🔔 Turn on notifications to never miss a service.
+
+#${church.replace(/\s+/g, "")} #Church #Tanzania #LiveService #Gospel`.trim();
+}
+
+// ── YouTube API helpers ───────────────────────────────────────────
+
+/**
+ * Resumable upload to YouTube Data API v3.
+ * Uses the resumable upload protocol so large files work in-browser.
+ */
+async function youtubeResumableUpload({ file, snippet, status, accessToken, onProgress }) {
+  // Step 1: Initiate resumable upload session
+  const initRes = await fetch(
+    "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "X-Upload-Content-Type": file.type || "video/mp4",
+        "X-Upload-Content-Length": file.size,
+      },
+      body: JSON.stringify({ snippet, status }),
+    }
+  );
+
+  if (!initRes.ok) {
+    const err = await initRes.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Init failed: ${initRes.status}`);
+  }
+
+  const uploadUrl = initRes.headers.get("Location");
+  if (!uploadUrl) throw new Error("No upload URL returned from YouTube");
+
+  // Step 2: Upload the file in one PUT (files up to ~500 MB work fine in modern browsers)
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadUrl);
+    xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText));
+      } else {
+        try {
+          const e = JSON.parse(xhr.responseText);
+          reject(new Error(e?.error?.message || `Upload failed: ${xhr.status}`));
+        } catch {
+          reject(new Error(`Upload failed: ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.send(file);
+  });
+}
+
+/**
+ * Fetch current video snippet then PATCH description with chapters block.
+ */
+async function addChaptersToDescription({ videoId, chaptersText, accessToken }) {
+  // GET current snippet
+  const getRes = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!getRes.ok) throw new Error(`Could not fetch video: ${getRes.status}`);
+  const getData = await getRes.json();
+  const snippet = getData.items?.[0]?.snippet;
+  if (!snippet) throw new Error(`Video ${videoId} not found`);
+
+  // Strip old chapters block if present
+  let desc = snippet.description || "";
+  desc = desc.replace(/\n*─+\n*CHAPTERS[\s\S]*?(?=\n─|\n#|$)/i, "").trimEnd();
+
+  const updatedDesc =
+    desc +
+    `\n\n─────────────────────\nCHAPTERS\n${chaptersText}\n─────────────────────`;
+
+  // PATCH
+  const patchRes = await fetch(
+    "https://www.googleapis.com/youtube/v3/videos?part=snippet",
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id: videoId, snippet: { ...snippet, description: updatedDesc } }),
+    }
+  );
+  if (!patchRes.ok) {
+    const e = await patchRes.json().catch(() => ({}));
+    throw new Error(e?.error?.message || `Chapters update failed: ${patchRes.status}`);
+  }
+  return await patchRes.json();
+}
+
+/**
+ * Upload an SRT file as captions to a YouTube video.
+ */
+async function uploadSRT({ videoId, srtFile, language, accessToken }) {
+  // Step 1: Insert caption track (resumable)
+  const initRes = await fetch(
+    `https://www.googleapis.com/upload/youtube/v3/captions?uploadType=resumable&part=snippet`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "X-Upload-Content-Type": "application/octet-stream",
+        "X-Upload-Content-Length": srtFile.size,
+      },
+      body: JSON.stringify({
+        snippet: {
+          videoId,
+          language,
+          name: `${language} subtitles`,
+          isDraft: false,
+        },
+      }),
+    }
+  );
+
+  if (!initRes.ok) {
+    const e = await initRes.json().catch(() => ({}));
+    throw new Error(e?.error?.message || `Caption init failed: ${initRes.status}`);
+  }
+
+  const uploadUrl = initRes.headers.get("Location");
+  if (!uploadUrl) throw new Error("No caption upload URL returned");
+
+  // Step 2: PUT the SRT file bytes
+  const putRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: srtFile,
+  });
+
+  if (!putRes.ok) {
+    const e = await putRes.json().catch(() => ({}));
+    throw new Error(e?.error?.message || `Caption upload failed: ${putRes.status}`);
+  }
+  return await putRes.json();
+}
+
+/**
+ * Parse a .srt or .json Whisper output and extract chapter timestamps.
+ * Supports the Whisper JSON format (segments[].start / .text) and a plain
+ * newline-separated "HH:MM:SS text" format.
+ */
+function parseChaptersFromFile(text) {
+  // Try Whisper JSON
+  try {
+    const data = JSON.parse(text);
+    if (Array.isArray(data.segments)) {
+      const CHAPTER_PATTERNS = [
+        { patterns: [/welcome|karibu|opening/i],        label: "Welcome & Opening Prayer" },
+        { patterns: [/worship|praise|sifa|imba/i],       label: "Worship & Praise" },
+        { patterns: [/announ/i],                         label: "Announcements" },
+        { patterns: [/offering|sadaka|tithes/i],         label: "Tithes & Offering" },
+        { patterns: [/sermon|message|neno|preaching/i],  label: "Sermon" },
+        { patterns: [/altar|prayer line|waliokuja/i],    label: "Altar Call" },
+        { patterns: [/closing|dismiss|end|tunaomba/i],   label: "Closing Prayer" },
+      ];
+
+      const chapters = [];
+      let lastLabel = null;
+      data.segments.forEach((seg) => {
+        const t = seg.text.toLowerCase();
+        for (const { patterns, label } of CHAPTER_PATTERNS) {
+          if (patterns.some((p) => p.test(t)) && label !== lastLabel) {
+            chapters.push({ startSeconds: Math.floor(seg.start), label });
+            lastLabel = label;
+            break;
+          }
+        }
+      });
+      if (!chapters.length || chapters[0].startSeconds > 30) {
+        chapters.unshift({ startSeconds: 0, label: "Introduction" });
+      }
+
+      const fmt = (s) => {
+        const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+        if (h > 0) return `${h}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+        return `${m}:${String(sec).padStart(2,"0")}`;
+      };
+      return chapters.map((c) => `${fmt(c.startSeconds)} ${c.label}`).join("\n");
+    }
+  } catch { /* not JSON */ }
+
+  // Fallback: treat as plain "MM:SS Label" lines
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const timeLines = lines.filter(l => /^\d+:\d{2}/.test(l));
+  if (timeLines.length) return timeLines.join("\n");
+
+  return null;
+}
+
+// ── UI sub-components ─────────────────────────────────────────────
 
 function SectionHeader({ step, label, status, onClick }) {
-  const isActive = status === STATUS.ACTIVE;
+  const isActive = status === STATUS.ACTIVE || status === STATUS.LOADING;
   const isDone   = status === STATUS.DONE;
   return (
     <button
@@ -61,110 +294,51 @@ function SectionHeader({ step, label, status, onClick }) {
       style={{
         width: "100%", display: "flex", alignItems: "center", gap: 14,
         padding: "14px 20px", border: "none", cursor: "pointer",
-        background: isActive ? NAVY : isDone ? "#f0fdf4" : WHITE,
-        borderBottom: `1px solid ${isActive ? "rgba(255,255,255,0.1)" : isDone ? "#bbf7d0" : GRAY_BD}`,
+        background: isActive ? T.navy : isDone ? "#f0fdf4" : T.white,
+        borderBottom: `1px solid ${isActive ? "rgba(255,255,255,0.1)" : isDone ? "#bbf7d0" : T.grayBd}`,
         textAlign: "left", transition: "background 0.2s",
       }}
     >
-      {/* Step badge */}
       <div style={{
         width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
         fontWeight: 700, fontSize: 13,
-        background: isActive ? GOLD : isDone ? GREEN : GRAY_BD,
-        color: isActive ? NAVY : isDone ? WHITE : GRAY_T,
-        boxShadow: isActive ? `0 0 0 3px ${GOLD}44` : "none",
+        background: isActive ? T.gold : isDone ? T.green : T.grayBd,
+        color: isActive ? T.navy : isDone ? T.white : T.grayT,
+        boxShadow: isActive ? `0 0 0 3px ${T.gold}44` : "none",
         transition: "all 0.2s",
       }}>
-        {isDone ? "✓" : step}
+        {status === STATUS.LOADING ? "⏳" : isDone ? "✓" : step}
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{
-          fontWeight: 700, fontSize: 14,
-          color: isActive ? WHITE : isDone ? GREEN : NAVY,
-        }}>{label}</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: isActive ? T.white : isDone ? T.green : T.navy }}>
+          {label}
+        </div>
       </div>
       <div style={{
         fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
-        background: isActive ? "rgba(255,255,255,0.15)" : isDone ? GREEN_L : GRAY_BG,
-        color: isActive ? WHITE : isDone ? GREEN : GRAY_T,
+        background: isActive ? "rgba(255,255,255,0.15)" : isDone ? T.greenL : T.grayBg,
+        color: isActive ? T.white : isDone ? T.green : T.grayT,
       }}>
-        {isActive ? "In Progress" : isDone ? "Done" : "Pending"}
+        {status === STATUS.LOADING ? "Running…" : isActive ? "In Progress" : isDone ? "Done" : "Pending"}
       </div>
     </button>
   );
 }
 
-function CopyBox({ label, code }) {
-  const [copied, setCopied] = useState(false);
-  function copy() {
-    navigator.clipboard.writeText(code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
+function InputField({ label, value, onChange, placeholder, type = "text", mono = false }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      {label && <div style={{ fontSize: 11, fontWeight: 600, color: GRAY_T, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>}
-      <div style={{
-        background: "#0f172a", borderRadius: 8, padding: "10px 14px",
-        display: "flex", alignItems: "center", gap: 10,
-        fontFamily: "'Courier New', monospace",
-      }}>
-        <code style={{ flex: 1, fontSize: 12, color: "#e2e8f0", wordBreak: "break-all", lineHeight: 1.6 }}>
-          {code}
-        </code>
-        <button onClick={copy} style={{
-          flexShrink: 0, background: copied ? GREEN : "rgba(255,255,255,0.1)",
-          border: "none", borderRadius: 5, padding: "5px 10px",
-          color: WHITE, fontSize: 11, fontWeight: 600, cursor: "pointer",
-          transition: "background 0.2s",
-        }}>
-          {copied ? "✓ Copied" : "Copy"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmButton({ label, onConfirm, done }) {
-  return (
-    <button
-      onClick={onConfirm}
-      style={{
-        marginTop: 8, padding: "10px 20px", borderRadius: 8,
-        border: done ? `2px solid ${GREEN}` : `2px solid ${NAVY}`,
-        background: done ? GREEN : WHITE,
-        color: done ? WHITE : NAVY,
-        fontWeight: 700, fontSize: 13, cursor: "pointer",
-        display: "flex", alignItems: "center", gap: 8,
-        transition: "all 0.2s",
-      }}
-    >
-      {done ? "✓ " : ""}{label}
-    </button>
-  );
-}
-
-function InputField({ label, value, onChange, placeholder, type = "text" }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <label style={{ fontSize: 11, fontWeight: 600, color: GRAY_T, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+      <label style={{ fontSize: 11, fontWeight: 600, color: T.grayT, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
         {label}
       </label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
         style={{
           width: "100%", padding: "9px 12px", fontSize: 13,
-          border: `1px solid ${GRAY_BD}`, borderRadius: 7,
-          outline: "none", boxSizing: "border-box",
-          fontFamily: "inherit", color: "#111827",
-          background: WHITE,
-        }}
-      />
+          border: `1px solid ${T.grayBd}`, borderRadius: 7, outline: "none",
+          boxSizing: "border-box", fontFamily: mono ? "'Courier New', monospace" : "inherit",
+          color: "#111827", background: T.white,
+        }} />
     </div>
   );
 }
@@ -172,348 +346,497 @@ function InputField({ label, value, onChange, placeholder, type = "text" }) {
 function SelectField({ label, value, onChange, options }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <label style={{ fontSize: 11, fontWeight: 600, color: GRAY_T, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+      <label style={{ fontSize: 11, fontWeight: 600, color: T.grayT, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
         {label}
       </label>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
+      <select value={value} onChange={e => onChange(e.target.value)}
         style={{
           width: "100%", padding: "9px 12px", fontSize: 13,
-          border: `1px solid ${GRAY_BD}`, borderRadius: 7,
-          outline: "none", boxSizing: "border-box",
-          fontFamily: "inherit", color: "#111827",
-          background: WHITE, appearance: "none",
+          border: `1px solid ${T.grayBd}`, borderRadius: 7, outline: "none",
+          boxSizing: "border-box", fontFamily: "inherit", color: "#111827",
+          background: T.white, appearance: "none",
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
           backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
-        }}
-      >
+        }}>
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
   );
 }
 
-function InfoBox({ children, color = NAVY }) {
+function FileField({ label, accept, onChange, file }) {
+  const ref = useRef();
   return (
-    <div style={{
-      background: color === GREEN ? GREEN_L : "#eff6ff",
-      border: `1px solid ${color === GREEN ? "#bbf7d0" : "#bfdbfe"}`,
-      borderRadius: 8, padding: "10px 14px", fontSize: 12,
-      color: color === GREEN ? GREEN : "#1e40af",
-      marginBottom: 12, lineHeight: 1.6,
-    }}>
+    <div style={{ marginBottom: 12 }}>
+      <label style={{ fontSize: 11, fontWeight: 600, color: T.grayT, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        {label}
+      </label>
+      <div
+        onClick={() => ref.current.click()}
+        style={{
+          border: `2px dashed ${file ? T.navy : T.grayBd}`, borderRadius: 8,
+          padding: "12px 16px", cursor: "pointer",
+          background: file ? "#eff6ff" : T.white,
+          display: "flex", alignItems: "center", gap: 10,
+          transition: "all 0.2s",
+        }}>
+        <span style={{ fontSize: 20 }}>{file ? "📹" : "📁"}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {file
+            ? <><div style={{ fontWeight: 600, fontSize: 13, color: T.navy, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</div>
+                <div style={{ fontSize: 11, color: T.grayT }}>{(file.size / 1024 / 1024).toFixed(1)} MB</div></>
+            : <div style={{ fontSize: 13, color: T.grayT }}>Click to select file</div>}
+        </div>
+      </div>
+      <input ref={ref} type="file" accept={accept} style={{ display: "none" }}
+        onChange={e => onChange(e.target.files?.[0] || null)} />
+    </div>
+  );
+}
+
+function InfoBox({ children, type = "info" }) {
+  const colors = {
+    info:    { bg: "#eff6ff", border: "#bfdbfe", text: "#1e40af" },
+    success: { bg: T.greenL,  border: "#bbf7d0", text: T.green },
+    warn:    { bg: "#fffbeb", border: "#fde68a", text: "#92400e" },
+    error:   { bg: "#fef2f2", border: "#fecaca", text: T.red },
+  };
+  const c = colors[type];
+  return (
+    <div style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: c.text, marginBottom: 12, lineHeight: 1.6 }}>
       {children}
+    </div>
+  );
+}
+
+function ProgressBar({ pct, label }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.grayT, marginBottom: 4 }}>
+        <span>{label}</span><span style={{ fontWeight: 700 }}>{pct}%</span>
+      </div>
+      <div style={{ background: T.grayBd, borderRadius: 99, height: 8 }}>
+        <div style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${T.navy}, ${T.navyL})`, height: "100%", borderRadius: 99, transition: "width 0.3s ease" }} />
+      </div>
+    </div>
+  );
+}
+
+function ActionButton({ label, onClick, disabled, variant = "primary", loading }) {
+  const styles = {
+    primary:  { background: disabled ? T.grayBd : T.navy, color: disabled ? T.grayT : T.white, border: "none" },
+    success:  { background: T.green, color: T.white, border: "none" },
+    outline:  { background: T.white, color: T.navy, border: `2px solid ${T.navy}` },
+  };
+  const s = styles[variant];
+  return (
+    <button onClick={onClick} disabled={disabled || loading}
+      style={{
+        padding: "10px 20px", borderRadius: 8, fontWeight: 700, fontSize: 13,
+        cursor: disabled || loading ? "not-allowed" : "pointer",
+        display: "inline-flex", alignItems: "center", gap: 8,
+        transition: "all 0.2s", opacity: loading ? 0.7 : 1,
+        ...s,
+      }}>
+      {loading ? "⏳ " : ""}{label}
+    </button>
+  );
+}
+
+function CopyBox({ label, code }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {label && <div style={{ fontSize: 11, fontWeight: 600, color: T.grayT, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>}
+      <div style={{ background: "#0f172a", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, fontFamily: "'Courier New', monospace" }}>
+        <code style={{ flex: 1, fontSize: 12, color: "#e2e8f0", wordBreak: "break-all", lineHeight: 1.6 }}>{code}</code>
+        <button onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+          style={{ flexShrink: 0, background: copied ? T.green : "rgba(255,255,255,0.1)", border: "none", borderRadius: 5, padding: "5px 10px", color: T.white, fontSize: 11, fontWeight: 600, cursor: "pointer", transition: "background 0.2s" }}>
+          {copied ? "✓" : "Copy"}
+        </button>
+      </div>
     </div>
   );
 }
 
 // ── Main page ─────────────────────────────────────────────────────
 export default function UploadPage() {
+  // OAuth
+  const [accessToken, setAccessToken] = useState("");
+
   // Service config
-  const [filePath,  setFilePath]  = useState("");
-  const [videoId,   setVideoId]   = useState("");
-  const [date,      setDate]      = useState(today());
-  const [type,      setType]      = useState("sunday");
-  const [pastor,    setPastor]    = useState("");
-  const [series,    setSeries]    = useState("");
-  const [language,  setLanguage]  = useState("sw");
-  const [model,     setModel]     = useState("medium");
+  const [videoFile,  setVideoFile]  = useState(null);
+  const [srtFile,    setSrtFile]    = useState(null);
+  const [jsonFile,   setJsonFile]   = useState(null);
+  const [videoId,    setVideoId]    = useState("");
+  const [date,       setDate]       = useState(today());
+  const [type,       setType]       = useState("sunday");
+  const [pastor,     setPastor]     = useState("");
+  const [series,     setSeries]     = useState("");
+  const [church,     setChurch]     = useState("");
+  const [mpesa,      setMpesa]      = useState("");
+  const [airtel,     setAirtel]     = useState("");
+  const [website,    setWebsite]    = useState("");
+  const [ytUrl,      setYtUrl]      = useState("");
+  const [language,   setLanguage]   = useState("sw");
 
   // Step statuses
-  const [steps, setSteps] = useState({
-    config:      STATUS.ACTIVE,
-    upload:      STATUS.IDLE,
-    transcribe:  STATUS.IDLE,
-    chapters:    STATUS.IDLE,
-    subtitles:   STATUS.IDLE,
-  });
-
-  // Which step panel is open
+  const [steps, setSteps] = useState({ config: STATUS.ACTIVE, upload: STATUS.IDLE, transcribe: STATUS.IDLE, chapters: STATUS.IDLE, subtitles: STATUS.IDLE });
   const [open, setOpen] = useState("config");
 
-  function markDone(stepKey, nextKey) {
-    setSteps(s => ({ ...s, [stepKey]: STATUS.DONE, ...(nextKey ? { [nextKey]: STATUS.ACTIVE } : {}) }));
-    if (nextKey) setOpen(nextKey);
+  // Per-step state
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError,    setUploadError]    = useState("");
+  const [chaptersError,  setChaptersError]  = useState("");
+  const [chaptersText,   setChaptersText]   = useState("");
+  const [srtError,       setSrtError]       = useState("");
+  const [configError,    setConfigError]    = useState("");
+
+  function setStep(key, status) {
+    setSteps(s => ({ ...s, [key]: status }));
+  }
+  function markDone(key, next) {
+    setSteps(s => ({ ...s, [key]: STATUS.DONE, ...(next ? { [next]: STATUS.ACTIVE } : {}) }));
+    if (next) setOpen(next);
+  }
+  function toggleOpen(key) { setOpen(p => p === key ? null : key); }
+
+  // ── Step 1: Confirm config ──────────────────────────────────────
+  function confirmConfig() {
+    if (!church) { setConfigError("Church name is required."); return; }
+    if (!videoFile) { setConfigError("Please select a video file."); return; }
+    if (!accessToken) { setConfigError("Please enter your OAuth2 access token."); return; }
+    setConfigError("");
+    markDone("config", "upload");
   }
 
-  function toggleOpen(key) {
-    setOpen(prev => prev === key ? null : key);
+  // ── Step 2: Upload to YouTube via API ───────────────────────────
+  async function runUpload() {
+    setUploadError("");
+    setUploadProgress(0);
+    setStep("upload", STATUS.LOADING);
+
+    const snippet = {
+      title: buildTitle({ type, date, church, pastor, series }),
+      description: buildDescription({ type, church, pastor, series, mpesa, airtel, website, ytUrl }),
+      tags: [church, "church service", "Tanzania church", "gospel", "sermon", pastor, "Dar es Salaam church", displayDate(date)].filter(Boolean),
+      categoryId: "29",
+      defaultLanguage: "en",
+    };
+    const status = { privacyStatus: "public", selfDeclaredMadeForKids: false };
+
+    try {
+      const data = await youtubeResumableUpload({
+        file: videoFile,
+        snippet,
+        status,
+        accessToken,
+        onProgress: setUploadProgress,
+      });
+      setVideoId(data.id);
+      setStep("upload", STATUS.ACTIVE); // keep active until user advances
+    } catch (e) {
+      setUploadError(e.message);
+      setStep("upload", STATUS.ACTIVE);
+    }
   }
 
-  // Derived commands
-  const fp = filePath || "C:\\path\\to\\recording.mp4";
-  const vid = videoId || "YOUR_VIDEO_ID";
-  const dateFlag = date ? `--date ${date}` : "";
-  const typeFlag = `--type ${type}`;
-  const pastorFlag = pastor ? `--pastor "${pastor}"` : "";
-  const seriesFlag = series ? `--series "${series}"` : "";
-  const uploadCmd = `node scripts/upload.js --file ${escapePath(fp)} ${dateFlag} ${typeFlag} ${pastorFlag} ${seriesFlag}`.replace(/\s+/g, " ").trim();
-  const whisperCmd = `whisper ${escapePath(fp)} --model ${model} --language ${language}`;
-  const chaptersCmd = `node scripts/transcribe.js --file ${escapePath(fp)} --id ${vid}`;
-  const srtFile = filePath ? filePath.replace(/\.[^/.]+$/, ".srt") : "recording.srt";
+  // ── Step 4: Add chapters via API ────────────────────────────────
+  async function runChapters() {
+    setChaptersError("");
+    if (!videoId) { setChaptersError("No video ID — complete Step 2 first."); return; }
+    if (!jsonFile && !chaptersText) { setChaptersError("Select your Whisper .json file, or paste chapters text above."); return; }
+
+    setStep("chapters", STATUS.LOADING);
+    let text = chaptersText;
+
+    if (jsonFile && !text) {
+      try {
+        text = await jsonFile.text();
+        const parsed = parseChaptersFromFile(text);
+        if (!parsed) throw new Error("Could not parse chapters from file.");
+        text = parsed;
+        setChaptersText(parsed);
+      } catch (e) {
+        setChaptersError(e.message);
+        setStep("chapters", STATUS.ACTIVE);
+        return;
+      }
+    }
+
+    try {
+      await addChaptersToDescription({ videoId, chaptersText: text, accessToken });
+      markDone("chapters", "subtitles");
+    } catch (e) {
+      setChaptersError(e.message);
+      setStep("chapters", STATUS.ACTIVE);
+    }
+  }
+
+  // ── Step 5: Upload SRT via Captions API ─────────────────────────
+  async function runSRTUpload() {
+    setSrtError("");
+    if (!videoId) { setSrtError("No video ID — complete Step 2 first."); return; }
+    if (!srtFile) { setSrtError("Please select your .srt file."); return; }
+
+    setStep("subtitles", STATUS.LOADING);
+    try {
+      await uploadSRT({ videoId, srtFile, language, accessToken });
+      markDone("subtitles", null);
+    } catch (e) {
+      setSrtError(e.message);
+      setStep("subtitles", STATUS.ACTIVE);
+    }
+  }
 
   const stepOrder = ["config", "upload", "transcribe", "chapters", "subtitles"];
   const totalDone = stepOrder.filter(k => steps[k] === STATUS.DONE).length;
   const pct = Math.round((totalDone / stepOrder.length) * 100);
 
+  const whisperCmd = videoFile
+    ? `whisper "${videoFile.name}" --model medium --language ${language} --output_format all`
+    : `whisper recording.mp4 --model medium --language ${language} --output_format all`;
+
   return (
-    <div style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", maxWidth: 700, margin: "0 auto", padding: "24px 16px", background: GRAY_BG, minHeight: "100vh" }}>
+    <div style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", maxWidth: 700, margin: "0 auto", padding: "24px 16px", background: T.grayBg, minHeight: "100vh" }}>
       <style>{`
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-        input:focus, select:focus { border-color: ${NAVY} !important; box-shadow: 0 0 0 3px ${NAVY}22; }
-        button:hover { filter: brightness(1.08); }
+        input:focus, select:focus { border-color: ${T.navy} !important; box-shadow: 0 0 0 3px ${T.navy}22; }
+        button:not(:disabled):hover { filter: brightness(1.08); }
+        a:hover { opacity: 0.85; }
       `}</style>
 
-      {/* ── Header ── */}
-      <div style={{ background: NAVY, borderRadius: "12px 12px 0 0", padding: "20px 24px" }}>
-        <div style={{ color: GOLD, fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>
-          IT TEAM
-        </div>
-        <div style={{ color: WHITE, fontSize: 20, fontWeight: 700, marginBottom: 16 }}>
-          Service Upload Workflow
-        </div>
-
-        {/* Progress bar */}
+      {/* Header */}
+      <div style={{ background: T.navy, borderRadius: "12px 12px 0 0", padding: "20px 24px" }}>
+        <div style={{ color: T.gold, fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>IT Team</div>
+        <div style={{ color: T.white, fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Service Upload Workflow</div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "rgba(255,255,255,0.6)", marginBottom: 6 }}>
           <span>Overall Progress</span>
-          <span style={{ color: pct === 100 ? GOLD : "rgba(255,255,255,0.6)", fontWeight: 700 }}>{pct}%</span>
+          <span style={{ color: pct === 100 ? T.gold : "rgba(255,255,255,0.6)", fontWeight: 700 }}>{pct}%</span>
         </div>
         <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 99, height: 6 }}>
-          <div style={{ width: `${pct}%`, background: pct === 100 ? GOLD : "#60a5fa", height: "100%", borderRadius: 99, transition: "width 0.4s ease" }} />
+          <div style={{ width: `${pct}%`, background: pct === 100 ? T.gold : "#60a5fa", height: "100%", borderRadius: 99, transition: "width 0.4s ease" }} />
         </div>
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>
-          {totalDone} of {stepOrder.length} steps completed
-        </div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>{totalDone} of {stepOrder.length} steps completed</div>
       </div>
 
-      {/* ── Steps container ── */}
-      <div style={{ background: WHITE, borderRadius: "0 0 12px 12px", border: `1px solid ${GRAY_BD}`, borderTop: "none", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+      <div style={{ background: T.white, borderRadius: "0 0 12px 12px", border: `1px solid ${T.grayBd}`, borderTop: "none", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
 
         {/* ══ STEP 1: Configure ══ */}
         <SectionHeader step={1} label="Configure Service Details" status={steps.config} onClick={() => toggleOpen("config")} />
         {open === "config" && (
-          <div style={{ padding: "20px 24px", borderBottom: `1px solid ${GRAY_BD}` }}>
-            <InfoBox>
-              Fill in your service details. These will be used to auto-generate the YouTube title, description, and tags.
-            </InfoBox>
+          <div style={{ padding: "20px 24px", borderBottom: `1px solid ${T.grayBd}` }}>
+            <InfoBox>Set up your service details and credentials. These are used to build the YouTube title, description, and tags automatically.</InfoBox>
 
-            <InputField label="Video File Path" value={filePath} onChange={setFilePath}
-              placeholder="C:\Users\pc\Desktop\recording.mp4" />
+            {/* OAuth token */}
+            <div style={{ background: "#fef9ec", border: "1px solid #fde68a", borderRadius: 8, padding: "12px 16px", marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#92400e", marginBottom: 6 }}>🔑 OAuth2 Access Token</div>
+              <div style={{ fontSize: 12, color: "#78350f", marginBottom: 8, lineHeight: 1.6 }}>
+                Run <code style={{ background: "#fde68a", padding: "1px 5px", borderRadius: 3 }}>node scripts/authorise.js</code> once to get a token, then paste it here. Tokens expire after ~1 hour; re-run authorise.js if you get auth errors.
+              </div>
+              <input value={accessToken} onChange={e => setAccessToken(e.target.value)}
+                placeholder="ya29.A0..."
+                style={{ width: "100%", padding: "9px 12px", fontSize: 12, border: "1px solid #fde68a", borderRadius: 7, outline: "none", boxSizing: "border-box", fontFamily: "'Courier New', monospace", color: "#111827", background: "#fffbeb" }} />
+            </div>
+
+            <FileField label="Video File" accept="video/*" file={videoFile} onChange={setVideoFile} />
+
+            <InputField label="Church Name" value={church} onChange={setChurch} placeholder="Grace Community Church" />
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <InputField label="Service Date" value={date} onChange={setDate} type="date" />
               <SelectField label="Service Type" value={type} onChange={setType} options={[
-                { value: "sunday",    label: "Sunday Service" },
-                { value: "friday",    label: "Friday Prayer Night" },
-                { value: "midweek",   label: "Midweek Service" },
-                { value: "easter",    label: "Easter Sunday" },
+                { value: "sunday", label: "Sunday Service" },
+                { value: "friday", label: "Friday Prayer Night" },
+                { value: "midweek", label: "Midweek Service" },
+                { value: "easter", label: "Easter Sunday" },
                 { value: "christmas", label: "Christmas Service" },
-                { value: "special",   label: "Special Service" },
+                { value: "special", label: "Special Service" },
               ]} />
             </div>
 
             <InputField label="Preaching Pastor" value={pastor} onChange={setPastor} placeholder="Pastor John" />
             <InputField label="Sermon Series (optional)" value={series} onChange={setSeries} placeholder="Walking in Faith" />
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <SelectField label="Whisper Language" value={language} onChange={setLanguage} options={[
-                { value: "sw", label: "Swahili (sw)" },
-                { value: "en", label: "English (en)" },
-                { value: "auto", label: "Auto-detect" },
-              ]} />
-              <SelectField label="Whisper Model" value={model} onChange={setModel} options={[
-                { value: "tiny",   label: "Tiny (fastest, less accurate)" },
-                { value: "base",   label: "Base" },
-                { value: "small",  label: "Small" },
-                { value: "medium", label: "Medium (recommended)" },
-                { value: "large",  label: "Large (slowest, most accurate)" },
-              ]} />
-            </div>
+            {/* Optional extras (collapsed) */}
+            <details style={{ marginBottom: 12 }}>
+              <summary style={{ fontSize: 12, fontWeight: 600, color: T.navyL, cursor: "pointer", marginBottom: 8 }}>
+                ▸ Optional: giving & contact details (for description)
+              </summary>
+              <div style={{ paddingTop: 8 }}>
+                <InputField label="M-Pesa Number" value={mpesa} onChange={setMpesa} placeholder="0712 345 678" />
+                <InputField label="Airtel Money Number" value={airtel} onChange={setAirtel} placeholder="0682 345 678" />
+                <InputField label="Church Website" value={website} onChange={setWebsite} placeholder="https://church.org" />
+                <InputField label="YouTube Channel URL" value={ytUrl} onChange={setYtUrl} placeholder="https://youtube.com/@church" />
+              </div>
+            </details>
 
-            {date && <div style={{ fontSize: 12, color: GRAY_T, marginBottom: 12 }}>
-              📅 Formatted date: <strong>{displayDate(date)}</strong>
-            </div>}
+            <SelectField label="Subtitle Language" value={language} onChange={setLanguage} options={[
+              { value: "sw", label: "Swahili (sw)" },
+              { value: "en", label: "English (en)" },
+            ]} />
 
-            <ConfirmButton
-              label={filePath ? "Details Confirmed — Go to Upload" : "Enter file path to continue"}
-              done={steps.config === STATUS.DONE}
-              onConfirm={() => filePath && markDone("config", "upload")}
-            />
+            {configError && <InfoBox type="error">⚠️ {configError}</InfoBox>}
+
+            {date && <div style={{ fontSize: 12, color: T.grayT, marginBottom: 12 }}>📅 Formatted date: <strong>{displayDate(date)}</strong></div>}
+
+            <ActionButton label="Confirm Details → Go to Upload" onClick={confirmConfig} />
           </div>
         )}
 
-        {/* ══ STEP 2: Upload to YouTube ══ */}
+        {/* ══ STEP 2: Upload ══ */}
         <SectionHeader step={2} label="Upload Video to YouTube" status={steps.upload} onClick={() => toggleOpen("upload")} />
         {open === "upload" && (
-          <div style={{ padding: "20px 24px", borderBottom: `1px solid ${GRAY_BD}` }}>
+          <div style={{ padding: "20px 24px", borderBottom: `1px solid ${T.grayBd}` }}>
             <InfoBox>
-              Run this command in PowerShell from your <code style={{ background: "#e0e7ff", padding: "1px 5px", borderRadius: 3 }}>transcribe</code> folder. It will upload the video and auto-generate the title, description, and tags.
+              The video is uploaded directly from your browser to YouTube using the YouTube Data API v3. No local scripts needed.
             </InfoBox>
 
-            <CopyBox label="1. Open PowerShell and navigate to your project" code="cd C:\Users\pc\Desktop\transcribe" />
-            <CopyBox label="2. Run the upload script" code={uploadCmd} />
+            {videoFile && (
+              <div style={{ background: T.grayBg, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: T.grayT, marginBottom: 12 }}>
+                📹 <strong>{videoFile.name}</strong> · {(videoFile.size / 1024 / 1024).toFixed(1)} MB
+                <div style={{ marginTop: 4 }}>
+                  <strong>Title:</strong> {buildTitle({ type, date, church, pastor, series })}
+                </div>
+              </div>
+            )}
 
-            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#92400e", marginBottom: 16 }}>
-              ⏳ Upload time depends on your internet speed and file size. <strong>Do not close PowerShell</strong> while it runs. At the end you will see a <strong>Video ID</strong> — copy it, you'll need it in Step 4.
-            </div>
+            {steps.upload === STATUS.LOADING && <ProgressBar pct={uploadProgress} label="Uploading to YouTube…" />}
 
-            <InputField label="Paste Video ID here once upload is done" value={videoId} onChange={setVideoId}
-              placeholder="e.g. dQw4w9WgXcQ" />
+            {uploadError && <InfoBox type="error">❌ {uploadError}</InfoBox>}
 
-            {videoId && (
-              <InfoBox color={GREEN}>
-                ✓ Video URL: <a href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noopener noreferrer"
-                  style={{ color: GREEN, fontWeight: 600 }}>
+            {videoId && steps.upload !== STATUS.LOADING && (
+              <InfoBox type="success">
+                ✅ Upload complete!<br />
+                Video ID: <strong>{videoId}</strong><br />
+                <a href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noopener noreferrer" style={{ color: T.green, fontWeight: 600 }}>
                   https://www.youtube.com/watch?v={videoId}
                 </a>
               </InfoBox>
             )}
 
-            <ConfirmButton
-              label={videoId ? "Upload Done — Go to Transcription" : "Paste Video ID to continue"}
-              done={steps.upload === STATUS.DONE}
-              onConfirm={() => videoId && markDone("upload", "transcribe")}
-            />
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {!videoId && (
+                <ActionButton label="Upload Now" onClick={runUpload}
+                  disabled={!videoFile || !accessToken}
+                  loading={steps.upload === STATUS.LOADING} />
+              )}
+              {videoId && steps.upload !== STATUS.DONE && (
+                <ActionButton label="Continue → Transcribe" variant="success"
+                  onClick={() => markDone("upload", "transcribe")} />
+              )}
+            </div>
+
+            {!videoFile && <div style={{ fontSize: 12, color: T.grayT, marginTop: 8 }}>Go back to Step 1 to select a video file.</div>}
           </div>
         )}
 
-        {/* ══ STEP 3: Transcribe locally ══ */}
+        {/* ══ STEP 3: Transcribe (local Whisper only) ══ */}
         <SectionHeader step={3} label="Transcribe Locally with Whisper" status={steps.transcribe} onClick={() => toggleOpen("transcribe")} />
         {open === "transcribe" && (
-          <div style={{ padding: "20px 24px", borderBottom: `1px solid ${GRAY_BD}` }}>
+          <div style={{ padding: "20px 24px", borderBottom: `1px solid ${T.grayBd}` }}>
             <InfoBox>
-              Run Whisper on your computer — this is <strong>free</strong> and runs offline. It will generate <code style={{ background: "#e0e7ff", padding: "1px 5px", borderRadius: 3 }}>.txt</code>, <code style={{ background: "#e0e7ff", padding: "1px 5px", borderRadius: 3 }}>.srt</code>, and <code style={{ background: "#e0e7ff", padding: "1px 5px", borderRadius: 3 }}>.json</code> files in the same folder as your video.
+              Whisper runs <strong>locally on your machine</strong> — free, offline, handles Swahili + English. This step generates the <code style={{ background: "#e0e7ff", padding: "1px 5px", borderRadius: 3 }}>.srt</code> and <code style={{ background: "#e0e7ff", padding: "1px 5px", borderRadius: 3 }}>.json</code> files you'll need in the next two steps.
             </InfoBox>
 
-            <CopyBox label="Run Whisper transcription" code={whisperCmd} />
+            <CopyBox label="Run in PowerShell (same folder as your video)" code={whisperCmd} />
 
-            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#92400e", marginBottom: 16 }}>
-              ⏳ On CPU this takes roughly <strong>1 hour per 90-minute service</strong>. You can minimize PowerShell and let it run in the background. Do not close the window.
-            </div>
+            <InfoBox type="warn">
+              ⏳ On CPU this takes roughly <strong>1 hour per 90-minute service</strong>. Minimise PowerShell and let it run. Do not close the window.
+            </InfoBox>
 
-            <div style={{ fontSize: 12, color: GRAY_T, marginBottom: 16 }}>
-              <strong>Output files you'll get:</strong>
+            <div style={{ fontSize: 12, color: T.grayT, marginBottom: 16 }}>
+              <strong>Output files Whisper creates:</strong>
               <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, lineHeight: 2 }}>
-                <li><code>recording.txt</code> — full text transcript</li>
-                <li><code>recording.srt</code> — subtitle file for YouTube</li>
-                <li><code>recording.json</code> — timestamped segments for chapters</li>
+                <li><code>recording.json</code> — timestamped segments → upload in Step 4</li>
+                <li><code>recording.srt</code> — subtitle captions → upload in Step 5</li>
+                <li><code>recording.txt</code> — plain text transcript</li>
                 <li><code>recording.vtt</code> — web subtitles</li>
               </ul>
             </div>
 
-            <ConfirmButton
-              label="Transcription Done — Go to Chapters"
-              done={steps.transcribe === STATUS.DONE}
-              onConfirm={() => markDone("transcribe", "chapters")}
-            />
+            <ActionButton label="Transcription Done → Add Chapters"
+              onClick={() => markDone("transcribe", "chapters")} />
           </div>
         )}
 
-        {/* ══ STEP 4: Add chapters ══ */}
+        {/* ══ STEP 4: Chapters via API ══ */}
         <SectionHeader step={4} label="Add Chapters to YouTube Description" status={steps.chapters} onClick={() => toggleOpen("chapters")} />
         {open === "chapters" && (
-          <div style={{ padding: "20px 24px", borderBottom: `1px solid ${GRAY_BD}` }}>
+          <div style={{ padding: "20px 24px", borderBottom: `1px solid ${T.grayBd}` }}>
             <InfoBox>
-              This reads your local transcript and automatically adds timestamped chapters to the YouTube video description. Requires the Video ID from Step 2.
+              Select your Whisper <code style={{ background: "#e0e7ff", padding: "1px 5px", borderRadius: 3 }}>.json</code> output. The app detects chapter boundaries (Worship, Sermon, Altar Call…) and updates the YouTube description directly via the API — no script needed.
             </InfoBox>
 
-            {!videoId && (
-              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: RED, marginBottom: 12 }}>
-                ⚠️ No Video ID entered yet — go back to Step 2 and paste it.
+            {!videoId && <InfoBox type="error">⚠️ No Video ID — complete Step 2 first.</InfoBox>}
+
+            <FileField label="Whisper .json output file" accept=".json"
+              file={jsonFile}
+              onChange={(f) => {
+                setJsonFile(f);
+                setChaptersText("");
+                if (f) {
+                  f.text().then(text => {
+                    const parsed = parseChaptersFromFile(text);
+                    if (parsed) setChaptersText(parsed);
+                  });
+                }
+              }} />
+
+            {chaptersText && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: T.grayT, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Detected Chapters (editable)
+                </div>
+                <textarea value={chaptersText} onChange={e => setChaptersText(e.target.value)}
+                  style={{
+                    width: "100%", minHeight: 140, padding: "10px 12px", fontSize: 12,
+                    border: `1px solid ${T.grayBd}`, borderRadius: 7, outline: "none",
+                    boxSizing: "border-box", fontFamily: "'Courier New', monospace",
+                    color: "#111827", background: "#0f172a", color: "#e2e8f0",
+                    lineHeight: 1.8, resize: "vertical",
+                  }} />
+                <div style={{ fontSize: 11, color: T.grayT, marginTop: 4 }}>
+                  Each line: <code>MM:SS Label</code> or <code>H:MM:SS Label</code>. First chapter must start at <code>0:00</code>.
+                </div>
               </div>
             )}
 
-            <CopyBox label="Add chapters to YouTube description" code={chaptersCmd} />
+            {chaptersError && <InfoBox type="error">❌ {chaptersError}</InfoBox>}
 
-            <div style={{ fontSize: 12, color: GRAY_T, marginBottom: 16, lineHeight: 1.7 }}>
-              This will detect sections like <strong>Worship</strong>, <strong>Sermon</strong>, <strong>Altar Call</strong> etc. from the transcript and add timestamps like:
-              <div style={{ background: "#0f172a", borderRadius: 6, padding: "10px 14px", marginTop: 8, fontFamily: "monospace", fontSize: 12, color: "#e2e8f0", lineHeight: 2 }}>
-                0:00 Introduction<br/>
-                12:34 Worship & Praise<br/>
-                45:00 Sermon<br/>
-                1:15:00 Altar Call<br/>
-                1:28:00 Closing Prayer
-              </div>
-            </div>
-
-            <ConfirmButton
-              label="Chapters Added — Go to Subtitles"
-              done={steps.chapters === STATUS.DONE}
-              onConfirm={() => markDone("chapters", "subtitles")}
-            />
+            <ActionButton label="Add Chapters to YouTube" onClick={runChapters}
+              disabled={!videoId || (!jsonFile && !chaptersText)}
+              loading={steps.chapters === STATUS.LOADING} />
           </div>
         )}
 
-        {/* ══ STEP 5: Upload SRT ══ */}
-        <SectionHeader step={5} label="Upload SRT Subtitles to YouTube" status={steps.subtitles} onClick={() => toggleOpen("subtitles")} />
+        {/* ══ STEP 5: SRT via Captions API ══ */}
+        <SectionHeader step={5} label="Upload Subtitles to YouTube" status={steps.subtitles} onClick={() => toggleOpen("subtitles")} />
         {open === "subtitles" && (
           <div style={{ padding: "20px 24px" }}>
             <InfoBox>
-              Upload your <code style={{ background: "#e0e7ff", padding: "1px 5px", borderRadius: 3 }}>.srt</code> file to YouTube Studio so viewers see live captions. This is done manually in the browser.
+              Select your Whisper <code style={{ background: "#e0e7ff", padding: "1px 5px", borderRadius: 3 }}>.srt</code> file and it will be uploaded directly to YouTube via the Captions API — no manual YouTube Studio upload needed.
             </InfoBox>
 
-            <div style={{ fontSize: 13, color: "#374151", lineHeight: 2, marginBottom: 16 }}>
-              <strong>Steps in YouTube Studio:</strong>
-              <ol style={{ margin: "6px 0 0 0", paddingLeft: 20 }}>
-                <li>Go to <a href="https://studio.youtube.com" target="_blank" rel="noopener noreferrer" style={{ color: NAVY_L, fontWeight: 600 }}>studio.youtube.com</a></li>
-                <li>Click <strong>Content</strong> → find your uploaded video</li>
-                <li>Click the video → go to <strong>Subtitles</strong> tab</li>
-                <li>Click <strong>Add language</strong> → select Swahili or English</li>
-                <li>Click <strong>Add</strong> → choose <strong>Upload file</strong></li>
-                <li>Select <strong>With timing</strong> → upload your <code>.srt</code> file</li>
-                <li>Click <strong>Publish</strong></li>
-              </ol>
-            </div>
+            {!videoId && <InfoBox type="error">⚠️ No Video ID — complete Step 2 first.</InfoBox>}
 
-            <div style={{ background: "#f9fafb", border: `1px solid ${GRAY_BD}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: GRAY_T, marginBottom: 16 }}>
-              📁 Your SRT file is at: <code style={{ color: NAVY, fontWeight: 600 }}>{srtFile}</code>
-            </div>
+            <FileField label="Whisper .srt subtitle file" accept=".srt" file={srtFile} onChange={setSrtFile} />
 
-            {videoId && (
-              <a
-                href={`https://studio.youtube.com/video/${videoId}/translations`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 8,
-                  padding: "10px 18px", borderRadius: 8,
-                  background: RED, color: WHITE,
-                  fontWeight: 700, fontSize: 13, textDecoration: "none",
-                  marginBottom: 16,
-                }}
-              >
-                ▶ Open YouTube Studio Subtitles ↗
-              </a>
-            )}
+            {srtError && <InfoBox type="error">❌ {srtError}</InfoBox>}
 
-            <ConfirmButton
-              label="Subtitles Uploaded — All Done! 🎉"
-              done={steps.subtitles === STATUS.DONE}
-              onConfirm={() => markDone("subtitles", null)}
-            />
+            <ActionButton label="Upload Subtitles to YouTube" onClick={runSRTUpload}
+              disabled={!videoId || !srtFile}
+              loading={steps.subtitles === STATUS.LOADING} />
 
             {steps.subtitles === STATUS.DONE && (
-              <div style={{
-                marginTop: 20, background: `linear-gradient(135deg, ${NAVY}, ${NAVY_L})`,
-                borderRadius: 12, padding: "20px 24px", textAlign: "center",
-              }}>
+              <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${T.navy}, ${T.navyL})`, borderRadius: 12, padding: "20px 24px", textAlign: "center" }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
-                <div style={{ color: GOLD, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Service Published!</div>
+                <div style={{ color: T.gold, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Service Published!</div>
                 <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginBottom: 16 }}>
                   Video is live on YouTube with chapters and subtitles.
                 </div>
                 {videoId && (
-                  <a
-                    href={`https://www.youtube.com/watch?v=${videoId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: "inline-block", padding: "10px 24px", borderRadius: 8,
-                      background: GOLD, color: NAVY,
-                      fontWeight: 700, fontSize: 13, textDecoration: "none",
-                    }}
-                  >
+                  <a href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noopener noreferrer"
+                    style={{ display: "inline-block", padding: "10px 24px", borderRadius: 8, background: T.gold, color: T.navy, fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
                     View on YouTube ↗
                   </a>
                 )}
@@ -523,9 +846,8 @@ export default function UploadPage() {
         )}
       </div>
 
-      {/* ── Footer note ── */}
-      <div style={{ textAlign: "center", fontSize: 11, color: GRAY_T, marginTop: 16 }}>
-        Commands run in PowerShell from <code>C:\Users\pc\Desktop\transcribe</code>
+      <div style={{ textAlign: "center", fontSize: 11, color: T.grayT, marginTop: 16 }}>
+        Whisper: run locally in PowerShell · All other steps: direct YouTube API calls from browser
       </div>
     </div>
   );
