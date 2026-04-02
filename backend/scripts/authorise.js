@@ -22,6 +22,8 @@ const readline = require("readline")
 const SCOPES = [
   "https://www.googleapis.com/auth/yt-analytics.readonly",
   "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/youtube.upload",  // ← add this
+  "https://www.googleapis.com/auth/youtube.force-ssl", // ← needed for captions
 ];
 
 const TOKEN_PATH = path.join(__dirname, "..", "token.json");

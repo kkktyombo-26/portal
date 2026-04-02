@@ -278,7 +278,7 @@ tab_upload: "Pakia",
 
     // ── Sunday Operations Dashboard ──────────────────────────────
     it_team:         'Timu ya IT ya Kanisa',
-    dashboard_title: 'Dashibodi ya Jumapili',
+    dashboard_title: 'Dashibodi ya Kanisa',
 
     // Tabs
     tab_channel:   'Takwimu za Channel',

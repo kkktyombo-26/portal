@@ -89,145 +89,105 @@ ${type === "easter" ? "🙏 Celebrating the Resurrection of Jesus Christ this Ea
  * Resumable upload to YouTube Data API v3.
  * Uses the resumable upload protocol so large files work in-browser.
  */
-async function youtubeResumableUpload({ file, snippet, status, accessToken, onProgress }) {
-  // Step 1: Initiate resumable upload session
-  const initRes = await fetch(
-    "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        "X-Upload-Content-Type": file.type || "video/mp4",
-        "X-Upload-Content-Length": file.size,
-      },
-      body: JSON.stringify({ snippet, status }),
-    }
-  );
 
-  if (!initRes.ok) {
-    const err = await initRes.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Init failed: ${initRes.status}`);
-  }
 
-  const uploadUrl = initRes.headers.get("Location");
-  if (!uploadUrl) throw new Error("No upload URL returned from YouTube");
+async function uploadViaBackend({ file, snippet, status, accessToken, onProgress, onPhase }) {
+  const formData = new FormData();
+  formData.append("video", file);
+  formData.append("snippet", JSON.stringify(snippet));
+  formData.append("status", JSON.stringify(status));
+  formData.append("accessToken", accessToken);
 
-  // Step 2: Upload the file in one PUT (files up to ~500 MB work fine in modern browsers)
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", uploadUrl);
-    xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+    xhr.open("POST", "http://localhost:4000/api/youtube/upload");
 
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-    };
+    let buffer = "";
 
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(JSON.parse(xhr.responseText));
-      } else {
-        try {
-          const e = JSON.parse(xhr.responseText);
-          reject(new Error(e?.error?.message || `Upload failed: ${xhr.status}`));
-        } catch {
-          reject(new Error(`Upload failed: ${xhr.status}`));
+    xhr.onprogress = () => {
+      // Parse SSE chunks as they stream in
+      const newData = xhr.responseText.slice(buffer.length);
+      buffer = xhr.responseText;
+
+      const lines = newData.split("\n");
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const msg = JSON.parse(line.slice(6));
+            if (msg.type === "progress") {
+              onProgress(msg.pct);
+              if (onPhase) onPhase(msg.phase, msg.message);
+            } else if (msg.type === "done") {
+              resolve({ id: msg.id });
+            } else if (msg.type === "error") {
+              reject(new Error(msg.error));
+            }
+          } catch {}
         }
       }
     };
 
-    xhr.onerror = () => reject(new Error("Network error during upload"));
-    xhr.send(file);
+    xhr.onload = () => {
+      // Parse any final messages if onprogress missed them
+      const lines = xhr.responseText.split("\n");
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const msg = JSON.parse(line.slice(6));
+            if (msg.type === "done") resolve({ id: msg.id });
+            else if (msg.type === "error") reject(new Error(msg.error));
+          } catch {}
+        }
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.send(formData);
   });
 }
 
 /**
  * Fetch current video snippet then PATCH description with chapters block.
  */
+
 async function addChaptersToDescription({ videoId, chaptersText, accessToken }) {
-  // GET current snippet
-  const getRes = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!getRes.ok) throw new Error(`Could not fetch video: ${getRes.status}`);
-  const getData = await getRes.json();
-  const snippet = getData.items?.[0]?.snippet;
-  if (!snippet) throw new Error(`Video ${videoId} not found`);
+  const res = await fetch("http://localhost:4000/api/youtube/upload/chapters", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoId, chaptersText, accessToken }),
+  });
 
-  // Strip old chapters block if present
-  let desc = snippet.description || "";
-  desc = desc.replace(/\n*─+\n*CHAPTERS[\s\S]*?(?=\n─|\n#|$)/i, "").trimEnd();
-
-  const updatedDesc =
-    desc +
-    `\n\n─────────────────────\nCHAPTERS\n${chaptersText}\n─────────────────────`;
-
-  // PATCH
-  const patchRes = await fetch(
-    "https://www.googleapis.com/youtube/v3/videos?part=snippet",
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ id: videoId, snippet: { ...snippet, description: updatedDesc } }),
-    }
-  );
-  if (!patchRes.ok) {
-    const e = await patchRes.json().catch(() => ({}));
-    throw new Error(e?.error?.message || `Chapters update failed: ${patchRes.status}`);
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || `Chapters update failed: ${res.status}`);
   }
-  return await patchRes.json();
+
+  return await res.json();
 }
+
 
 /**
  * Upload an SRT file as captions to a YouTube video.
  */
+
 async function uploadSRT({ videoId, srtFile, language, accessToken }) {
-  // Step 1: Insert caption track (resumable)
-  const initRes = await fetch(
-    `https://www.googleapis.com/upload/youtube/v3/captions?uploadType=resumable&part=snippet`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        "X-Upload-Content-Type": "application/octet-stream",
-        "X-Upload-Content-Length": srtFile.size,
-      },
-      body: JSON.stringify({
-        snippet: {
-          videoId,
-          language,
-          name: `${language} subtitles`,
-          isDraft: false,
-        },
-      }),
-    }
-  );
+  const formData = new FormData();
+  formData.append("srt", srtFile);
+  formData.append("videoId", videoId);
+  formData.append("language", language);
+  formData.append("accessToken", accessToken);
 
-  if (!initRes.ok) {
-    const e = await initRes.json().catch(() => ({}));
-    throw new Error(e?.error?.message || `Caption init failed: ${initRes.status}`);
-  }
-
-  const uploadUrl = initRes.headers.get("Location");
-  if (!uploadUrl) throw new Error("No caption upload URL returned");
-
-  // Step 2: PUT the SRT file bytes
-  const putRes = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: srtFile,
+  const res = await fetch("http://localhost:4000/api/youtube/upload/captions", {
+    method: "POST",
+    body: formData,
   });
 
-  if (!putRes.ok) {
-    const e = await putRes.json().catch(() => ({}));
-    throw new Error(e?.error?.message || `Caption upload failed: ${putRes.status}`);
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || `Caption upload failed: ${res.status}`);
   }
-  return await putRes.json();
+
+  return await res.json();
 }
 
 /**
@@ -511,36 +471,46 @@ export default function UploadPage() {
   }
 
   // ── Step 2: Upload to YouTube via API ───────────────────────────
-  async function runUpload() {
-    setUploadError("");
-    setUploadProgress(0);
-    setStep("upload", STATUS.LOADING);
 
-    const snippet = {
-      title: buildTitle({ type, date, church, pastor, series }),
-      description: buildDescription({ type, church, pastor, series, mpesa, airtel, website, ytUrl }),
-      tags: [church, "church service", "Tanzania church", "gospel", "sermon", pastor, "Dar es Salaam church", displayDate(date)].filter(Boolean),
-      categoryId: "29",
-      defaultLanguage: "en",
-    };
-    const status = { privacyStatus: "public", selfDeclaredMadeForKids: false };
+  
+const [uploadPhase, setUploadPhase] = useState(""); // add this with other state
 
-    try {
-      const data = await youtubeResumableUpload({
-        file: videoFile,
-        snippet,
-        status,
-        accessToken,
-        onProgress: setUploadProgress,
-      });
-      setVideoId(data.id);
-      setStep("upload", STATUS.ACTIVE); // keep active until user advances
-    } catch (e) {
-      setUploadError(e.message);
-      setStep("upload", STATUS.ACTIVE);
-    }
+async function runUpload() {
+  setUploadError("");
+  setUploadProgress(0);
+  setUploadPhase("");
+  setStep("upload", STATUS.LOADING);
+
+  const snippet = {
+    title: buildTitle({ type, date, church, pastor, series }),
+    description: buildDescription({ type, church, pastor, series, mpesa, airtel, website, ytUrl }),
+    tags: [church, "church service", "Tanzania church", "gospel", "sermon", pastor, "Dar es Salaam church", displayDate(date)].filter(Boolean),
+    categoryId: "29",
+    defaultLanguage: "en",
+  };
+  const status = { privacyStatus: "public", selfDeclaredMadeForKids: false };
+
+  try {
+    const data = await uploadViaBackend({
+      file: videoFile,
+      snippet,
+      status,
+      accessToken,
+      onProgress: setUploadProgress,
+      onPhase: (phase, message) => setUploadPhase(message),
+    });
+
+    if (!data.id) throw new Error("No video ID returned from server");
+    setVideoId(data.id);
+    setUploadProgress(100);
+    setUploadPhase("");
+    setStep("upload", STATUS.ACTIVE);
+  } catch (e) {
+    setUploadError(e.message);
+    setStep("upload", STATUS.ACTIVE);
   }
 
+}
   // ── Step 4: Add chapters via API ────────────────────────────────
   async function runChapters() {
     setChaptersError("");
@@ -700,9 +670,21 @@ export default function UploadPage() {
               </div>
             )}
 
-            {steps.upload === STATUS.LOADING && <ProgressBar pct={uploadProgress} label="Uploading to YouTube…" />}
+{steps.upload === STATUS.LOADING && (
+  <>
+    <ProgressBar
+      pct={uploadProgress}
+      label={uploadPhase || "Preparing upload..."}
+    />
+    {uploadProgress >= 100 && (
+      <InfoBox type="warn">
+        ⏳ Finalising on YouTube — do not close this tab.
+      </InfoBox>
+    )}
+  </>
+)}
 
-            {uploadError && <InfoBox type="error">❌ {uploadError}</InfoBox>}
+     {uploadError && <InfoBox type="error">❌ {uploadError}</InfoBox>}
 
             {videoId && steps.upload !== STATUS.LOADING && (
               <InfoBox type="success">
