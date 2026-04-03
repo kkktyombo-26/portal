@@ -38,7 +38,6 @@ function EventsBanner({ lang }) {
       <div className="absolute inset-0 opacity-[0.04] pointer-events-none"
         style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")', backgroundSize: '120px' }} />
 
-      {/* Image from announcement if available */}
       {ev.image_url && (
         <div className="w-full h-24 overflow-hidden">
           <img src={ev.image_url} alt="" className="w-full h-full object-cover opacity-60" />
@@ -96,7 +95,7 @@ function GroupsList({ lang }) {
       .then(r => setGroups(r.data.data || []))
       .catch(() => {});
   }, []);
-   if(groups.length !== 0){console.log(groups);}
+
   if (!groups.length) return null;
 
   return (
@@ -107,9 +106,8 @@ function GroupsList({ lang }) {
       <div className="space-y-0">
         {groups.slice(0, 5).map((g, i) => (
           <div key={g.id}>
-          <Link href={`/dashboard/groups/${g.id}`}
+            <Link href={`/dashboard/groups/${g.id}`}
               className="flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-surface transition-colors duration-100 group">
-              {/* Icon — Rule 4: stands alone, small parchment bg is the icon frame not a decoration box */}
               <span className="w-7 h-7 rounded-md bg-parchment border border-hairline flex items-center justify-center text-xs text-ink-muted flex-shrink-0 group-hover:border-border transition-colors">
                 {GROUP_ICONS[g.type] || '◇'}
               </span>
@@ -128,7 +126,7 @@ function GroupsList({ lang }) {
         ))}
 
         {groups.length > 5 && (
-          <Link href="/dashboard/groups/${g.id}"
+          <Link href="/dashboard/groups"
             className="flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-surface transition-colors duration-100 group mt-1">
             <span className="w-7 h-7 rounded-md bg-surface border border-dashed border-border flex items-center justify-center text-xs text-ink-faint flex-shrink-0">···</span>
             <span className="text-sm font-medium text-ink-muted group-hover:text-ink transition-colors">
@@ -142,15 +140,20 @@ function GroupsList({ lang }) {
   );
 }
 
-// ─── Social Links ─────────────────────────────────────────────────────────────
-const SOCIAL_LINKS = [
+// ─── Social / Follow Links ────────────────────────────────────────────────────
+// YouTube uses Next.js <Link> (internal route).
+// All others open in a new tab.
+
+const YT_ICON = (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+  </svg>
+);
+
+const EXTERNAL_LINKS = [
   {
     platform: 'Facebook', handle: '@ChurchPortal', href: 'https://facebook.com',
     icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>,
-  },
-  {
-    platform: 'YouTube', handle: 'Church Portal TV', href: 'https://youtube.com',
-    icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>,
   },
   {
     platform: 'WhatsApp', handle: 'Community Group', href: 'https://whatsapp.com',
@@ -162,6 +165,16 @@ const SOCIAL_LINKS = [
   },
 ];
 
+// Shared row styles
+const rowCls = 'flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-surface transition-colors duration-100 group';
+const iconWrapCls = 'w-7 h-7 rounded-md bg-parchment border border-hairline flex items-center justify-center text-ink-muted flex-shrink-0 group-hover:border-border transition-colors';
+const ArrowIcon = () => (
+  <svg className="w-3 h-3 text-ink-faint opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+    viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M2.5 9.5L9.5 2.5M9.5 2.5H4.5M9.5 2.5V7.5"/>
+  </svg>
+);
+
 // ─── Panel Content ─────────────────────────────────────────────────────────────
 function PanelContent({ lang }) {
   return (
@@ -169,31 +182,45 @@ function PanelContent({ lang }) {
       <EventsBanner lang={lang} />
       <GroupsList lang={lang} />
       <div className="hairline mb-5" />
+
       <div>
         <p className="section-label mb-3">
           {lang === 'sw' ? 'Mitandao ya Kijamii' : 'Follow Us'}
         </p>
         <div className="space-y-0">
-          {SOCIAL_LINKS.map((s, i) => (
+
+          {/* ── YouTube — internal link ── */}
+          <div>
+            <Link href="/dashboard/youtube" className={rowCls}>
+              <span className={iconWrapCls}>{YT_ICON}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-ink leading-none">YouTube</p>
+                <p className="text-2xs text-ink-faint mt-0.5">
+                  {lang === 'sw' ? 'Tazama video za kanisa' : 'Watch church videos'}
+                </p>
+              </div>
+              {/* Internal nav arrow (no external icon) */}
+              <span className="text-ink-faint text-xs opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+            </Link>
+            <div className="hairline ml-10" />
+          </div>
+
+          {/* ── External social links ── */}
+          {EXTERNAL_LINKS.map((s, i) => (
             <div key={s.platform}>
-              <a href={s.href} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-surface transition-colors duration-100 group">
-                <span className="w-7 h-7 rounded-md bg-parchment border border-hairline flex items-center justify-center text-ink-muted flex-shrink-0 group-hover:border-border transition-colors">
-                  {s.icon}
-                </span>
+              <a href={s.href} target="_blank" rel="noopener noreferrer" className={rowCls}>
+                <span className={iconWrapCls}>{s.icon}</span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-ink leading-none">{s.platform}</p>
                   <p className="text-2xs text-ink-faint mt-0.5">{s.handle}</p>
                 </div>
-                <svg className="w-3 h-3 text-ink-faint opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                  viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M2.5 9.5L9.5 2.5M9.5 2.5H4.5M9.5 2.5V7.5"/>
-                </svg>
+                <ArrowIcon />
               </a>
-              {i < SOCIAL_LINKS.length - 1 && <div className="hairline ml-10" />}
+              {i < EXTERNAL_LINKS.length - 1 && <div className="hairline ml-10" />}
             </div>
           ))}
         </div>
+
         <p className="text-2xs text-ink-faint text-center mt-5 leading-relaxed px-2">
           {lang === 'sw' ? 'Karibu katika jamii yetu ya kidijitali' : 'Join our digital community'}
         </p>

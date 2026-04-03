@@ -32,7 +32,13 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         canManageMembers(user.role) && { href: '/dashboard/members', label: t('members'), icon: '○' },
         canManageGroups(user.role)  && { href: '/dashboard/groups',  label: t('groups'),  icon: '◫' },
       ].filter(Boolean),
-    },
+    }
+
+  
+
+
+
+    ,
   {
   label: lang === 'sw' ? 'Mawasiliano' : 'Communication',
   items: [
@@ -45,12 +51,31 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
     },
   ].filter(Boolean),
 },
-    {
+{
+  label: lang === 'sw' ? 'Dawati la IT' : 'IT Desk',
+items: [
+  canBroadcast(user.role) && {
+    href: '/dashboard/it',
+    label: lang === 'sw' ? 'Dashibodi ya IT' : 'IT Dashboard',
+    icon: '◉',
+  },
+ 
+          canManageSocialMedia(user.role) && {
+            href: '/dashboard/youtube/upload',
+            label: lang === 'sw' ? 'Pakia Video YouTube' : 'Upload to YouTube',
+            icon: '⬆',
+          },
+       
+],
+},
+  {
       label: lang === 'sw' ? 'Rasilimali' : 'Resources',
       items: [
         { href: '/dashboard/forms', label: lang === 'sw' ? 'Fomu' : 'Forms', icon: '◻' },
       ],
     },
+    ,
+  
   ].filter(s => s.items.length > 0);
 
   const isActive = (href) => pathname === href;
