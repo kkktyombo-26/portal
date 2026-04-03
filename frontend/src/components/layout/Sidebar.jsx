@@ -44,11 +44,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
   items: [
     { href: '/dashboard/announcements', label: t('announcements'), icon: '◎' },
     { href: '/dashboard/events', label: lang === 'sw' ? 'Ratiba' : 'Schedule', icon: '◷' },
-    canManageSocialMedia(user.role) && {
-      href: '/teams/it',
-      label: lang === 'sw' ? 'Mitandao ya Kijamii' : 'Social Media',
-      icon: '◉',
-    },
+
   ].filter(Boolean),
 },
 {
