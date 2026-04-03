@@ -100,7 +100,7 @@ async function uploadViaBackend({ file, snippet, status, accessToken, onProgress
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "http://localhost:4000/api/youtube/upload");
+    xhr.open("POST", `${process.env.NEXT_PUBLIC_API_URL}/youtube/upload`);
 
     let buffer = "";
 
@@ -151,7 +151,7 @@ async function uploadViaBackend({ file, snippet, status, accessToken, onProgress
  */
 
 async function addChaptersToDescription({ videoId, chaptersText, accessToken }) {
-  const res = await fetch("http://localhost:4000/api/youtube/upload/chapters", {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/youtube/upload/chapters`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ videoId, chaptersText, accessToken }),
@@ -177,7 +177,7 @@ async function uploadSRT({ videoId, srtFile, language, accessToken }) {
   formData.append("language", language);
   formData.append("accessToken", accessToken);
 
-  const res = await fetch("http://localhost:4000/api/youtube/upload/captions", {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/youtube/upload/captions`, {
     method: "POST",
     body: formData,
   });
