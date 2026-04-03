@@ -36,7 +36,8 @@ exports.getAnnouncements = async (req, res, next) => {
 exports.createAnnouncement = async (req, res, next) => {
   try {
     const { role, id: authorId, groupId } = req.user;
-    const { title_en, title_sw, body_en, body_sw, scope } = req.body;
+  const { title_en, title_sw, body_en, body_sw, scope, image_url } = req.body;
+
 
     // Members cannot broadcast
     if (role === 'member') return res.status(403).json({ success: false, message: 'Members cannot post announcements.' });
@@ -46,9 +47,9 @@ exports.createAnnouncement = async (req, res, next) => {
     const finalGroupId = finalScope === 'group' ? groupId : null;
 
     const [result] = await db.execute(
-      `INSERT INTO announcements (title_en, title_sw, body_en, body_sw, scope, group_id, author_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [title_en, title_sw, body_en, body_sw, finalScope, finalGroupId, authorId]
+      `INSERT INTO announcements (title_en, title_sw, body_en, body_sw, scope, group_id, author_id, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title_en, title_sw, body_en, body_sw, finalScope, finalGroupId, authorId, image_url || null]
     );
     const [rows] = await db.execute(
       `SELECT a.*, u.full_name as author_name FROM announcements a
