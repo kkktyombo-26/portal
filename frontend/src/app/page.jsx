@@ -39,7 +39,7 @@ const T = {
     pastor_name: 'Mchungaji Joshua Delem',
     pastor_role: 'Senior Pastor, KKKT DMP Yombo',
     pastor_bio: 'Leading our congregation with faith, wisdom, and love. Pastor Delemi shepherds the Yombo community with a heart for God and the people of Dar es Salaam.',
-    pastor_meet: 'Meet with Pastor Delemi',
+    pastor_meet: 'Meet with Pastor Delem',
     pastor_hours_title: 'Pastoral Office Hours',
     pastor_hours_note: 'Walk-ins welcome. For urgent matters, contact the church office.',
     youtube_title: 'Watch & Worship',
@@ -69,11 +69,11 @@ const T = {
     portal_login: 'Tayari mwanachama? Ingia',
     portal_features: ['Matangazo & arifa', 'Ratiba za vikundi', 'Ukumbusho wa matukio', 'Rasilimali za kidijitali'],
     footer_rights: 'Haki zote zimehifadhiwa.',
-    pastor_title: 'Mkutane na Mchungaji Wetu',
+    pastor_title: 'Kukutana na Mchungaji Wetu',
     pastor_name: 'Mchungaji Delemi',
     pastor_role: 'Mchungaji Mkuu, KKKT DMP Yombo',
     pastor_bio: 'Anaongoza mkutano wetu kwa imani, hekima, na upendo. Mchungaji Delemi anachunga jumuia ya Yombo kwa moyo wa Mungu na watu wa Dar es Salaam.',
-    pastor_meet: 'Mkutane na Mchungaji Delemi',
+    pastor_meet: 'Kukutana na Mchungaji Delemi',
     pastor_hours_title: 'Masaa ya Ofisi ya Uchungaji',
     pastor_hours_note: 'Karibu bila miadi. Kwa mambo ya haraka, wasiliana na ofisi ya kanisa.',
     youtube_title: 'Tazama & Abudu',
@@ -153,12 +153,12 @@ const getHeroSlides = (lang, countdown) => [
 ];
 
 const GALLERY_SLIDES = [
-  { url: 'https://images.unsplash.com/photo-1438032005730-c779502df39b?w=1200&q=80', captionEn: 'Sunday Worship',         captionSw: 'Ibada ya Jumapili' },
-  { url: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=1200&q=80', captionEn: 'Community & Fellowship', captionSw: 'Ushirika & Umoja' },
+  { url: '/sunday.jpg', captionEn: 'Sunday Worship',         captionSw: 'Ibada ya Jumapili' },
+  { url: '/community.jpg', captionEn: 'Community & Fellowship', captionSw: 'Ushirika & Umoja' },
   { url: '/kwaya.jpg', captionEn: 'Choir Ministration',     captionSw: 'Huduma ya Kwaya' },
   { url: '/worship2.jpg', captionEn: 'Prayer & Intercession',  captionSw: 'Sala na Uombezi' },
-  { url: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=1200&q=80', captionEn: 'Youth Ministry',         captionSw: 'Huduma ya Vijana' },
-  { url: 'https://images.unsplash.com/photo-1519834785169-98be25ec3f84?w=1200&q=80', captionEn: 'Special Events',         captionSw: 'Matukio Maalum' },
+  { url: '/vijana.jpg', captionEn: 'Youth Ministry',         captionSw: 'Huduma ya Vijana' },
+  { url: '/special-events.jpg', captionEn: 'Special Events',         captionSw: 'Matukio Maalum' },
 ];
 
 // ── SVG atoms ─────────────────────────────────────────────────────
