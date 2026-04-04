@@ -324,7 +324,7 @@ function PanelContent({ lang }) {
 
         {/* Instagram */}
         <div>
-          <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className={ROW}>
+          <a href="https://www.instagram.com/kkktyombo" target="_blank" rel="noopener noreferrer" className={ROW}>
             <span className={ICON_WRAP}>{IG_ICON}</span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-ink leading-none">Instagram</p>
