@@ -141,7 +141,7 @@ const getHeroSlides = (lang, countdown) => [
   },
   {
     id: 'community',
-    bg: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=1800&q=70',
+    bg: '/community.jpg',
     tag: lang === 'sw' ? 'Ushirika' : 'Community',
     titleLines: lang === 'sw' ? ['JIUNGE', 'NASI'] : ['BE PART', 'OF US'],
     sub: lang === 'sw'
@@ -158,7 +158,7 @@ const GALLERY_SLIDES = [
   { url: '/kwaya.jpg', captionEn: 'Choir Ministration',     captionSw: 'Huduma ya Kwaya' },
   { url: '/worship2.jpg', captionEn: 'Prayer & Intercession',  captionSw: 'Sala na Uombezi' },
   { url: '/vijana.jpg', captionEn: 'Youth Ministry',         captionSw: 'Huduma ya Vijana' },
-  { url: '/special-events.jpg', captionEn: 'Special Events',         captionSw: 'Matukio Maalum' },
+  { url: '/special.jpg', captionEn: 'Special Events',         captionSw: 'Matukio Maalum' },
 ];
 
 // ── SVG atoms ─────────────────────────────────────────────────────
