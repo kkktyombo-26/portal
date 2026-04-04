@@ -36,7 +36,7 @@ const T = {
     portal_features: ['Announcements & alerts', 'Group schedules', 'Event reminders', 'Digital resources'],
     footer_rights: 'All rights reserved.',
     pastor_title: 'Meet Our Pastor',
-    pastor_name: 'Mchungaji Delemi',
+    pastor_name: 'Mchungaji Joshua Delem',
     pastor_role: 'Senior Pastor, KKKT DMP Yombo',
     pastor_bio: 'Leading our congregation with faith, wisdom, and love. Pastor Delemi shepherds the Yombo community with a heart for God and the people of Dar es Salaam.',
     pastor_meet: 'Meet with Pastor Delemi',
