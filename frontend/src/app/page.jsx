@@ -721,6 +721,8 @@ function MobileDrawer({ open, onClose, lang, switchLang, authed, t }) {
           <Link href={authed ? '/dashboard' : '/auth/login'} onClick={onClose} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '13px', borderRadius: 10, background: C.gold, color: C.navy, fontSize: 14, fontWeight: 800, letterSpacing: '0.02em', textDecoration: 'none' }}>
             {authed ? t.go_portal : t.login}
           </Link>
+
+
         </div>
       </div>
     </>
@@ -887,170 +889,249 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Pastor Section ── */}
-      <section id="pastor" style={{ background: C.cream, padding: sp }}>
-        <div ref={pastRef} style={{ maxWidth: 1100, margin: '0 auto', padding: `0 ${px}`, opacity: pastVis ? 1 : 0, transform: pastVis ? 'none' : 'translateY(28px)', transition: 'opacity 0.7s, transform 0.7s' }}>
 
-          {/* Section header */}
-          <div style={{ textAlign: 'center', marginBottom: isMob ? 32 : 52 }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <div style={{ height: 1, width: 32, background: C.gold }}/><CrossSVG size={16} color={C.gold}/><div style={{ height: 1, width: 32, background: C.gold }}/>
+
+{/* ── Staff / Leadership Section ── */}
+<section id="pastor" style={{ background: C.cream, padding: sp }}>
+  <div ref={pastRef} style={{
+    maxWidth: 1100, margin: '0 auto', padding: `0 ${px}`,
+    opacity: pastVis ? 1 : 0,
+    transform: pastVis ? 'none' : 'translateY(28px)',
+    transition: 'opacity 0.7s, transform 0.7s',
+  }}>
+
+    {/* Section header */}
+    <div style={{ textAlign: 'center', marginBottom: isMob ? 32 : 52 }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <div style={{ height: 1, width: 32, background: C.gold }}/><CrossSVG size={16} color={C.gold}/><div style={{ height: 1, width: 32, background: C.gold }}/>
+      </div>
+      <h2 className="cg" style={{ fontSize: isMob ? 'clamp(1.8rem,8vw,2.4rem)' : 'clamp(2rem,4vw,2.8rem)', fontWeight: 700, color: C.navy, marginBottom: 10, letterSpacing: '-0.02em' }}>
+        {t.pastor_title}
+      </h2>
+      <p style={{ fontSize: isMob ? 13 : 15, color: C.muted, lineHeight: 1.65, maxWidth: 480, margin: '0 auto' }}>
+        {lang === 'sw' ? 'Viongozi wetu wa kiroho walioteuliwa kutumika.' : 'Our dedicated spiritual leaders called to serve.'}
+      </p>
+    </div>
+
+    {/* ── Staff cards row ── */}
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: isMob ? '1fr' : 'repeat(3, 1fr)',
+      gap: isMob ? 24 : 28,
+      marginBottom: isMob ? 32 : 52,
+    }}>
+
+      {/* ── Card helper — used for all three staff members ── */}
+      {[
+        {
+          photo: '/pastor.jpg',
+          altEn: 'Pastor',
+          altSw: 'Mchungaji',
+          name: t.pastor_name,
+          roleEn: 'Senior Pastor',
+          roleSw: 'Mchungaji Mkuu',
+          badgeEn: 'Our Shepherd',
+          badgeSw: 'Kiongozi Wetu',
+          bio: t.pastor_bio,
+          featured: true,
+        },
+        {
+          photo: '/evangalist.jpg',
+          altEn: 'Evangelist',
+          altSw: 'Mwinjilisti',
+          name: lang === 'sw' ? 'Mwinjilisti Amos Mntwambwe' : 'Evangelist Amos Mntwambwe',  // replace with real name
+          roleEn: 'Evangelist',
+          roleSw: 'Mwinjilisti',
+          badgeEn: 'The Word',
+          badgeSw: 'Neno',
+          bio: lang === 'sw'
+            ? 'Mwinjilisti wetu anabeba ujumbe wa Injili kwa nguvu na upole, akishuhudia neema ya Mungu katika maisha ya watu.'
+            : 'Our evangelist carries the Gospel message with power and gentleness, bearing witness to God\'s grace in the lives of people.',
+          featured: false,
+        },
+        {
+          photo: '/parish.jpg',
+          altEn: 'Parish Worker',
+          altSw: 'Parish Worker',
+          name: lang === 'sw' ? 'P/W Hilda Chuma' : 'P/W Hilda Chuma',  // replace with real name
+          roleEn: 'Parish Worker',
+          roleSw: 'Parish worker',
+          badgeEn: 'Community',
+          badgeSw: 'Jamii',
+       
+            featured: false,
+        },
+      ].map((member, idx) => (
+        <div key={idx} style={{
+          background: member.featured ? C.navyD : '#fff',
+          borderRadius: 20,
+          overflow: 'hidden',
+          border: `1px solid ${member.featured ? C.gold + '33' : C.navy + '12'}`,
+          boxShadow: member.featured
+            ? `0 20px 60px ${C.navy}33`
+            : `0 4px 24px ${C.navy}0c`,
+          display: 'flex',
+          flexDirection: 'column',
+          opacity: pastVis ? 1 : 0,
+          transform: pastVis ? 'none' : 'translateY(20px)',
+          transition: `opacity 0.7s ease ${idx * 120}ms, transform 0.7s ease ${idx * 120}ms`,
+        }}>
+
+          {/* Photo */}
+          <div style={{
+            position: 'relative',
+            aspectRatio: '3/4',
+            background: `linear-gradient(160deg, ${C.navy} 0%, ${C.navyD} 100%)`,
+            overflow: 'hidden',
+          }}>
+            {/* Decorative rings behind photo */}
+            <div style={{ position: 'absolute', top: -30, right: -30, pointerEvents: 'none', zIndex: 0 }}>
+              <Rings size={180} opacity={0.06} color={C.gold}/>
             </div>
-            <h2 className="cg" style={{ fontSize: isMob ? 'clamp(1.8rem,8vw,2.4rem)' : 'clamp(2rem,4vw,2.8rem)', fontWeight: 700, color: C.navy, marginBottom: 10, letterSpacing: '-0.02em' }}>
-              {t.pastor_title}
-            </h2>
+
+            {/* Actual photo */}
+            <img
+              src={member.photo}
+              alt={lang === 'sw' ? member.altSw : member.altEn}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center top',
+                display: 'block',
+                position: 'relative',
+                zIndex: 1,
+              }}
+              onError={e => {
+                // Graceful fallback if photo fails to load
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.nextElementSibling.style.display = 'flex';
+              }}
+            />
+
+            {/* Fallback placeholder (hidden by default, shown on error) */}
+            <div style={{
+              display: 'none',
+              position: 'absolute', inset: 0, zIndex: 2,
+              alignItems: 'center', justifyContent: 'center',
+              flexDirection: 'column', gap: 8,
+            }}>
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                <circle cx="32" cy="24" r="14" fill={`${C.gold}44`}/>
+                <ellipse cx="32" cy="58" rx="22" ry="14" fill={`${C.gold}22`}/>
+              </svg>
+              <span style={{ fontSize: 10, color: `${C.gold}88`, fontWeight: 600, letterSpacing: '0.08em' }}>
+                {lang === 'sw' ? member.altSw : member.altEn}
+              </span>
+            </div>
+
+            {/* Gradient fade to name banner */}
+            <div style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0, height: 80, zIndex: 3,
+              background: member.featured
+                ? `linear-gradient(to top, ${C.navyD} 0%, transparent 100%)`
+                : `linear-gradient(to top, rgba(15,35,71,0.85) 0%, transparent 100%)`,
+            }}/>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: isMob ? '1fr' : '1fr 1.4fr', gap: isMob ? 32 : 56, alignItems: 'start' }}>
-
-            {/* Pastor card */}
-            <div>
-              <div style={{ background: C.navyD, borderRadius: 20, overflow: 'hidden', border: `1px solid ${C.gold}22`, boxShadow: `0 20px 60px ${C.navy}22`, position: 'relative' }}>
-                {/* Photo area — placeholder with elegant pastor silhouette */}
-                <div style={{ position: 'relative', aspectRatio: '3/4', background: `linear-gradient(160deg, ${C.navy} 0%, ${C.navyD} 100%)`, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden' }}>
-                  {/* Decorative rings */}
-                  <div style={{ position: 'absolute', top: -30, right: -30, pointerEvents: 'none' }}>
-                    <Rings size={200} opacity={0.08} color={C.gold}/>
-                  </div>
-                  <div style={{ position: 'absolute', bottom: -20, left: -20, pointerEvents: 'none' }}>
-                    <Rings size={140} opacity={0.05} color={C.gold}/>
-                  </div>
-
-                  {/* Pastor silhouette / photo placeholder */}
-                  <div style={{ position: 'relative', zIndex: 2, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: 0 }}>
-                    {/*
-                      ╔═══════════════════════════════════════════════════════╗
-                      ║  PASTOR PHOTO — Replace the <img> below with the      ║
-                      ║  actual pastor's photo:                                ║
-                      ║                                                         ║
-                      ║  <img                                                   ║
-                      ║    src="/images/pastor-delemi.jpg"                     ║
-                      ║    alt="Mchungaji Delemi"                              ║
-                      ║    style={{ width:'100%', height:'100%',              ║
-                      ║      objectFit:'cover', display:'block' }}             ║
-                      ║  />                                                     ║
-                      ╚═══════════════════════════════════════════════════════╝
-                    */}
-                    {/* Elegant placeholder — remove when photo is available */}
-                    <svg width="100%" viewBox="0 0 300 360" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
-                      {/* Background gradient fill */}
-                      <defs>
-                        <radialGradient id="bgGrad" cx="50%" cy="40%" r="60%">
-                          <stop offset="0%" stopColor="#1B3A6B" stopOpacity="0.3"/>
-                          <stop offset="100%" stopColor="#0f2347" stopOpacity="0"/>
-                        </radialGradient>
-                        <linearGradient id="robeGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#1B3A6B"/>
-                          <stop offset="100%" stopColor="#0f2347"/>
-                        </linearGradient>
-                        <linearGradient id="fadeBottom" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="60%" stopColor="#0f2347" stopOpacity="0"/>
-                          <stop offset="100%" stopColor="#0f2347" stopOpacity="1"/>
-                        </linearGradient>
-                      </defs>
-                      <rect width="300" height="360" fill="url(#bgGrad)"/>
-                      {/* Pastoral robe / collar */}
-                      <ellipse cx="150" cy="360" rx="120" ry="60" fill="url(#robeGrad)"/>
-                      <path d="M80 280 Q100 240 150 230 Q200 240 220 280 Q230 320 230 360 L70 360 Q70 320 80 280Z" fill="#1B3A6B"/>
-                      {/* White collar */}
-                      <path d="M130 248 L150 270 L170 248 Q160 240 150 238 Q140 240 130 248Z" fill="white" opacity="0.9"/>
-                      {/* Body/torso */}
-                      <ellipse cx="150" cy="220" rx="55" ry="60" fill="#1B3A6B"/>
-                      {/* Neck */}
-                      <rect x="136" y="175" width="28" height="30" rx="10" fill="#C8A07A"/>
-                      {/* Head */}
-                      <ellipse cx="150" cy="158" rx="42" ry="48" fill="#C8A07A"/>
-                      {/* Hair */}
-                      <ellipse cx="150" cy="115" rx="42" ry="20" fill="#2a1a0a"/>
-                      <ellipse cx="110" cy="145" rx="15" ry="30" fill="#2a1a0a"/>
-                      <ellipse cx="190" cy="145" rx="15" ry="30" fill="#2a1a0a"/>
-                      {/* Features — subtle */}
-                      <ellipse cx="135" cy="160" rx="5" ry="3" fill="#8a6040" opacity="0.6"/>
-                      <ellipse cx="165" cy="160" rx="5" ry="3" fill="#8a6040" opacity="0.6"/>
-                      <path d="M138 175 Q150 182 162 175" stroke="#a07850" strokeWidth="2" fill="none" opacity="0.5"/>
-                      {/* Cross on robe */}
-                      <rect x="146" y="250" width="8" height="28" rx="2" fill={C.gold} opacity="0.6"/>
-                      <rect x="137" y="260" width="26" height="8" rx="2" fill={C.gold} opacity="0.6"/>
-                      {/* Fade to bottom */}
-                      <rect width="300" height="360" fill="url(#fadeBottom)"/>
-                    </svg>
-                  </div>
-                </div>
-
-                {/* Name banner */}
-                <div style={{ padding: '20px 22px 22px', background: C.navyD, borderTop: `1px solid ${C.gold}18` }}>
-                  <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.gold, marginBottom: 4 }}>
-                    {lang === 'sw' ? 'Kiongozi Wetu' : 'Our Shepherd'}
-                  </p>
-                  <h3 className="cg" style={{ fontSize: isMob ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#fff', lineHeight: 1.1, letterSpacing: '-0.01em', marginBottom: 4 }}>
-                    {t.pastor_name}
-                  </h3>
-                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 600, letterSpacing: '0.04em' }}>{t.pastor_role}</p>
-                </div>
-              </div>
-
-              {/* Social link to church */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                {[
-                  { href: 'https://www.youtube.com/@KKKTDMPYOMBO', icon: <YTIcon size={15}/>, label: 'YouTube', color: '#FF0000' },
-                  { href: 'https://www.instagram.com/kkktyombo/', icon: <IGIcon size={15}/>, label: 'Instagram', color: '#E1306C' },
-                ].map(({ href, icon, label, color }) => (
-                  <a key={label} href={href} target="_blank" rel="noopener noreferrer" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 0', borderRadius: 10, background: '#fff', border: `1px solid ${C.navy}12`, color: C.ink, fontSize: 12, fontWeight: 700, textDecoration: 'none', boxShadow: `0 2px 8px ${C.navy}08`, transition: 'all 0.15s' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = `${color}10`; e.currentTarget.style.borderColor = `${color}44`; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = `${C.navy}12`; }}
-                  >
-                    <span style={{ color }}>{icon}</span> {label}
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            {/* Bio + Office Hours */}
-            <div>
-              {/* Bio */}
-              <div style={{ marginBottom: isMob ? 28 : 36 }}>
-                <p style={{ fontSize: isMob ? 13 : 15, color: C.muted, lineHeight: 1.8, marginBottom: 20 }}>
-                  {t.pastor_bio}
-                </p>
-                <Link href="/auth/register" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 99, background: C.navy, color: '#fff', fontSize: 13, fontWeight: 800, letterSpacing: '0.02em', boxShadow: `0 4px 18px ${C.navy}33` }}>
-                  {t.pastor_meet}
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </Link>
-              </div>
-
-              {/* Office hours */}
-              <div style={{ background: C.stone, borderRadius: 16, border: `1px solid ${C.navy}0e`, overflow: 'hidden' }}>
-                <div style={{ background: C.navy, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                  <h4 style={{ fontSize: 12, fontWeight: 800, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{t.pastor_hours_title}</h4>
-                </div>
-
-                <div style={{ padding: '8px 4px' }}>
-                  {PASTOR_HOURS.map((h, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px', borderRadius: 10, margin: '2px 4px', background: i % 2 === 0 ? '#fff' : 'transparent', transition: 'background 0.1s' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: C.gold, flexShrink: 0 }}/>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>
-                          {t.days[h.dayKey]}
-                        </span>
-                      </div>
-                      <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>
-                        {lang === 'sw' ? h.timeSw : h.timeEn}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ padding: '10px 20px 16px' }}>
-                  <p style={{ fontSize: 11, color: C.faint, fontStyle: 'italic', lineHeight: 1.5 }}>
-                    * {t.pastor_hours_note}
-                  </p>
-                </div>
-              </div>
-            </div>
+          {/* Name / role banner */}
+          <div style={{
+            padding: '18px 20px 20px',
+            background: member.featured ? C.navyD : 'transparent',
+            borderTop: `1px solid ${member.featured ? C.gold + '18' : C.navy + '0a'}`,
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.gold, marginBottom: 2 }}>
+              {lang === 'sw' ? member.badgeSw : member.badgeEn}
+            </p>
+            <h3 className="cg" style={{ fontSize: isMob ? '1.35rem' : '1.5rem', fontWeight: 700, color: member.featured ? '#fff' : C.navy, lineHeight: 1.15, letterSpacing: '-0.01em', marginBottom: 2 }}>
+              {member.name}
+            </h3>
+            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', color: member.featured ? 'rgba(255,255,255,0.45)' : C.muted, marginBottom: 10 }}>
+              {lang === 'sw' ? member.roleSw : member.roleEn}
+            </p>
+            <p style={{ fontSize: 12, color: member.featured ? 'rgba(255,255,255,0.55)' : C.muted, lineHeight: 1.7 }}>
+              {member.bio}
+            </p>
           </div>
         </div>
-      </section>
+      ))}
+    </div>
+
+    {/* ── Bio + Office Hours (pastor detail) — kept below cards ── */}
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: isMob ? '1fr' : '1fr 1fr',
+      gap: isMob ? 28 : 48,
+      alignItems: 'start',
+      background: C.stone,
+      borderRadius: 20,
+      border: `1px solid ${C.navy}0a`,
+      padding: isMob ? '24px 20px' : '40px 44px',
+    }}>
+
+      {/* Bio + CTA */}
+      <div>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.gold, marginBottom: 10 }}>
+          {lang === 'sw' ? 'Kuhusu Mchungaji' : 'About the Pastor'}
+        </p>
+        <p style={{ fontSize: isMob ? 13 : 15, color: C.muted, lineHeight: 1.8, marginBottom: 20 }}>
+          {t.pastor_bio}
+        </p>
+        <Link href="/auth/register" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 99, background: C.navy, color: '#fff', fontSize: 13, fontWeight: 800, letterSpacing: '0.02em', boxShadow: `0 4px 18px ${C.navy}33` }}>
+          {t.pastor_meet}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </Link>
+      </div>
+
+      {/* Office hours */}
+      <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.navy}0e`, overflow: 'hidden' }}>
+        <div style={{ background: C.navy, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <h4 style={{ fontSize: 12, fontWeight: 800, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{t.pastor_hours_title}</h4>
+        </div>
+        <div style={{ padding: '8px 4px' }}>
+          {PASTOR_HOURS.map((h, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px', borderRadius: 10, margin: '2px 4px', background: i % 2 === 0 ? C.stone : 'transparent' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: C.gold, flexShrink: 0 }}/>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{t.days[h.dayKey]}</span>
+              </div>
+              <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>
+                {lang === 'sw' ? h.timeSw : h.timeEn}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '10px 20px 16px' }}>
+          <p style={{ fontSize: 11, color: C.faint, fontStyle: 'italic', lineHeight: 1.5 }}>
+            * {t.pastor_hours_note}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    {/* Social links */}
+    <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+      {[
+        { href: 'https://www.youtube.com/@KKKTDMPYOMBO', icon: <YTIcon size={15}/>, label: 'YouTube', color: '#FF0000' },
+        { href: 'https://www.instagram.com/kkktyombo/', icon: <IGIcon size={15}/>, label: 'Instagram', color: '#E1306C' },
+      ].map(({ href, icon, label, color }) => (
+        <a key={label} href={href} target="_blank" rel="noopener noreferrer"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 10, background: '#fff', border: `1px solid ${C.navy}12`, color: C.ink, fontSize: 12, fontWeight: 700, textDecoration: 'none', boxShadow: `0 2px 8px ${C.navy}08`, transition: 'all 0.15s' }}
+          onMouseEnter={e => { e.currentTarget.style.background = `${color}10`; e.currentTarget.style.borderColor = `${color}44`; }}
+          onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = `${C.navy}12`; }}
+        >
+          <span style={{ color }}>{icon}</span> {label}
+        </a>
+      ))}
+    </div>
+
+  </div>
+</section>
 
       {/* ── Schedule ── */}
       <section id="schedule" style={{ background: C.stone, padding: sp }}>
