@@ -688,27 +688,24 @@ export default function LandingPage() {
                 photo: '/pastor.jpg', altEn: 'Pastor', altSw: 'Mchungaji',
                 name: t.pastor_name, roleEn: 'Senior Pastor', roleSw: 'Mchungaji Mkuu',
                 badgeEn: 'Our Shepherd', badgeSw: 'Kiongozi Wetu',
-                bio: t.pastor_bio, featured: true,
+              featured: true,
               },
               {
-                photo: '/evangalist.jpg', altEn: 'Evangelist', altSw: 'Mwinjilisti',
+                photo: '/evangelist.jpg', altEn: 'Evangelist', altSw: 'Mwinjilisti',
                 name: lang === 'sw' ? 'Mwinjilisti Amos Mntwambwe' : 'Evangelist Amos Mntwambwe',
                 roleEn: 'Evangelist', roleSw: 'Mwinjilisti',
                 badgeEn: 'The Word', badgeSw: 'Neno',
-                bio: lang === 'sw'
-                  ? 'Mwinjilisti wetu anabeba ujumbe wa Injili kwa nguvu na upole, akishuhudia neema ya Mungu katika maisha ya watu.'
-                  : "Our evangelist carries the Gospel message with power and gentleness, bearing witness to God's grace in the lives of people.",
-                featured: false,
+            
+                  featured: false,
               },
               {
                 photo: '/parish.jpg', altEn: 'Parish Worker', altSw: 'Parish Worker',
                 name: 'P/W Hilda Chuma',
                 roleEn: 'Parish Worker', roleSw: 'Parish Worker',
                 badgeEn: 'Community', badgeSw: 'Jamii',
-                bio: lang === 'sw'
-                  ? 'Mtumishi wetu wa parokia anasimamia mahitaji ya kijamii na kiroho ya waumini, akiunganisha familia na huduma za kanisa.'
-                  : 'Our parish worker oversees the social and spiritual needs of the congregation, connecting families with church ministries.',
-                featured: false,
+            
+                
+                  featured: false,
               },
             ].map((member, idx) => (
               <div key={idx} style={{ background: member.featured ? C.navyD : '#EAE6DE', borderRadius: 20, overflow: 'hidden', border: `1px solid ${member.featured ? C.gold + '33' : C.navy + '14'}`, boxShadow: member.featured ? `0 20px 60px ${C.navy}33` : `0 4px 24px ${C.navy}0c`, display: 'flex', flexDirection: 'column', opacity: pastVis ? 1 : 0, transform: pastVis ? 'none' : 'translateY(20px)', transition: `opacity 0.7s ease ${idx * 120}ms, transform 0.7s ease ${idx * 120}ms` }}>
@@ -740,8 +737,7 @@ export default function LandingPage() {
           <div style={{ display: 'grid', gridTemplateColumns: isMob ? '1fr' : '1fr 1fr', gap: isMob ? 28 : 48, alignItems: 'start', background: C.stone, borderRadius: 20, border: `1px solid ${C.navy}0a`, padding: isMob ? '24px 20px' : '40px 44px' }}>
             <div>
               <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.gold, marginBottom: 10 }}>{lang === 'sw' ? 'Kuhusu Mchungaji' : 'About the Pastor'}</p>
-              <p style={{ fontSize: isMob ? 13 : 15, color: C.muted, lineHeight: 1.8, marginBottom: 20 }}>{t.pastor_bio}</p>
-              <Link href="/auth/register" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 99, background: C.navy, color: '#fff', fontSize: 13, fontWeight: 800, letterSpacing: '0.02em', boxShadow: `0 4px 18px ${C.navy}33` }}>
+                    <Link href="/auth/register" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 99, background: C.navy, color: '#fff', fontSize: 13, fontWeight: 800, letterSpacing: '0.02em', boxShadow: `0 4px 18px ${C.navy}33` }}>
                 {t.pastor_meet}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </Link>
