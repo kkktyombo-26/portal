@@ -106,7 +106,7 @@ const PASTOR_HOURS = [
 const getHeroSlides = (lang, countdown) => [
   {
     id: 'welcome',
-    bg: 'https://images.unsplash.com/photo-1438032005730-c779502df39b?w=1800&q=70',
+    bg: '/worship1.jpg',
     tag: lang === 'sw' ? 'Kanisa La Kiinjili La Kilutheri' : 'Kanisa La Kiinjili La Kilutheri',
     titleLines: ['KKKT DMP', 'YOMBO'],
     sub: lang === 'sw'
@@ -117,9 +117,9 @@ const getHeroSlides = (lang, countdown) => [
   },
   {
     id: 'easter',
-    bg: 'https://images.unsplash.com/photo-1519834785169-98be25ec3f84?w=1800&q=70',
+    bg: '/pasaka.jpeg',
     tag: lang === 'sw' ? 'Matukio Maalum' : 'Special Event',
-    titleLines: lang === 'sw' ? ['PASAKA', '2025'] : ['EASTER', '2025'],
+    titleLines: lang === 'sw' ? ['PASAKA', '2026'] : ['EASTER', '2026'],
     sub: lang === 'sw'
       ? 'Tunaadhimisha ufufuo wa Bwana wetu Yesu Kristo. Karibuni kwenye ibada zetu za Pasaka.'
       : 'Celebrating the resurrection of our Lord Jesus Christ. Join us for our special Easter services.',
@@ -129,7 +129,7 @@ const getHeroSlides = (lang, countdown) => [
   },
   {
     id: 'youtube',
-    bg: 'https://images.unsplash.com/photo-1508906611647-51c39dc64b41?w=1800&q=70',
+    bg: '/youtube.jpeg',
     tag: lang === 'sw' ? 'Mpya! Chaneli ya YouTube' : 'New! YouTube Channel',
     titleLines: lang === 'sw' ? ['TAZAMA', 'MTANDAONI'] : ['WATCH US', 'ONLINE'],
     sub: lang === 'sw'
@@ -155,8 +155,8 @@ const getHeroSlides = (lang, countdown) => [
 const GALLERY_SLIDES = [
   { url: 'https://images.unsplash.com/photo-1438032005730-c779502df39b?w=1200&q=80', captionEn: 'Sunday Worship',         captionSw: 'Ibada ya Jumapili' },
   { url: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=1200&q=80', captionEn: 'Community & Fellowship', captionSw: 'Ushirika & Umoja' },
-  { url: 'https://images.unsplash.com/photo-1508906611647-51c39dc64b41?w=1200&q=80', captionEn: 'Choir Ministration',     captionSw: 'Huduma ya Kwaya' },
-  { url: 'https://images.unsplash.com/photo-1505236858219-8359eb29e329?w=1200&q=80', captionEn: 'Prayer & Intercession',  captionSw: 'Sala na Uombezi' },
+  { url: '/kwaya.jpg', captionEn: 'Choir Ministration',     captionSw: 'Huduma ya Kwaya' },
+  { url: '/worship2.jpg', captionEn: 'Prayer & Intercession',  captionSw: 'Sala na Uombezi' },
   { url: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=1200&q=80', captionEn: 'Youth Ministry',         captionSw: 'Huduma ya Vijana' },
   { url: 'https://images.unsplash.com/photo-1519834785169-98be25ec3f84?w=1200&q=80', captionEn: 'Special Events',         captionSw: 'Matukio Maalum' },
 ];
