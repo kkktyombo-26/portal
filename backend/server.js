@@ -7,6 +7,7 @@ require('dotenv').config();
 const authRoutes         = require('./routes/auth');
 const userRoutes         = require('./routes/users');
 const announcementRoutes = require('./routes/announcements');
+const emailRoutes        = require('./routes/email-routes');
 const groupRoutes        = require('./routes/groups');
 const eventRoutes        = require('./routes/events');
 const formTemplatesRouter = require('./routes/formTemplates');
@@ -32,6 +33,8 @@ app.use('/api/announcements', announcementRoutes);
 app.use('/api/groups',        groupRoutes);
 app.use('/api/events',        eventRoutes);
 app.use('/api/form-templates', formTemplatesRouter);
+
+app.use('/emails', emailRoutes);
 
  app.use("/api/whatsapp", waRoutes);
 

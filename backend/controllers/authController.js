@@ -26,21 +26,47 @@ exports.register = async (req, res, next) => {
 };
 
 // POST /api/auth/login
+// POST /api/auth/login
 exports.login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const [rows] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
-    if (rows.length === 0) return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+    const { identifier, password } = req.body;
+
+    if (!identifier || !password) {
+      return res.status(400).json({ success: false, message: 'Identifier and password are required.' });
+    }
+
+    // Query by email, phone, or namba_ya_usharika
+    const [rows] = await db.execute(
+      `SELECT * FROM users 
+       WHERE email = ? 
+          OR phone = ? 
+          OR namba_ya_usharika = ?`,
+      [identifier, identifier, identifier]
+    );
+
+    if (rows.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+    }
+
     const user = rows[0];
-    if (!user.is_active) return res.status(403).json({ success: false, message: 'Account has been deactivated. Contact your pastor.' });
+
+    if (!user.is_active) {
+      return res.status(403).json({ success: false, message: 'Account has been deactivated. Contact your pastor.' });
+    }
+
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+    if (!valid) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+    }
+
+    await db.execute('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
+
     const token = generateToken(user);
     const { password: _, ...safeUser } = user;
     res.json({ success: true, token, user: safeUser });
+
   } catch (err) { next(err); }
 };
-
 
 // GET /api/auth/me
 exports.me = async (req, res, next) => {

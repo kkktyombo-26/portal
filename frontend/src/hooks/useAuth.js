@@ -25,12 +25,12 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  const login = async (email, password) => {
-    const res = await authApi.login({ email, password });
-    setAuth(res.data.token, res.data.user);
-    setUser(res.data.user);
-    return res.data.user;
-  };
+const login = async (identifier, password) => {
+  const res = await authApi.login({ identifier, password });
+  setAuth(res.data.token, res.data.user);
+  setUser(res.data.user);
+  return res.data.user;
+};
 
   const logout = () => {
     clearAuth();
