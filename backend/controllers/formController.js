@@ -1,23 +1,14 @@
 // controllers/formTemplateController.js
-const db = require('../config/db'); // adjust path to your mysql2 pool
+const db = require('../config/db');
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-/**
- * Parse fields JSON safely; always returns an array.
- */
 function parseFields(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
   try { return JSON.parse(raw); } catch { return []; }
 }
 
-/**
- * Build a WHERE clause that respects scope visibility:
- *  - pastor / elder : see all active templates
- *  - group_leader   : church-wide + their group
- *  - member         : church-wide + their group
- */
 function visibilityWhere(user) {
   if (user.role === 'pastor' || user.role === 'elder') {
     return { clause: 'ft.is_active = 1', params: [] };
@@ -33,7 +24,6 @@ function visibilityWhere(user) {
 
 /**
  * GET /api/form-templates
- * Returns templates the current user is allowed to see.
  */
 exports.getTemplates = async (req, res) => {
   try {
@@ -45,11 +35,12 @@ exports.getTemplates = async (req, res) => {
               ft.fields, ft.scope, ft.group_id,
               ft.created_by, ft.is_active,
               ft.created_at, ft.updated_at,
+              ft.pdf_url,
               u.full_name  AS author_name,
               g.name       AS group_name
        FROM   form_templates ft
-       JOIN   users  u ON u.id = ft.created_by
-       LEFT JOIN groups g ON g.id = ft.group_id
+       JOIN   users u ON u.id = ft.created_by
+       LEFT JOIN \`groups\` g ON g.id = ft.group_id
        WHERE  ${clause}
        ORDER  BY ft.created_at DESC`,
       params
@@ -71,8 +62,8 @@ exports.getTemplate = async (req, res) => {
     const [rows] = await db.query(
       `SELECT ft.*, u.full_name AS author_name, g.name AS group_name
        FROM   form_templates ft
-       JOIN   users  u ON u.id = ft.created_by
-       LEFT JOIN groups g ON g.id = ft.group_id
+       JOIN   users u ON u.id = ft.created_by
+       LEFT JOIN \`groups\` g ON g.id = ft.group_id
        WHERE  ft.id = ? AND ft.is_active = 1`,
       [req.params.id]
     );
@@ -81,7 +72,6 @@ exports.getTemplate = async (req, res) => {
 
     const tpl = { ...rows[0], fields: parseFields(rows[0].fields) };
 
-    // Non-pastor/elder can only see templates in their scope
     const user = req.user;
     if (user.role !== 'pastor' && user.role !== 'elder') {
       if (tpl.scope === 'group' && tpl.group_id !== user.group_id) {
@@ -99,7 +89,6 @@ exports.getTemplate = async (req, res) => {
 /**
  * POST /api/form-templates
  * Only pastor / elder.
- * Body: { title_en, title_sw, description_en?, description_sw?, fields, scope, group_id? }
  */
 exports.createTemplate = async (req, res) => {
   try {
@@ -109,6 +98,7 @@ exports.createTemplate = async (req, res) => {
       fields = [],
       scope = 'church',
       group_id = null,
+      pdf_url = null,
     } = req.body;
 
     if (!title_en?.trim() || !title_sw?.trim()) {
@@ -117,8 +107,6 @@ exports.createTemplate = async (req, res) => {
     if (!Array.isArray(fields) || fields.length === 0) {
       return res.status(400).json({ success: false, message: 'At least one field is required' });
     }
-
-    // Validate each field has minimum shape
     for (const f of fields) {
       if (!f.id || !f.label_en || !f.type) {
         return res.status(400).json({ success: false, message: 'Each field needs id, label_en, and type' });
@@ -127,8 +115,8 @@ exports.createTemplate = async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO form_templates
-         (title_en, title_sw, description_en, description_sw, fields, scope, group_id, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (title_en, title_sw, description_en, description_sw, fields, scope, group_id, created_by, pdf_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         title_en.trim(), title_sw.trim(),
         description_en.trim(), description_sw.trim(),
@@ -136,6 +124,7 @@ exports.createTemplate = async (req, res) => {
         scope,
         scope === 'group' ? group_id : null,
         req.user.id,
+        pdf_url || null,
       ]
     );
 
@@ -147,8 +136,8 @@ exports.createTemplate = async (req, res) => {
 };
 
 /**
- * PUT /api/form-templates/:id
- * Only pastor / elder (and only own templates for elder).
+ * PATCH /api/form-templates/:id
+ * Only pastor / elder (elder can only update their own).
  */
 exports.updateTemplate = async (req, res) => {
   try {
@@ -156,8 +145,6 @@ exports.updateTemplate = async (req, res) => {
     if (!rows.length) return res.status(404).json({ success: false, message: 'Not found' });
 
     const tpl = rows[0];
-
-    // Elder can only edit their own templates
     if (req.user.role === 'elder' && tpl.created_by !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
@@ -166,6 +153,7 @@ exports.updateTemplate = async (req, res) => {
       title_en, title_sw,
       description_en, description_sw,
       fields, scope, group_id,
+      pdf_url,
     } = req.body;
 
     await db.query(
@@ -176,16 +164,18 @@ exports.updateTemplate = async (req, res) => {
          description_sw = COALESCE(?, description_sw),
          fields         = COALESCE(?, fields),
          scope          = COALESCE(?, scope),
-         group_id       = ?
+         group_id       = ?,
+         pdf_url        = COALESCE(?, pdf_url)
        WHERE id = ?`,
       [
-        title_en   ?? null,
-        title_sw   ?? null,
+        title_en       ?? null,
+        title_sw       ?? null,
         description_en ?? null,
         description_sw ?? null,
         fields ? JSON.stringify(fields) : null,
         scope  ?? null,
         scope === 'group' ? (group_id ?? null) : null,
+        pdf_url        ?? null,
         req.params.id,
       ]
     );

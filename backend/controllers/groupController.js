@@ -71,7 +71,11 @@ exports.deleteGroup = async (req, res, next) => {
 exports.getGroupMembers = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
-      'SELECT id, full_name, role, phone FROM users WHERE group_id = ? ORDER BY full_name',
+      `SELECT id, full_name, role, phone,
+              avatar, profile_photo_url
+       FROM users
+       WHERE group_id = ?
+       ORDER BY full_name`,
       [req.params.id]
     );
     res.json({ success: true, data: rows });
@@ -98,6 +102,6 @@ exports.removeGroupMember = async (req, res, next) => {
       'UPDATE users SET group_id = NULL WHERE id = ? AND group_id = ?',
       [req.params.userId, req.params.id]
     );
-    res.json({ success: true, message: 'Member removed.' })
+    res.json({ success: true, message: 'Member removed.' });
   } catch (err) { next(err); }
 };

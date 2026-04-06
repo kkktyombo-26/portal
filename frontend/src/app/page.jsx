@@ -118,7 +118,7 @@ const getHeroSlides = (lang, countdown) => [
   },
   {
     id: 'easter',
-    bg: '/pasaka.jpeg',
+    bg: '/pasaka.jpg',
     tag: lang === 'sw' ? 'Matukio Maalum' : 'Special Event',
     titleLines: lang === 'sw' ? ['PASAKA', '2026'] : ['EASTER', '2026'],
     sub: lang === 'sw'

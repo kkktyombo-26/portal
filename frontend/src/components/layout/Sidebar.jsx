@@ -66,6 +66,18 @@ const ICONS = {
       <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/>
     </svg>
   ),
+  pending: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M12 7v5l3 3"/>
+    </svg>
+  ),
+  profile: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <circle cx="12" cy="8" r="4"/>
+      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+    </svg>
+  ),
   logout: (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -102,8 +114,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
     {
       labelEn: 'People', labelSw: 'Watu',
       items: [
-        canManageMembers(user.role) && { href: '/dashboard/members', labelEn: 'Members', labelSw: 'Wanachama', icon: ICONS.members },
-        canManageGroups(user.role)  && { href: '/dashboard/groups',  labelEn: 'Groups',  labelSw: 'Vikundi',   icon: ICONS.groups },
+        canManageMembers(user.role) && { href: '/dashboard/members',         labelEn: 'Members',          labelSw: 'Washarika',    icon: ICONS.members },
+        canManageMembers(user.role) && { href: '/dashboard/pending-members', labelEn: 'Pending Approval', labelSw: 'Wanaosubiri',  icon: ICONS.pending },
+        canManageGroups(user.role)  && { href: '/dashboard/groups',          labelEn: 'Groups',           labelSw: 'Vikundi',      icon: ICONS.groups },
       ].filter(Boolean),
     },
     {
@@ -141,6 +154,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
   // Avatar initials colour — consistent per user
   const avatarHue = ((user.full_name?.charCodeAt(0) || 65) * 7) % 360;
 
+  const profileActive = isActive('/dashboard/profile');
+
   return (
     <>
       {/* Mobile scrim */}
@@ -161,7 +176,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         {/* ── Wordmark ── */}
         <div className="h-14 flex items-center justify-between px-5 border-b border-hairline flex-shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            {/* Logo mark — small cross in navy circle */}
             <div style={{
               width: 26, height: 26, borderRadius: 8, flexShrink: 0,
               background: 'linear-gradient(135deg, #1B3A6B 0%, #2a5298 100%)',
@@ -179,40 +193,102 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           <button onClick={onMobileClose} className="md:hidden btn-ghost w-7 h-7 text-base leading-none">×</button>
         </div>
 
-        {/* ── User card ── */}
-        <div className="px-4 py-3.5 border-b border-hairline flex-shrink-0">
-          <div className="flex items-center gap-3">
-            {/* Avatar with gradient ring */}
-            <div style={{ position: 'relative', flexShrink: 0 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%',
-                background: `linear-gradient(135deg, hsl(${avatarHue},55%,45%), hsl(${avatarHue+30},60%,35%))`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: `0 0 0 2px white, 0 0 0 3px hsl(${avatarHue},40%,70%)`,
-              }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
-                  {user.full_name?.[0]?.toUpperCase()}
-                </span>
-              </div>
-              {/* Online dot */}
-              <span style={{
-                position: 'absolute', bottom: 0, right: 0,
-                width: 8, height: 8, borderRadius: '50%',
-                background: '#22c55e', border: '1.5px solid white',
-              }}/>
-            </div>
+        {/* ── User card — clickable, links to profile ── */}
+        <Link
+          href="/dashboard/profile"
+          onClick={onMobileClose}
+          style={{ textDecoration: 'none' }}
+        >
+          <div style={{
+            padding: '10px 12px',
+            borderBottom: '1px solid var(--color-hairline)',
+            margin: '0 0 2px',
+            borderRadius: 0,
+            background: profileActive
+              ? 'linear-gradient(135deg, #1B3A6B 0%, #2a5298 100%)'
+              : 'transparent',
+            transition: 'background 0.15s',
+            cursor: 'pointer',
+          }}
+            onMouseEnter={e => { if (!profileActive) e.currentTarget.style.background = 'var(--color-surface)'; }}
+            onMouseLeave={e => { if (!profileActive) e.currentTarget.style.background = 'transparent'; }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
 
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-ink truncate leading-tight">{user.full_name}</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <TinyCross opacity={0.25} />
-                <p className="text-2xs text-ink-faint font-medium">
-                  {ROLE_LABELS[user.role]?.[lang] || user.role}
-                </p>
+              {/* Avatar */}
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                {user.profile_photo_url ? (
+                  <img
+                    src={user.profile_photo_url}
+                    alt={user.full_name}
+                    style={{
+                      width: 36, height: 36, borderRadius: '50%', objectFit: 'cover',
+                      boxShadow: profileActive
+                        ? '0 0 0 2px rgba(255,255,255,0.3)'
+                        : `0 0 0 2px white, 0 0 0 3px hsl(${avatarHue},40%,70%)`,
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: 36, height: 36, borderRadius: '50%',
+                    background: profileActive
+                      ? 'rgba(255,255,255,0.2)'
+                      : `linear-gradient(135deg, hsl(${avatarHue},55%,45%), hsl(${avatarHue+30},60%,35%))`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: profileActive
+                      ? '0 0 0 2px rgba(255,255,255,0.25)'
+                      : `0 0 0 2px white, 0 0 0 3px hsl(${avatarHue},40%,70%)`,
+                  }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
+                      {user.full_name?.[0]?.toUpperCase()}
+                    </span>
+                  </div>
+                )}
+                {/* Online dot */}
+                <span style={{
+                  position: 'absolute', bottom: 0, right: 0,
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: '#22c55e', border: '1.5px solid white',
+                }}/>
               </div>
+
+              {/* Name + role */}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{
+                  fontSize: 13, fontWeight: 600, lineHeight: 1.2,
+                  color: profileActive ? '#fff' : 'var(--color-ink)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {user.full_name}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                  <TinyCross opacity={profileActive ? 0.5 : 0.25} />
+                  <p style={{
+                    fontSize: 10, fontWeight: 500,
+                    color: profileActive ? 'rgba(255,255,255,0.7)' : 'var(--color-ink-faint)',
+                  }}>
+                    {ROLE_LABELS[user.role]?.[lang] || user.role}
+                  </p>
+                </div>
+              </div>
+
+              {/* Profile chevron / active pip */}
+              {profileActive ? (
+                <span style={{
+                  width: 5, height: 5, borderRadius: '50%',
+                  background: '#C8A84B', boxShadow: '0 0 6px #C8A84B88',
+                  flexShrink: 0,
+                }}/>
+              ) : (
+                <span style={{
+                  color: 'var(--color-ink-faint)', flexShrink: 0, fontSize: 11, opacity: 0.5,
+                }}>
+                  {ICONS.profile}
+                </span>
+              )}
             </div>
           </div>
-        </div>
+        </Link>
 
         {/* ── Navigation ── */}
         <nav className="flex-1 overflow-y-auto py-2">
@@ -221,7 +297,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
             return (
               <div key={sectionLabel}>
                 {si > 0 && (
-                  /* Section divider with cross motif */
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px 6px', margin: '4px 0 0' }}>
                     <div style={{ flex: 1, height: '0.5px', background: 'var(--color-hairline, #e5e7eb)' }}/>
                     <TinyCross opacity={0.18} />
@@ -229,7 +304,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
                   </div>
                 )}
 
-                {/* Section label */}
                 <p style={{
                   fontSize: 9, fontWeight: 800, letterSpacing: '0.13em',
                   textTransform: 'uppercase', color: 'var(--color-ink-faint, #94a3b8)',
@@ -261,7 +335,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
                         onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'; }}
                         onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
                       >
-                        {/* Icon */}
                         <span style={{
                           width: 28, height: 28, borderRadius: 7, flexShrink: 0,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -273,7 +346,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
                           {item.icon}
                         </span>
 
-                        {/* Label */}
                         <span style={{
                           flex: 1, fontSize: 13, fontWeight: active ? 700 : 500,
                           color: active ? '#fff' : 'var(--color-ink-muted, #6b7280)',
@@ -283,12 +355,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
                           {label}
                         </span>
 
-                        {/* Active gold pip */}
                         {active && (
                           <span style={{
                             width: 5, height: 5, borderRadius: '50%',
-                            background: '#C8A84B',
-                            boxShadow: '0 0 6px #C8A84B88',
+                            background: '#C8A84B', boxShadow: '0 0 6px #C8A84B88',
                             flexShrink: 0,
                           }}/>
                         )}

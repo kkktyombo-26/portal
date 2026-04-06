@@ -8,19 +8,22 @@ const getMembers = async (req, res, next) => {
     let sql, params = [];
 
     if (role === 'pastor') {
-      sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.profile_photo,
+      sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone,
+                    u.avatar, u.profile_photo_url,
                     u.is_active, u.created_at, u.last_login,
                     g.name as group_name
              FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
              ORDER BY u.role, u.full_name`;
     } else if (role === 'elder') {
-      sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.profile_photo,
+      sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone,
+                    u.avatar, u.profile_photo_url,
                     u.is_active, u.created_at, g.name as group_name
              FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
              WHERE u.role != 'pastor'
              ORDER BY u.role, u.full_name`;
     } else if (role === 'group_leader') {
-      sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.profile_photo,
+      sql = `SELECT u.id, u.full_name, u.email, u.role, u.phone,
+                    u.avatar, u.profile_photo_url,
                     u.is_active, u.created_at, g.name as group_name
              FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
              WHERE u.group_id = ?
@@ -38,11 +41,12 @@ const getMembers = async (req, res, next) => {
 // GET /api/members/:id
 const getMember = async (req, res, next) => {
   try {
-   const { role, group_id } = req.user;
+    const { role, group_id } = req.user;
     const targetId = parseInt(req.params.id);
 
     const [rows] = await db.execute(
-      `SELECT u.id, u.full_name, u.email, u.role, u.phone, u.profile_photo,
+      `SELECT u.id, u.full_name, u.email, u.role, u.phone,
+              u.avatar, u.profile_photo_url,
               u.is_active, u.created_at, u.last_login,
               g.name as group_name, g.id as group_id
        FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
@@ -56,12 +60,10 @@ const getMember = async (req, res, next) => {
 
     const member = rows[0];
 
-    // Members can only view their own profile
     if (role === 'member' && member.id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    // Group leaders only see their group
     if (role === 'group_leader' && member.group_id !== group_id && member.id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
@@ -87,7 +89,9 @@ const createMember = async (req, res, next) => {
     );
 
     const [rows] = await db.execute(
-      'SELECT id, full_name, email, role, group_id, phone, created_at FROM users WHERE id = ?',
+      `SELECT id, full_name, email, role, group_id, phone,
+              avatar, profile_photo_url, created_at
+       FROM users WHERE id = ?`,
       [result.insertId]
     );
 
@@ -102,7 +106,6 @@ const updateMember = async (req, res, next) => {
     const targetId = parseInt(req.params.id);
     const { full_name, email, phone, group_id, is_active, role: newRole } = req.body;
 
-    // Only pastor can change roles or activate/deactivate
     if ((newRole || is_active !== undefined) && role !== 'pastor') {
       return res.status(403).json({ success: false, message: 'Only the pastor can change roles or account status' });
     }
@@ -115,7 +118,9 @@ const updateMember = async (req, res, next) => {
     );
 
     const [rows] = await db.execute(
-      'SELECT id, full_name, email, role, group_id, phone, is_active FROM users WHERE id = ?',
+      `SELECT id, full_name, email, role, group_id, phone,
+              avatar, profile_photo_url, is_active
+       FROM users WHERE id = ?`,
       [targetId]
     );
 
