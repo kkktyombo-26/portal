@@ -107,7 +107,7 @@ const PASTOR_HOURS = [
 const getHeroSlides = (lang, countdown) => [
   {
     id: 'welcome',
-    bg: '/worship1.jpg',
+    bg: '/worship1.jpeg',
     tag: 'Kanisa La Kiinjili La Kilutheri',
     titleLines: ['KKKT DMP', 'YOMBO'],
     sub: lang === 'sw'
@@ -118,7 +118,7 @@ const getHeroSlides = (lang, countdown) => [
   },
   {
     id: 'easter',
-    bg: '/pasaka.jpg',
+    bg: '/pasaka.jpeg',
     tag: lang === 'sw' ? 'Matukio Maalum' : 'Special Event',
     titleLines: lang === 'sw' ? ['PASAKA', '2026'] : ['EASTER', '2026'],
     sub: lang === 'sw'
@@ -142,7 +142,7 @@ const getHeroSlides = (lang, countdown) => [
   },
   {
     id: 'community',
-    bg: '/community.jpg',
+    bg: '/community.jpeg',
     tag: lang === 'sw' ? 'Ushirika' : 'Community',
     titleLines: lang === 'sw' ? ['JIUNGE', 'NASI'] : ['BE PART', 'OF US'],
     sub: lang === 'sw'
@@ -154,12 +154,12 @@ const getHeroSlides = (lang, countdown) => [
 ];
 
 const GALLERY_SLIDES = [
-  { url: '/sunday.jpg',    captionEn: 'Sunday Worship',         captionSw: 'Ibada ya Jumapili' },
-  { url: '/community.jpg', captionEn: 'Community & Fellowship', captionSw: 'Ushirika & Umoja' },
-  { url: '/kwaya.jpg',     captionEn: 'Choir Ministration',     captionSw: 'Huduma ya Kwaya' },
-  { url: '/worship2.jpg',  captionEn: 'Prayer & Intercession',  captionSw: 'Sala na Uombezi' },
-  { url: '/vijana.jpg',    captionEn: 'Youth Ministry',         captionSw: 'Huduma ya Vijana' },
-  { url: '/special.jpg',   captionEn: 'Special Events',         captionSw: 'Matukio Maalum' },
+  { url: '/sunday.jpeg',    captionEn: 'Sunday Worship',         captionSw: 'Ibada ya Jumapili' },
+  { url: '/community.jpeg', captionEn: 'Community & Fellowship', captionSw: 'Ushirika & Umoja' },
+  { url: '/kwaya.jpeg',     captionEn: 'Choir Ministration',     captionSw: 'Huduma ya Kwaya' },
+  { url: '/worship2.jpeg',  captionEn: 'Prayer & Intercession',  captionSw: 'Sala na Uombezi' },
+  { url: '/vijana.jpeg',    captionEn: 'Youth Ministry',         captionSw: 'Huduma ya Vijana' },
+  { url: '/special.jpeg',   captionEn: 'Special Events',         captionSw: 'Matukio Maalum' },
 ];
 
 // ── SVG atoms ─────────────────────────────────────────────────────
