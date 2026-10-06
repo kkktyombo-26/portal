@@ -2,7 +2,7 @@
 import { useState, useRef } from 'react';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const API_BASE = process.env.NEXT_PUBLIC_YT_TRIM_API_URL || 'http://3.66.220.0';
+const API_BASE = process.env.NEXT_PUBLIC_YT_TRIM_API_URL || 'https://api.kkktdmpyombo.org';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function toSeconds(str) {
