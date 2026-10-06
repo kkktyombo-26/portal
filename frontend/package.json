@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "axios": "^1.6.8",
+    "bgutils-js": "^4.0.3",
     "js-cookie": "^3.0.5",
     "jspdf": "^4.2.1",
     "next": "^14.2.3",

@@ -1,6 +1,8 @@
 'use client';
 import { useState, useRef } from 'react';
 
+import { BG } from 'bgutils-js';
+
 // ── Constants ────────────────────────────────────────────────────────────────
 const API_BASE = process.env.NEXT_PUBLIC_YT_TRIM_API_URL || 'https://api.kkktdmpyombo.org';
 
@@ -24,6 +26,24 @@ function formatDuration(seconds) {
   if (h > 0) return `${h}h ${m}m ${s}s`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
+}
+
+
+async function generatePoToken(videoId) {
+  try {
+    const requestKey = 'O43z0dpjhgX20SCx4KAo';
+    const bgConfig = {
+      fetch: (url, opts) => fetch(url, opts),
+      globalObj: globalThis,
+      identifier: videoId,
+      requestKey,
+    };
+    const bg = await BG.create(bgConfig);
+    const token = await bg.generatePoToken(videoId);
+    return token || null;
+  } catch {
+    return null;
+  }
 }
 
 function extractVideoId(url) {
@@ -140,12 +160,14 @@ export default function YTTrimPage() {
     setStatus('preparing');
     setProgress(0);
 
+    const poToken = await generatePoToken(videoId);
     const body = {
       url: url.trim(),
       start: start.trim(),
       end: end.trim(),
       end_mode: endMode,
       filename: filename.trim() || undefined,
+      po_token: poToken || undefined,
     };
 
     try {
