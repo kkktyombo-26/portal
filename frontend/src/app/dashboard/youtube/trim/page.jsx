@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef } from 'react';
 
-import { BG } from 'bgutils-js/dist/node/index.js';
+import { BG } from 'bgutils-js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const API_BASE = process.env.NEXT_PUBLIC_YT_TRIM_API_URL || 'https://api.kkktdmpyombo.org';
