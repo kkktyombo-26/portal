@@ -1,3 +1,4 @@
+
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
@@ -177,9 +178,18 @@ export default function ProfilePage() {
   const photoRef = useRef(null);
 
   // Editable form state
-  const [form, setForm] = useState({
-    full_name: '', phone: '', namba_ya_usharika: '',
-  });
+const [form, setForm] = useState({
+  full_name: '', phone: '', namba_ya_usharika: '',
+  // ── ADD THESE ──
+  gender: '', date_of_birth: '', place_of_birth: '', member_status: 'hai',
+  marital_status: '', marriage_type: '', marriage_date: '', marriage_place: '',
+  spouse_name: '', spouse_phone: '', cohabiting_partner_name: '',
+  occupation: '', workplace: '', education: '', profession: '',
+  willing_to_volunteer: '',
+  jumuiya: '', block_no: '', area_name: '', slp: '',
+  neighbour_member_name: '', neighbour_member_phone: '',
+  elder_name: '', elder_phone: '', previous_church: '',
+});
 
   // ── Load profile ────────────────────────────────────────────────────────────
 
@@ -472,6 +482,63 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* ── Marital information ─── */}
+<div className="card">
+  <p className="section-label mb-4">{sw ? 'Habari za Ndoa' : 'Marital Information'}</p>
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <label className="field-label">{sw ? 'Hali ya Ndoa' : 'Marital Status'}</label>
+      <select className="field-input" value={form.marital_status}
+        onChange={e => setForm(f => ({ ...f, marital_status: e.target.value }))}>
+        <option value="">—</option>
+        <option value="Ameoa">Ameoa</option>
+        <option value="Hajaoa">Hajaoa</option>
+        <option value="Ameolewa">Ameolewa</option>
+        <option value="Hajaolewa">Hajaolewa</option>
+        <option value="Mjane">Mjane</option>
+        <option value="Mgane">Mgane</option>
+        <option value="Talikiwa">Talikiwa</option>
+        <option value="Tengana">Tengana</option>
+      </select>
+    </div>
+    <div>
+      <label className="field-label">{sw ? 'Aina ya Ndoa' : 'Marriage Type'}</label>
+      <select className="field-input" value={form.marriage_type}
+        onChange={e => setForm(f => ({ ...f, marriage_type: e.target.value }))}>
+        <option value="">—</option>
+        <option value="Kikristo">Kikristo</option>
+        <option value="Siya Kikristo">Siya Kikristo</option>
+      </select>
+    </div>
+    {/* marriage_date, marriage_place, spouse_name, spouse_phone, cohabiting_partner_name */}
+  </div>
+</div>
+
+{/* ── Professional ─── */}
+<div className="card">
+  <p className="section-label mb-4">{sw ? 'Kazi na Elimu' : 'Professional & Education'}</p>
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {/* occupation, workplace, education, profession */}
+    <div>
+      <label className="field-label">{sw ? 'Kujitolea' : 'Willing to Volunteer'}</label>
+      <select className="field-input" value={form.willing_to_volunteer}
+        onChange={e => setForm(f => ({ ...f, willing_to_volunteer: e.target.value }))}>
+        <option value="">—</option>
+        <option value="1">{sw ? 'Ndiyo' : 'Yes'}</option>
+        <option value="0">{sw ? 'Hapana' : 'No'}</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+{/* ── Residence ─── */}
+<div className="card">
+  <p className="section-label mb-4">{sw ? 'Makazi' : 'Residence'}</p>
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {/* jumuiya, block_no, area_name, slp, neighbour_*, elder_*, previous_church */}
+  </div>
+</div>
 
         {/* ── Account & security ─── */}
         <div className="card">
