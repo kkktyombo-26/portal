@@ -1,0 +1,127 @@
+
+
+sudo tee /opt/yt_trim_api/core.py << 'EOF'
+
+"""
+core.py — Clip download logic for YT Trim API.
+Handles time parsing, URL cleaning, and yt-dlp command building.
+
+Bari Software Services
+"""
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+from typing import Generator, Optional
+
+
+def to_seconds(t: str) -> int:
+    t = t.strip().lstrip("t").rstrip("s")
+    if re.fullmatch(r"\d+", t):
+        return int(t)
+    parts = list(map(int, t.split(":")))
+    if len(parts) == 2:
+        return parts[0] * 60 + parts[1]
+    if len(parts) == 3:
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    raise ValueError(f"Unrecognised time format: {t!r}")
+
+
+def fmt(seconds: int) -> str:
+    h, r = divmod(int(seconds), 3600)
+    m, s = divmod(r, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def extract_t_param(url: str) -> Optional[str]:
+    match = re.search(r"[?&]t=(\d+s?)", url)
+    return match.group(1) if match else None
+
+
+def clean_url(url: str) -> str:
+    return re.sub(
+        r"[?&]t=\d+s?",
+        lambda m: "" if m.group(0).startswith("&") else "?",
+        url,
+    ).rstrip("?")
+
+
+def check_ffmpeg() -> bool:
+    return shutil.which("ffmpeg") is not None
+
+
+# Prefer direct HTTPS (DASH) streams — HLS segments are IP-locked to the
+# browser session that generated them, so they 403 when fetched server-side.
+# Fall back to anything non-HLS, then allow HLS only as a last resort.
+_FORMAT = (
+    "bestvideo[protocol^=http][ext=mp4]+bestaudio[protocol^=http][ext=m4a]"
+    "/bestvideo[protocol^=http]+bestaudio[protocol^=http]"
+    "/best[protocol^=http]"
+    "/bestvideo+bestaudio/best"
+)
+
+CHUNK_SIZE = 1024 * 64
+COOKIES_PATH = "/opt/yt_trim_api/cookies.txt"
+
+
+def build_clip_command(url: str, start_s: int, end_s: int, po_token: Optional[str] = None) -> list[str]:
+    section = f"*{fmt(start_s)}-{fmt(end_s)}"
+    cmd = [
+        sys.executable, "-m", "yt_dlp",
+        "--download-sections", section,
+        "-f", _FORMAT,
+        "--no-playlist",
+        "--merge-output-format", "mp4",
+        "-o", "-",
+        clean_url(url),
+    ]
+
+    if os.path.exists(COOKIES_PATH):
+        cmd.extend(["--cookies", COOKIES_PATH])
+
+    if po_token:
+        cmd.extend([
+            "--extractor-args",
+            f"youtube:po_token=web+{po_token};player_client=web",
+        ])
+    else:
+        # android client returns direct HTTPS URLs, not HLS
+        cmd.extend([
+            "--extractor-args",
+            "youtube:player_client=android,web",
+        ])
+
+    return cmd
+
+
+def stream_clip(
+    url: str,
+    start_s: int,
+    end_s: int,
+    po_token: Optional[str] = None,
+) -> Generator[bytes, None, None]:
+    cmd = build_clip_command(url, start_s, end_s, po_token)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        while True:
+            chunk = proc.stdout.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        try:
+            errs = proc.stderr.read().decode(errors="replace")
+            if errs.strip():
+                import logging
+                logging.getLogger("yt_trim_core").warning("yt-dlp stderr:\n%s", errs)
+        except Exception:
+            pass
+        proc.stdout.close()
+        proc.terminate()
+EOF

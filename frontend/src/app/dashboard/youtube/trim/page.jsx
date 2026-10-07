@@ -2,7 +2,7 @@
 'use client';
 import { useState, useRef } from 'react';
 
-import { BG } from 'bgutils-js';
+//import { BG } from 'bgutils-js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const API_BASE = process.env.NEXT_PUBLIC_YT_TRIM_API_URL || 'https://api.kkktdmpyombo.org';
@@ -32,15 +32,24 @@ function formatDuration(seconds) {
 
 async function generatePoToken(videoId) {
   try {
-    const requestKey = 'O43z0dpjhgX20SCx4KAo';
-    const bgConfig = {
+    const { getChallenge } = await import('bgutils-js/botguard');
+    const { BotGuardClient } = await import('bgutils-js/botguard');
+    const { WebPoMinter } = await import('bgutils-js/webpo');
+
+    const challenge = await getChallenge({
       fetch: (url, opts) => fetch(url, opts),
       globalObj: globalThis,
-      identifier: videoId,
-      requestKey,
-    };
-    const bg = await BG.create(bgConfig);
-    const token = await bg.generatePoToken(videoId);
+    });
+
+    const client = new BotGuardClient({
+      program: challenge.program,
+      globalObj: globalThis,
+    });
+
+    await client.load();
+
+    const minter = new WebPoMinter(client, challenge.mintRefreshToken);
+    const token = await minter.mintWebPoToken(videoId);
     return token || null;
   } catch {
     return null;
