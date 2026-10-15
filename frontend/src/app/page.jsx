@@ -427,6 +427,21 @@ function GalleryCarousel({ lang }) {
   );
 }
 
+
+async function fetchPoToken(videoId) {
+  try {
+    const res = await fetch('/api/po-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoId }),
+    });
+    const { token } = await res.json();
+    return token;
+  } catch {
+    return null;
+  }
+}
+
 // ── YouTube helpers ───────────────────────────────────────────────
 function fmt(n) {
   if (n == null) return '—';
@@ -666,6 +681,24 @@ export default function LandingPage() {
           <GalleryCarousel lang={lang}/>
         </div>
       </section>
+
+      {/* TEMP DEBUG — remove after testing */}
+{/* TEMP DEBUG — remove after testing */}
+<button
+  onClick={async () => {
+    console.log('Generating PO token...');
+    const token = await fetchPoToken('dQw4w9WgXcQ');  // ← only this line changes
+    console.log('PO Token result:', token);
+    alert(token ? `✅ Token: ${token.slice(0, 40)}...` : '❌ Token is null');
+  }}
+  style={{
+    padding: '9px 16px', borderRadius: 8, border: '1px solid orange',
+    background: 'transparent', color: 'orange',
+    fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 8,
+  }}
+>
+  Test PO Token
+</button>
 
       {/* ── Staff / Leadership ── */}
       <section id="pastor" style={{ background: C.cream, padding: sp }}>

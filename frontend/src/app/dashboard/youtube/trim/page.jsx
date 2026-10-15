@@ -1,11 +1,8 @@
-// @ts-nocheck
 'use client';
 import { useState, useRef } from 'react';
 
-//import { BG } from 'bgutils-js';
-
 // ── Constants ────────────────────────────────────────────────────────────────
-const API_BASE = process.env.NEXT_PUBLIC_YT_TRIM_API_URL || 'https://api.kkktdmpyombo.org';
+const API_BASE = process.env.NEXT_PUBLIC_YT_TRIM_API_URL || 'https://yt-trimmer-21vn.onrender.com';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function toSeconds(str) {
@@ -27,33 +24,6 @@ function formatDuration(seconds) {
   if (h > 0) return `${h}h ${m}m ${s}s`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
-}
-
-
-async function generatePoToken(videoId) {
-  try {
-    const { getChallenge } = await import('bgutils-js/botguard');
-    const { BotGuardClient } = await import('bgutils-js/botguard');
-    const { WebPoMinter } = await import('bgutils-js/webpo');
-
-    const challenge = await getChallenge({
-      fetch: (url, opts) => fetch(url, opts),
-      globalObj: globalThis,
-    });
-
-    const client = new BotGuardClient({
-      program: challenge.program,
-      globalObj: globalThis,
-    });
-
-    await client.load();
-
-    const minter = new WebPoMinter(client, challenge.mintRefreshToken);
-    const token = await minter.mintWebPoToken(videoId);
-    return token || null;
-  } catch {
-    return null;
-  }
 }
 
 function extractVideoId(url) {
@@ -102,11 +72,11 @@ function Input({ value, onChange, placeholder, type = 'text', error }) {
 
 function StatusPill({ status }) {
   const map = {
-    idle:        { label: 'Ready',       bg: 'var(--color-surface)',      color: 'var(--color-ink-muted)' },
-    preparing:   { label: 'Preparing…',  bg: '#EFF6FF',                   color: '#1D4ED8' },
-    downloading: { label: 'Trimming…',   bg: 'var(--color-navy-muted)',   color: 'var(--color-navy-text)' },
-    done:        { label: 'Complete',    bg: 'var(--color-success-bg)',   color: 'var(--color-success-text)' },
-    error:       { label: 'Failed',      bg: 'var(--color-error-bg)',     color: 'var(--color-error-text)' },
+    idle:        { label: 'Ready',      bg: 'var(--color-surface)',    color: 'var(--color-ink-muted)' },
+    preparing:   { label: 'Preparing…', bg: '#EFF6FF',                 color: '#1D4ED8' },
+    downloading: { label: 'Trimming…',  bg: 'var(--color-navy-muted)', color: 'var(--color-navy-text)' },
+    done:        { label: 'Complete',   bg: 'var(--color-success-bg)', color: 'var(--color-success-text)' },
+    error:       { label: 'Failed',     bg: 'var(--color-error-bg)',   color: 'var(--color-error-text)' },
   };
   const s = map[status] || map.idle;
   return (
@@ -135,7 +105,7 @@ export default function YTTrimPage() {
   const [filename, setFilename] = useState('');
   const [status,   setStatus]   = useState('idle'); // idle | preparing | downloading | done | error
   const [error,    setError]    = useState('');
-  const [progress, setProgress] = useState(0); // bytes received
+  const [progress, setProgress] = useState(0);
   const [errors,   setErrors]   = useState({});
   const abortRef = useRef(null);
 
@@ -150,14 +120,14 @@ export default function YTTrimPage() {
   function validate() {
     const e = {};
     if (!url.trim())   e.url   = 'Paste a YouTube URL.';
-    else if (!videoId) e.url   = 'Doesn\'t look like a valid YouTube URL.';
+    else if (!videoId) e.url   = "Doesn't look like a valid YouTube URL.";
     if (!start.trim()) e.start = 'Enter a start time.';
     else if (startSec == null) e.start = 'Use HH:MM:SS or plain seconds.';
-    if (!end.trim())   e.end   = 'Enter an end time.';
+    if (!end.trim())   e.end   = 'Enter an end time or duration.';
     else if (endSec == null)   e.end   = 'Use HH:MM:SS or plain seconds.';
     if (!e.start && !e.end) {
-      if (endMode === 'endtime' && endSec <= startSec) e.end = 'End must be after start.';
-      if (endMode === 'duration' && endSec <= 0)       e.end = 'Duration must be greater than 0.';
+      if (endMode === 'endtime'  && endSec <= startSec) e.end = 'End must be after start.';
+      if (endMode === 'duration' && endSec <= 0)        e.end = 'Duration must be greater than 0.';
       if (duration > 3600) e.end = 'Clips cannot exceed 1 hour.';
     }
     setErrors(e);
@@ -170,14 +140,15 @@ export default function YTTrimPage() {
     setStatus('preparing');
     setProgress(0);
 
-    const poToken = await generatePoToken(videoId);
+    // Build request body — only fields the API accepts
     const body = {
-      url: url.trim(),
-      start: start.trim(),
-      end: end.trim(),
+      url:      url.trim(),
+      start:    start.trim(),
+      end:      end.trim(),
       end_mode: endMode,
-      filename: filename.trim() || undefined,
-      po_token: poToken || undefined,
+      ...(filename.trim() && { filename: filename.trim().endsWith('.mp4')
+          ? filename.trim()
+          : `${filename.trim()}.mp4` }),
     };
 
     try {
@@ -185,10 +156,10 @@ export default function YTTrimPage() {
       abortRef.current = controller;
 
       const res = await fetch(`${API_BASE}/clip`, {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
+        body:    JSON.stringify(body),
+        signal:  controller.signal,
       });
 
       if (!res.ok) {
@@ -198,7 +169,7 @@ export default function YTTrimPage() {
 
       setStatus('downloading');
 
-      // Stream to a blob
+      // Stream response to a blob, tracking bytes received
       const reader = res.body.getReader();
       const chunks = [];
       let received = 0;
@@ -210,14 +181,14 @@ export default function YTTrimPage() {
         setProgress(received);
       }
 
-      // Derive filename from Content-Disposition or fallback
-      const cd   = res.headers.get('Content-Disposition') || '';
+      // Derive filename from Content-Disposition header or fallback
+      const cd    = res.headers.get('Content-Disposition') || '';
       const match = cd.match(/filename="?([^"]+)"?/);
-      const fname = match?.[1] || filename.trim() || 'clip.mp4';
+      const fname = match?.[1] || body.filename || 'clip.mp4';
 
       const blob = new Blob(chunks, { type: 'video/mp4' });
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
+      link.href     = URL.createObjectURL(blob);
       link.download = fname;
       link.click();
       URL.revokeObjectURL(link.href);
@@ -254,7 +225,6 @@ export default function YTTrimPage() {
       {/* ── Page header ── */}
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          {/* YouTube icon */}
           <span style={{
             width: 32, height: 32, borderRadius: 8, flexShrink: 0,
             background: 'linear-gradient(135deg, #1B3A6B 0%, #2a5298 100%)',
@@ -403,11 +373,11 @@ export default function YTTrimPage() {
 
         {/* Optional filename */}
         <div style={{ padding: '16px 20px 0' }}>
-          <FieldLabel hint="Optional — defaults to clip_start-end.mp4">Save as</FieldLabel>
+          <FieldLabel hint="Optional — defaults to clip.mp4">Save as</FieldLabel>
           <Input
             value={filename}
             onChange={setFilename}
-            placeholder="sunday-sermon-highlight"
+            placeholder="my-clip"
           />
         </div>
 
@@ -422,9 +392,7 @@ export default function YTTrimPage() {
                 {(progress / 1024 / 1024).toFixed(1)} MB received
               </span>
             </div>
-            <div style={{
-              height: 4, borderRadius: 999, background: 'var(--color-navy-muted)', overflow: 'hidden',
-            }}>
+            <div style={{ height: 4, borderRadius: 999, background: 'var(--color-navy-muted)', overflow: 'hidden' }}>
               <div style={{
                 height: '100%', borderRadius: 999,
                 background: 'linear-gradient(90deg, #1B3A6B, #C8A84B)',
@@ -435,14 +403,26 @@ export default function YTTrimPage() {
           </div>
         )}
 
+        {/* Preparing spinner */}
+        {status === 'preparing' && (
+          <div style={{ padding: '14px 20px 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: '#1B3A6B', animation: 'pulse 1.2s ease-in-out infinite',
+              }}/>
+              <span style={{ fontSize: 11, color: 'var(--color-ink-muted)', fontWeight: 600 }}>
+                Contacting server…
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Success state */}
         {status === 'done' && (
           <div style={{
-            margin: '16px 20px 0',
-            padding: '12px 14px',
-            borderRadius: 8,
-            background: 'var(--color-success-bg)',
-            border: '1px solid var(--color-success-border)',
+            margin: '16px 20px 0', padding: '12px 14px', borderRadius: 8,
+            background: 'var(--color-success-bg)', border: '1px solid var(--color-success-border)',
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success-text)" strokeWidth="2.5" strokeLinecap="round">
@@ -457,11 +437,8 @@ export default function YTTrimPage() {
         {/* Error state */}
         {status === 'error' && error && (
           <div style={{
-            margin: '16px 20px 0',
-            padding: '12px 14px',
-            borderRadius: 8,
-            background: 'var(--color-error-bg)',
-            border: '1px solid var(--color-error-border)',
+            margin: '16px 20px 0', padding: '12px 14px', borderRadius: 8,
+            background: 'var(--color-error-bg)', border: '1px solid var(--color-error-border)',
             display: 'flex', alignItems: 'flex-start', gap: 10,
           }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-error-text)" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
@@ -481,7 +458,6 @@ export default function YTTrimPage() {
           {!busy && status !== 'done' && (
             <button
               onClick={handleTrim}
-              disabled={busy}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '9px 20px', borderRadius: 8, border: 'none',
@@ -515,19 +491,17 @@ export default function YTTrimPage() {
           )}
 
           {status === 'done' && (
-            <>
-              <button
-                onClick={handleReset}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '9px 20px', borderRadius: 8, border: 'none',
-                  background: 'linear-gradient(135deg, #1B3A6B 0%, #2a5298 100%)',
-                  color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                }}
-              >
-                Trim another clip
-              </button>
-            </>
+            <button
+              onClick={handleReset}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '9px 20px', borderRadius: 8, border: 'none',
+                background: 'linear-gradient(135deg, #1B3A6B 0%, #2a5298 100%)',
+                color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Trim another clip
+            </button>
           )}
 
           {status === 'error' && (
@@ -544,9 +518,9 @@ export default function YTTrimPage() {
             </button>
           )}
 
-          {/* Server health link */}
+          {/* Health check link — points to correct /health endpoint */}
           <a
-            href={`${API_BASE}/status`}
+            href={`${API_BASE}/health`}
             target="_blank"
             rel="noreferrer"
             style={{
@@ -564,20 +538,17 @@ export default function YTTrimPage() {
 
       {/* ── Usage notes ── */}
       <div style={{
-        marginTop: 20,
-        padding: '14px 16px',
-        borderRadius: 10,
-        background: 'var(--color-surface)',
-        border: '1px solid var(--color-hairline)',
+        marginTop: 20, padding: '14px 16px', borderRadius: 10,
+        background: 'var(--color-surface)', border: '1px solid var(--color-hairline)',
       }}>
         <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-ink-faint)', margin: '0 0 8px' }}>
           How it works
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           {[
-            ['Paste URL', 'Any youtube.com or youtu.be link works.'],
-            ['Set times', 'Use HH:MM:SS, M:SS, or plain seconds like 90.'],
-            ['Download', 'The clip streams directly — nothing is saved on the server.'],
+            ['Paste URL',  'Any youtube.com or youtu.be link works.'],
+            ['Set times',  'Use HH:MM:SS, M:SS, or plain seconds like 90.'],
+            ['Download',   'The clip streams directly — nothing is saved on the server.'],
           ].map(([title, desc]) => (
             <div key={title} style={{ display: 'flex', gap: 8 }}>
               <div style={{
