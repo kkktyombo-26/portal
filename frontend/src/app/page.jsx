@@ -120,10 +120,10 @@ const getHeroSlides = (lang, countdown) => [
     id: 'easter',
     bg: '/pasaka.jpeg',
     tag: lang === 'sw' ? 'Matukio Maalum' : 'Special Event',
-    titleLines: lang === 'sw' ? ['PASAKA', '2026'] : ['EASTER', '2026'],
+    titleLines: lang === 'sw' ? ['MAVUNO', '2026'] : ['MAVUNO', '2026'],
     sub: lang === 'sw'
-      ? 'Tunaadhimisha ufufuo wa Bwana wetu Yesu Kristo. Karibuni kwenye ibada zetu za Pasaka.'
-      : 'Celebrating the resurrection of our Lord Jesus Christ. Join us for our special Easter services.',
+      ? 'Maadimisho ya Sikukuu ya MAVUNO 2026. Karibuni umtolee BWANA kwa moyo wa shukrani.'
+      : 'Celebrating the MAVUNO Festival. Join us for our special MAVUNO services.',
     countdown,
     cta: { label: lang === 'sw' ? 'Angalia Ratiba' : 'View Schedule', href: '#schedule' },
     isEaster: true,
