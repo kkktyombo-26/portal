@@ -682,23 +682,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* TEMP DEBUG — remove after testing */}
-{/* TEMP DEBUG — remove after testing */}
-<button
-  onClick={async () => {
-    console.log('Generating PO token...');
-    const token = await fetchPoToken('dQw4w9WgXcQ');  // ← only this line changes
-    console.log('PO Token result:', token);
-    alert(token ? `✅ Token: ${token.slice(0, 40)}...` : '❌ Token is null');
-  }}
-  style={{
-    padding: '9px 16px', borderRadius: 8, border: '1px solid orange',
-    background: 'transparent', color: 'orange',
-    fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 8,
-  }}
->
-  Test PO Token
-</button>
+
 
       {/* ── Staff / Leadership ── */}
       <section id="pastor" style={{ background: C.cream, padding: sp }}>
@@ -718,13 +702,13 @@ export default function LandingPage() {
           <div style={{ display: 'grid', gridTemplateColumns: isMob ? '1fr' : 'repeat(3, 1fr)', gap: isMob ? 24 : 28, marginBottom: isMob ? 32 : 52 }}>
             {[
               {
-                photo: '/pastor.jpg', altEn: 'Pastor', altSw: 'Mchungaji',
+                photo: '/pastor.jpeg', altEn: 'Pastor', altSw: 'Mchungaji',
                 name: t.pastor_name, roleEn: 'Senior Pastor', roleSw: 'Mchungaji Mkuu',
                 badgeEn: 'Our Shepherd', badgeSw: 'Kiongozi Wetu',
               featured: true,
               },
               {
-                photo: '/evangelist.jpg', altEn: 'Evangelist', altSw: 'Mwinjilisti',
+                photo: '/evangelist.jpeg', altEn: 'Evangelist', altSw: 'Mwinjilisti',
                 name: lang === 'sw' ? 'Mwinjilisti Amos Mntwambwe' : 'Evangelist Amos Mntwambwe',
                 roleEn: 'Evangelist', roleSw: 'Mwinjilisti',
                 badgeEn: 'The Word', badgeSw: 'Neno',
@@ -732,7 +716,7 @@ export default function LandingPage() {
                   featured: false,
               },
               {
-                photo: '/parish.jpg', altEn: 'Parish Worker', altSw: 'Parish Worker',
+                photo: '/parish.jpeg', altEn: 'Parish Worker', altSw: 'Parish Worker',
                 name: 'P/W Hilda Chuma',
                 roleEn: 'Parish Worker', roleSw: 'Parish Worker',
                 badgeEn: 'Community', badgeSw: 'Jamii',
