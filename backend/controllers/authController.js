@@ -27,6 +27,8 @@ const {
 
       // ── NEW: require a valid email-verification token ──────────────────────
     if (!verifiedToken) {
+
+      console.log('Email verification token missing for registration:', email);
       return res.status(400).json({
         success: false,
         code: 'EMAIL_NOT_VERIFIED',
@@ -42,6 +44,7 @@ const {
     );
 
     if (tokenRows.length === 0) {
+      console.log('Invalid or expired email verification token for registration:', email);  
       return res.status(400).json({
         success: false,
         code: 'INVALID_VERIFICATION_TOKEN',
@@ -89,6 +92,8 @@ const [result] = await db.execute(
  
     const newUser = rows[0];
     const token   = generateToken(newUser);
+
+    console.log(`New user registered: ${newUser.full_name} (${newUser.email}) — pending approval.`);
  
     // ── Socket: tell all pastor/elder dashboards about the new application ──
     broadcast('new_member_application', {
@@ -101,6 +106,9 @@ const [result] = await db.execute(
         created_at:        newUser.created_at,
       },
     });
+
+
+    console.log(`Broadcasted new_member_application event for ${newUser.full_name} (${newUser.email})`);
  
     // ── Email: notify admin/pastor inbox ────────────────────────────────────
     const adminEmail = process.env.SUPPORT_EMAIL || process.env.GMAIL_USER;
@@ -112,7 +120,9 @@ const [result] = await db.execute(
       ctaLabel:     'Kagua Maombi',
       ctaUrl:       `${process.env.FRONTEND_URL}/dashboard/members/pending`,
     }).catch(err => console.error('⚠️  Admin notification email failed:', err.message));
- 
+    
+
+    console.log(`Sent admin notification email for new member application: ${newUser.full_name} (${newUser.email})`);
     res.status(201).json({ success: true, token, user: newUser });
   } catch (err) { next(err); }
 };
