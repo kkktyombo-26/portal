@@ -1,7 +1,7 @@
 'use client';
 import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../lib/i18n';
-import { canManageMembers, canManageGroups, canBroadcast, canManageSocialMedia } from '../../lib/auth';
+import { canManageMembers, canManageGroups, canBroadcast,  canManageContent, canManageSocialMedia } from '../../lib/auth';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -134,6 +134,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           labelEn: 'IT Dashboard', labelSw: 'Dashibodi ya IT',
           icon: ICONS.it,
         },
+        canManageContent(user.role) && { href: '/dashboard/content-editor', label: 'Content Editor', sw: 'Mhariri', icon: ICONS.it },
         canManageSocialMedia(user.role) && {
           href: '/dashboard/youtube/upload',
           labelEn: 'Upload to YouTube', labelSw: 'Pakia Video YouTube',

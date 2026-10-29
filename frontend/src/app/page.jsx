@@ -2,19 +2,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { isAuthenticated } from '../lib/auth';
-import api from '../lib/api';
+import api, { siteContentApi } from '../lib/api';
 
 // ── Palette ───────────────────────────────────────────────────────
 const C = {
   navy:  '#1B3A6B', navyD: '#0f2347', navyL: '#E8EDF5',
   gold:  '#C8A84B', goldL: '#F5EDD0',
-  // Calmer, warmer backgrounds — less stark white
-  cream: '#F0EDE6',   // warm parchment instead of near-white
-  stone: '#E6E2D9',   // deeper warm stone
+  cream: '#F0EDE6',
+  stone: '#E6E2D9',
   ink:   '#0f172a', muted: '#64748b', faint: '#94a3b8',
 };
 
-// ── Translations ──────────────────────────────────────────────────
+// ── Translations (hardcoded defaults — DB values overlay these) ───
 const T = {
   en: {
     nav_services: 'Services', nav_schedule: 'Schedule', nav_location: 'Find Us',
@@ -86,7 +85,8 @@ const T = {
   },
 };
 
-const SCHEDULE = [
+// ── Hardcoded defaults (DB values replace these when present) ─────
+const DEFAULT_SCHEDULE = [
   { dayKey: 'sunday',    time: '7:00 AM',  serviceEn: 'Early Morning Service',     serviceSw: 'Ibada ya Asubuhi',         highlight: true  },
   { dayKey: 'sunday',    time: '10:00 AM', serviceEn: 'Main Sunday Worship',        serviceSw: 'Ibada Kuu ya Jumapili',    highlight: true  },
   { dayKey: 'sunday',    time: '3:00 PM',  serviceEn: 'Youth & Children Service',   serviceSw: 'Ibada ya Vijana & Watoto', highlight: false },
@@ -95,7 +95,7 @@ const SCHEDULE = [
   { dayKey: 'saturday',  time: '9:00 AM',  serviceEn: 'Choir & Ministry Rehearsal', serviceSw: 'Mazoezi ya Kwaya',         highlight: false },
 ];
 
-const PASTOR_HOURS = [
+const DEFAULT_PASTOR_HOURS = [
   { dayKey: 'monday',    timeEn: '9:00 AM – 12:00 PM',  timeSw: '9:00 – 12:00 Asubuhi'  },
   { dayKey: 'tuesday',   timeEn: '2:00 PM – 5:00 PM',   timeSw: '2:00 – 5:00 Mchana'    },
   { dayKey: 'wednesday', timeEn: '9:00 AM – 11:00 AM',  timeSw: '9:00 – 11:00 Asubuhi'  },
@@ -103,57 +103,7 @@ const PASTOR_HOURS = [
   { dayKey: 'friday',    timeEn: '10:00 AM – 12:00 PM', timeSw: '10:00 – 12:00 Asubuhi' },
 ];
 
-// ── Hero Slides ───────────────────────────────────────────────────
-const getHeroSlides = (lang, countdown) => [
-  {
-    id: 'welcome',
-    bg: '/worship1.jpeg',
-    tag: 'Kanisa La Kiinjili La Kilutheri',
-    titleLines: ['KKKT DMP', 'YOMBO'],
-    sub: lang === 'sw'
-      ? 'Jumuia ya imani, upendo, na ibada huko Dar es Salaam.'
-      : 'A community of faith, love, and worship in Dar es Salaam.',
-    cta: { label: lang === 'sw' ? 'Jiunge Nasi' : 'Join Our Community', href: '/auth/register' },
-    ctaAlt: { label: lang === 'sw' ? 'Ingia' : 'Sign In', href: '/auth/login' },
-  },
-  {
-    id: 'easter',
-    bg: '/pasaka.jpeg',
-    tag: lang === 'sw' ? 'Matukio Maalum' : 'Special Event',
-    titleLines: lang === 'sw' ? ['MAVUNO', '2026'] : ['MAVUNO', '2026'],
-    sub: lang === 'sw'
-      ? 'Maadimisho ya Sikukuu ya MAVUNO 2026. Karibuni umtolee BWANA kwa moyo wa shukrani.'
-      : 'Celebrating the MAVUNO Festival. Join us for our special MAVUNO services.',
-    countdown,
-    cta: { label: lang === 'sw' ? 'Angalia Ratiba' : 'View Schedule', href: '#schedule' },
-    isEaster: true,
-  },
-  {
-    id: 'youtube',
-    bg: '/youtube.jpeg',
-    tag: lang === 'sw' ? 'Mpya! Chaneli ya YouTube' : 'New! YouTube Channel',
-    titleLines: lang === 'sw' ? ['TAZAMA', 'MTANDAONI'] : ['WATCH US', 'ONLINE'],
-    sub: lang === 'sw'
-      ? 'Tumefungua chaneli yetu ya YouTube! Tazama mahubiri na ibada zetu wakati wowote.'
-      : "We've launched our YouTube channel! Watch our sermons and worship sessions anytime, anywhere.",
-    cta: { label: lang === 'sw' ? 'Jiunge YouTube' : 'Subscribe on YouTube', href: 'https://www.youtube.com/@KKKTDMPYOMBO', external: true },
-    ctaAlt: { label: lang === 'sw' ? 'Fuata Instagram' : 'Follow on Instagram', href: 'https://www.instagram.com/kkktyombo/', external: true },
-    isDigital: true,
-  },
-  {
-    id: 'community',
-    bg: '/community.jpeg',
-    tag: lang === 'sw' ? 'Ushirika' : 'Community',
-    titleLines: lang === 'sw' ? ['JIUNGE', 'NASI'] : ['BE PART', 'OF US'],
-    sub: lang === 'sw'
-      ? 'Jiandikishe kwenye mfumo wetu wa kidijitali na upate matangazo, ratiba, na rasilimali maalum.'
-      : 'Register on our digital portal to access announcements, schedules, and exclusive resources.',
-    cta: { label: lang === 'sw' ? 'Jiandikishe Sasa' : 'Register Now', href: '/auth/register' },
-    ctaAlt: { label: lang === 'sw' ? 'Jifunze Zaidi' : 'Learn More', href: '#carousel' },
-  },
-];
-
-const GALLERY_SLIDES = [
+const DEFAULT_GALLERY_SLIDES = [
   { url: '/sunday.jpeg',    captionEn: 'Sunday Worship',         captionSw: 'Ibada ya Jumapili' },
   { url: '/community.jpeg', captionEn: 'Community & Fellowship', captionSw: 'Ushirika & Umoja' },
   { url: '/kwaya.jpeg',     captionEn: 'Choir Ministration',     captionSw: 'Huduma ya Kwaya' },
@@ -161,6 +111,97 @@ const GALLERY_SLIDES = [
   { url: '/vijana.jpeg',    captionEn: 'Youth Ministry',         captionSw: 'Huduma ya Vijana' },
   { url: '/special.jpeg',   captionEn: 'Special Events',         captionSw: 'Matukio Maalum' },
 ];
+
+// Default staff cards — DB 'staff' block replaces this array when present
+const DEFAULT_STAFF = [
+  {
+    photo: '/pastor.jpeg', altEn: 'Pastor', altSw: 'Mchungaji',
+    name: null, // filled from t.pastor_name at render time
+    roleEn: 'Senior Pastor', roleSw: 'Mchungaji Mkuu',
+    badgeEn: 'Our Shepherd', badgeSw: 'Kiongozi Wetu',
+    featured: true,
+  },
+  {
+    photo: '/evangelist.jpeg', altEn: 'Evangelist', altSw: 'Mwinjilisti',
+    nameEn: 'Evangelist Amos Mntwambwe', nameSw: 'Mwinjilisti Amos Mntwambwe',
+    roleEn: 'Evangelist', roleSw: 'Mwinjilisti',
+    badgeEn: 'The Word', badgeSw: 'Neno',
+    featured: false,
+  },
+  {
+    photo: '/parish.jpeg', altEn: 'Parish Worker', altSw: 'Parish Worker',
+    nameEn: 'P/W Hilda Chuma', nameSw: 'P/W Hilda Chuma',
+    roleEn: 'Parish Worker', roleSw: 'Parish Worker',
+    badgeEn: 'Community', badgeSw: 'Jamii',
+    featured: false,
+  },
+];
+
+// ── Hero slides (lang-aware, always built from DB or defaults) ────
+const buildHeroSlides = (lang, countdown, dbSlides) => {
+  // If the DB has a hero_slides block, use it directly.
+  // The DB stores the slides as a language-neutral array where each slide
+  // has 'sub', 'tag', 'cta.label' etc. stored once. Any per-lang overrides
+  // (e.g. two separate sub fields) are handled in the editor; here we just use
+  // whatever is stored. Fall back to the hardcoded slides when DB is empty.
+  if (dbSlides && Array.isArray(dbSlides) && dbSlides.length > 0) {
+    return dbSlides.map(s => ({
+      ...s,
+      // Attach the live countdown to whichever slide the editor flagged isEaster
+      ...(s.isEaster ? { countdown } : {}),
+    }));
+  }
+
+  // Hardcoded fallback (original getHeroSlides logic preserved in full)
+  return [
+    {
+      id: 'welcome',
+      bg: '/worship1.jpeg',
+      tag: 'Kanisa La Kiinjili La Kilutheri',
+      titleLines: ['KKKT DMP', 'YOMBO'],
+      sub: lang === 'sw'
+        ? 'Jumuia ya imani, upendo, na ibada huko Dar es Salaam.'
+        : 'A community of faith, love, and worship in Dar es Salaam.',
+      cta:    { label: lang === 'sw' ? 'Jiunge Nasi'      : 'Join Our Community', href: '/auth/register' },
+      ctaAlt: { label: lang === 'sw' ? 'Ingia'            : 'Sign In',            href: '/auth/login' },
+    },
+    {
+      id: 'easter',
+      bg: '/pasaka.jpeg',
+      tag: lang === 'sw' ? 'Matukio Maalum' : 'Special Event',
+      titleLines: ['MAVUNO', '2026'],
+      sub: lang === 'sw'
+        ? 'Maadimisho ya Sikukuu ya MAVUNO 2026. Karibuni umtolee BWANA kwa moyo wa shukrani.'
+        : 'Celebrating the MAVUNO Festival. Join us for our special MAVUNO services.',
+      countdown,
+      cta: { label: lang === 'sw' ? 'Angalia Ratiba' : 'View Schedule', href: '#schedule' },
+      isEaster: true,
+    },
+    {
+      id: 'youtube',
+      bg: '/youtube.jpeg',
+      tag: lang === 'sw' ? 'Mpya! Chaneli ya YouTube' : 'New! YouTube Channel',
+      titleLines: lang === 'sw' ? ['TAZAMA', 'MTANDAONI'] : ['WATCH US', 'ONLINE'],
+      sub: lang === 'sw'
+        ? 'Tumefungua chaneli yetu ya YouTube! Tazama mahubiri na ibada zetu wakati wowote.'
+        : "We've launched our YouTube channel! Watch our sermons and worship sessions anytime, anywhere.",
+      cta:    { label: lang === 'sw' ? 'Jiunge YouTube'  : 'Subscribe on YouTube', href: 'https://www.youtube.com/@KKKTDMPYOMBO', external: true },
+      ctaAlt: { label: lang === 'sw' ? 'Fuata Instagram' : 'Follow on Instagram',  href: 'https://www.instagram.com/kkktyombo/',  external: true },
+      isDigital: true,
+    },
+    {
+      id: 'community',
+      bg: '/community.jpeg',
+      tag: lang === 'sw' ? 'Ushirika' : 'Community',
+      titleLines: lang === 'sw' ? ['JIUNGE', 'NASI'] : ['BE PART', 'OF US'],
+      sub: lang === 'sw'
+        ? 'Jiandikishe kwenye mfumo wetu wa kidijitali na upate matangazo, ratiba, na rasilimali maalum.'
+        : 'Register on our digital portal to access announcements, schedules, and exclusive resources.',
+      cta:    { label: lang === 'sw' ? 'Jiandikishe Sasa' : 'Register Now', href: '/auth/register' },
+      ctaAlt: { label: lang === 'sw' ? 'Jifunze Zaidi'    : 'Learn More',   href: '#carousel' },
+    },
+  ];
+};
 
 // ── SVG atoms ─────────────────────────────────────────────────────
 const Rings = ({ size = 120, opacity = 0.06, color = C.gold }) => (
@@ -261,10 +302,21 @@ function useYouTubeVideos() {
   return { videos, loading, error };
 }
 
+// ── Site-content hook — fetches all DB blocks once, silently on error ─────────
+function useSiteContent() {
+  const [db, setDb] = useState({});
+  useEffect(() => {
+    siteContentApi.getAll()
+      .then(res => { if (res.data?.success) setDb(res.data.data ?? {}); })
+      .catch(() => {}); // silently fall back to hardcoded defaults
+  }, []);
+  return db;
+}
+
 // ── Hero Carousel ─────────────────────────────────────────────────
-function HeroCarousel({ lang, isMob }) {
+function HeroCarousel({ lang, isMob, dbSlides }) {
   const countdown = useEasterCountdown();
-  const slides = getHeroSlides(lang, countdown);
+  const slides = buildHeroSlides(lang, countdown, dbSlides);
   const [active,  setActive]  = useState(0);
   const [drag,    setDrag]    = useState(null);
   const [animKey, setAnimKey] = useState(0);
@@ -376,17 +428,17 @@ function HeroCarousel({ lang, isMob }) {
 }
 
 // ── Gallery Carousel ──────────────────────────────────────────────
-function GalleryCarousel({ lang }) {
+function GalleryCarousel({ lang, slides }) {
   const [active, setActive] = useState(0);
   const [drag,   setDrag]   = useState(null);
   const autoRef = useRef(null);
   const isMob   = useIsMobile();
   const resetAuto = useCallback(() => {
     clearInterval(autoRef.current);
-    autoRef.current = setInterval(() => setActive(a => (a + 1) % GALLERY_SLIDES.length), 5000);
-  }, []);
+    autoRef.current = setInterval(() => setActive(a => (a + 1) % slides.length), 5000);
+  }, [slides.length]);
   useEffect(() => { resetAuto(); return () => clearInterval(autoRef.current); }, [resetAuto]);
-  const goTo = i => { setActive((i + GALLERY_SLIDES.length) % GALLERY_SLIDES.length); resetAuto(); };
+  const goTo = i => { setActive((i + slides.length) % slides.length); resetAuto(); };
   const onDown = e => setDrag(e.clientX ?? e.touches?.[0]?.clientX ?? null);
   const onUp   = e => {
     if (drag === null) return;
@@ -399,16 +451,16 @@ function GalleryCarousel({ lang }) {
       onMouseDown={onDown} onMouseUp={onUp} onTouchStart={onDown} onTouchEnd={onUp}
     >
       <div style={{ position: 'relative', aspectRatio: isMob ? '4/3' : '16/7', minHeight: isMob ? 220 : 300, cursor: 'grab' }}>
-        {GALLERY_SLIDES.map((s, i) => (
+        {slides.map((s, i) => (
           <div key={i} style={{ position: 'absolute', inset: 0, opacity: i === active ? 1 : 0, transition: 'opacity 0.7s ease' }}>
             <img src={s.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(15,35,71,0.88) 0%, rgba(15,35,71,0.2) 60%, transparent 100%)' }}/>
           </div>
         ))}
         <div style={{ position: 'absolute', bottom: isMob ? 40 : 52, left: isMob ? 16 : 28, right: isMob ? 16 : 80, zIndex: 2 }}>
-          <p style={{ color: C.gold, fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 4 }}>{active + 1} / {GALLERY_SLIDES.length}</p>
+          <p style={{ color: C.gold, fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 4 }}>{active + 1} / {slides.length}</p>
           <p style={{ color: '#fff', fontSize: isMob ? '1rem' : 'clamp(1.1rem,3vw,1.5rem)', fontWeight: 800, lineHeight: 1.25, textShadow: '0 2px 8px rgba(0,0,0,0.4)' }}>
-            {lang === 'sw' ? GALLERY_SLIDES[active].captionSw : GALLERY_SLIDES[active].captionEn}
+            {lang === 'sw' ? slides[active].captionSw : slides[active].captionEn}
           </p>
         </div>
         {!isMob && ['prev','next'].map(dir => (
@@ -418,28 +470,13 @@ function GalleryCarousel({ lang }) {
           >{dir === 'prev' ? '‹' : '›'}</button>
         ))}
         <div style={{ position: 'absolute', bottom: 14, left: isMob ? 16 : 28, display: 'flex', gap: 5, zIndex: 3 }}>
-          {GALLERY_SLIDES.map((_, i) => (
+          {slides.map((_, i) => (
             <button key={i} onClick={() => goTo(i)} style={{ width: i === active ? 16 : 5, height: 5, borderRadius: 99, padding: 0, border: 'none', background: i === active ? C.gold : 'rgba(255,255,255,0.35)', cursor: 'pointer', transition: 'all 0.3s ease' }}/>
           ))}
         </div>
       </div>
     </div>
   );
-}
-
-
-async function fetchPoToken(videoId) {
-  try {
-    const res = await fetch('/api/po-token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videoId }),
-    });
-    const { token } = await res.json();
-    return token;
-  } catch {
-    return null;
-  }
 }
 
 // ── YouTube helpers ───────────────────────────────────────────────
@@ -571,8 +608,32 @@ export default function LandingPage() {
   const [navSolid,   setNavSolid]   = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isMob = useIsMobile();
-  const t     = T[lang];
   const { videos, loading: ytLoading, error: ytError } = useYouTubeVideos();
+
+  // ── Site content: fetch once, overlay on hardcoded defaults ──────
+  const db = useSiteContent();
+
+  // Merged translations: DB keys win over hardcoded defaults
+  const tBase = T[lang];
+  const tDB   = db[lang === 'en' ? 'translations_en' : 'translations_sw'] ?? {};
+  const t     = { ...tBase, ...tDB };
+
+  // Live arrays — DB version replaces the whole array when present
+  const schedule     = (db.schedule      && db.schedule.length)      ? db.schedule      : DEFAULT_SCHEDULE;
+  const pastorHours  = (db.pastor_hours  && db.pastor_hours.length)  ? db.pastor_hours  : DEFAULT_PASTOR_HOURS;
+  const gallerySlides= (db.gallery_slides&& db.gallery_slides.length) ? db.gallery_slides: DEFAULT_GALLERY_SLIDES;
+  const dbHeroSlides = db.hero_slides ?? null;
+
+  // Staff: DB array is used when present; otherwise patch the first card's
+  // name from the (possibly DB-updated) translation key so pastor_name stays
+  // in sync with the translations_en/sw block even when staff block is absent.
+  const staffCards = (() => {
+    if (db.staff && db.staff.length) return db.staff;
+    return DEFAULT_STAFF.map((m, i) => {
+      if (i === 0) return { ...m, name: t.pastor_name };
+      return { ...m, name: lang === 'sw' ? m.nameSw : m.nameEn };
+    });
+  })();
 
   useEffect(() => {
     setAuthed(isAuthenticated());
@@ -665,7 +726,8 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      <HeroCarousel lang={lang} isMob={isMob}/>
+      {/* ── Hero — receives live DB slides (null = use hardcoded fallback) ── */}
+      <HeroCarousel lang={lang} isMob={isMob} dbSlides={dbHeroSlides}/>
 
       {/* ── Gallery ── */}
       <section id="carousel" style={{ background: C.stone, padding: sp }}>
@@ -678,16 +740,14 @@ export default function LandingPage() {
             <h2 className="cg" style={{ fontSize: isMob ? 'clamp(1.8rem,8vw,2.4rem)' : 'clamp(2rem,4vw,3rem)', fontWeight: 700, color: C.navy, lineHeight: 1.15, letterSpacing: '-0.02em', marginBottom: 8 }}>{t.carousel_title}</h2>
             <p style={{ fontSize: isMob ? 13 : 14, color: C.muted, lineHeight: 1.65, maxWidth: 400 }}>{t.carousel_sub}</p>
           </div>
-          <GalleryCarousel lang={lang}/>
+          {/* Pass live slides — GalleryCarousel is now stateless about the source */}
+          <GalleryCarousel lang={lang} slides={gallerySlides}/>
         </div>
       </section>
-
-
 
       {/* ── Staff / Leadership ── */}
       <section id="pastor" style={{ background: C.cream, padding: sp }}>
         <div ref={pastRef} style={{ maxWidth: 1100, margin: '0 auto', padding: `0 ${px}`, opacity: pastVis ? 1 : 0, transform: pastVis ? 'none' : 'translateY(28px)', transition: 'opacity 0.7s, transform 0.7s' }}>
-
           <div style={{ textAlign: 'center', marginBottom: isMob ? 32 : 52 }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
               <div style={{ height: 1, width: 32, background: C.gold }}/><CrossSVG size={16} color={C.gold}/><div style={{ height: 1, width: 32, background: C.gold }}/>
@@ -698,63 +758,38 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {/* Staff cards */}
+          {/* Staff cards — rendered from live staffCards array */}
           <div style={{ display: 'grid', gridTemplateColumns: isMob ? '1fr' : 'repeat(3, 1fr)', gap: isMob ? 24 : 28, marginBottom: isMob ? 32 : 52 }}>
-            {[
-              {
-                photo: '/pastor.jpeg', altEn: 'Pastor', altSw: 'Mchungaji',
-                name: t.pastor_name, roleEn: 'Senior Pastor', roleSw: 'Mchungaji Mkuu',
-                badgeEn: 'Our Shepherd', badgeSw: 'Kiongozi Wetu',
-              featured: true,
-              },
-              {
-                photo: '/evangelist.jpeg', altEn: 'Evangelist', altSw: 'Mwinjilisti',
-                name: lang === 'sw' ? 'Mwinjilisti Amos Mntwambwe' : 'Evangelist Amos Mntwambwe',
-                roleEn: 'Evangelist', roleSw: 'Mwinjilisti',
-                badgeEn: 'The Word', badgeSw: 'Neno',
-            
-                  featured: false,
-              },
-              {
-                photo: '/parish.jpeg', altEn: 'Parish Worker', altSw: 'Parish Worker',
-                name: 'P/W Hilda Chuma',
-                roleEn: 'Parish Worker', roleSw: 'Parish Worker',
-                badgeEn: 'Community', badgeSw: 'Jamii',
-            
-                
-                  featured: false,
-              },
-            ].map((member, idx) => (
+            {staffCards.map((member, idx) => (
               <div key={idx} style={{ background: member.featured ? C.navyD : '#EAE6DE', borderRadius: 20, overflow: 'hidden', border: `1px solid ${member.featured ? C.gold + '33' : C.navy + '14'}`, boxShadow: member.featured ? `0 20px 60px ${C.navy}33` : `0 4px 24px ${C.navy}0c`, display: 'flex', flexDirection: 'column', opacity: pastVis ? 1 : 0, transform: pastVis ? 'none' : 'translateY(20px)', transition: `opacity 0.7s ease ${idx * 120}ms, transform 0.7s ease ${idx * 120}ms` }}>
                 <div style={{ position: 'relative', aspectRatio: '3/4', background: `linear-gradient(160deg, ${C.navy} 0%, ${C.navyD} 100%)`, overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', top: -30, right: -30, pointerEvents: 'none', zIndex: 0 }}><Rings size={180} opacity={0.06} color={C.gold}/></div>
                   <img
                     src={member.photo}
-                    alt={lang === 'sw' ? member.altSw : member.altEn}
+                    alt={lang === 'sw' ? (member.altSw ?? member.roleSw ?? '') : (member.altEn ?? member.roleEn ?? '')}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block', position: 'relative', zIndex: 1 }}
                     onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling.style.display = 'flex'; }}
                   />
                   <div style={{ display: 'none', position: 'absolute', inset: 0, zIndex: 2, alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
                     <svg width="64" height="64" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="24" r="14" fill={`${C.gold}44`}/><ellipse cx="32" cy="58" rx="22" ry="14" fill={`${C.gold}22`}/></svg>
-                    <span style={{ fontSize: 10, color: `${C.gold}88`, fontWeight: 600, letterSpacing: '0.08em' }}>{lang === 'sw' ? member.altSw : member.altEn}</span>
                   </div>
                   <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 80, zIndex: 3, background: member.featured ? `linear-gradient(to top, ${C.navyD} 0%, transparent 100%)` : `linear-gradient(to top, rgba(15,35,71,0.85) 0%, transparent 100%)` }}/>
                 </div>
                 <div style={{ padding: '18px 20px 20px', background: member.featured ? C.navyD : 'transparent', borderTop: `1px solid ${member.featured ? C.gold + '18' : C.navy + '0a'}`, flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.gold, marginBottom: 2 }}>{lang === 'sw' ? member.badgeSw : member.badgeEn}</p>
-                  <h3 className="cg" style={{ fontSize: isMob ? '1.35rem' : '1.5rem', fontWeight: 700, color: member.featured ? '#fff' : C.navy, lineHeight: 1.15, letterSpacing: '-0.01em', marginBottom: 2 }}>{member.name}</h3>
-                  <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', color: member.featured ? 'rgba(255,255,255,0.45)' : C.muted, marginBottom: 10 }}>{lang === 'sw' ? member.roleSw : member.roleEn}</p>
-                  <p style={{ fontSize: 12, color: member.featured ? 'rgba(255,255,255,0.55)' : C.muted, lineHeight: 1.7 }}>{member.bio}</p>
+                  <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.gold, marginBottom: 2 }}>{lang === 'sw' ? (member.badgeSw ?? '') : (member.badgeEn ?? '')}</p>
+                  <h3 className="cg" style={{ fontSize: isMob ? '1.35rem' : '1.5rem', fontWeight: 700, color: member.featured ? '#fff' : C.navy, lineHeight: 1.15, letterSpacing: '-0.01em', marginBottom: 2 }}>{member.name ?? (lang === 'sw' ? member.nameSw : member.nameEn)}</h3>
+                  <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', color: member.featured ? 'rgba(255,255,255,0.45)' : C.muted, marginBottom: 10 }}>{lang === 'sw' ? (member.roleSw ?? '') : (member.roleEn ?? '')}</p>
+                  <p style={{ fontSize: 12, color: member.featured ? 'rgba(255,255,255,0.55)' : C.muted, lineHeight: 1.7 }}>{member.bio ?? ''}</p>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Bio + Office Hours */}
+          {/* Bio + Office Hours — uses live pastorHours */}
           <div style={{ display: 'grid', gridTemplateColumns: isMob ? '1fr' : '1fr 1fr', gap: isMob ? 28 : 48, alignItems: 'start', background: C.stone, borderRadius: 20, border: `1px solid ${C.navy}0a`, padding: isMob ? '24px 20px' : '40px 44px' }}>
             <div>
               <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.gold, marginBottom: 10 }}>{lang === 'sw' ? 'Kuhusu Mchungaji' : 'About the Pastor'}</p>
-                    <Link href="/auth/register" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 99, background: C.navy, color: '#fff', fontSize: 13, fontWeight: 800, letterSpacing: '0.02em', boxShadow: `0 4px 18px ${C.navy}33` }}>
+              <Link href="/auth/register" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 99, background: C.navy, color: '#fff', fontSize: 13, fontWeight: 800, letterSpacing: '0.02em', boxShadow: `0 4px 18px ${C.navy}33` }}>
                 {t.pastor_meet}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </Link>
@@ -765,7 +800,7 @@ export default function LandingPage() {
                 <h4 style={{ fontSize: 12, fontWeight: 800, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{t.pastor_hours_title}</h4>
               </div>
               <div style={{ padding: '8px 4px' }}>
-                {PASTOR_HOURS.map((h, i) => (
+                {pastorHours.map((h, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px', borderRadius: 10, margin: '2px 4px', background: i % 2 === 0 ? C.stone : 'transparent' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: C.gold, flexShrink: 0 }}/>
@@ -792,7 +827,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Schedule ── */}
+      {/* ── Schedule — uses live schedule array ── */}
       <section id="schedule" style={{ background: C.stone, padding: sp }}>
         <div ref={schRef} style={{ maxWidth: 860, margin: '0 auto', padding: `0 ${px}`, opacity: schVis ? 1 : 0, transform: schVis ? 'none' : 'translateY(28px)', transition: 'opacity 0.7s, transform 0.7s' }}>
           <div style={{ textAlign: 'center', marginBottom: isMob ? 32 : 52 }}>
@@ -803,7 +838,7 @@ export default function LandingPage() {
             <p style={{ fontSize: isMob ? 13 : 15, color: C.muted, lineHeight: 1.65 }}>{t.schedule_sub}</p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {SCHEDULE.map((s, i) => (
+            {schedule.map((s, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'stretch', background: s.highlight ? C.navy : C.cream, border: `1px solid ${s.highlight ? C.gold + '33' : C.navy + '10'}`, borderLeft: `4px solid ${s.highlight ? C.gold : C.navy + '28'}`, borderRadius: 12, overflow: 'hidden', boxShadow: s.highlight ? `0 4px 18px ${C.navy}22` : 'none', opacity: schVis ? 1 : 0, transform: schVis ? 'none' : 'translateX(-16px)', transition: `opacity 0.5s ease ${i * 65}ms, transform 0.5s ease ${i * 65}ms` }}>
                 <div style={{ flexShrink: 0, width: isMob ? 86 : 108, padding: isMob ? '14px 10px' : '18px 16px', borderRight: `1px solid ${s.highlight ? 'rgba(255,255,255,0.1)' : C.navy + '10'}` }}>
                   <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: s.highlight ? C.gold : C.navy, marginBottom: 2 }}>{t.days[s.dayKey]}</p>

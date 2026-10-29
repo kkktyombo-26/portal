@@ -1,9 +1,9 @@
 const express = require('express');
 const cors = require('cors');
-const http = require('http');                          // ← add
+const http = require('http');
 require('dotenv').config();
 
-const { initSocket } = require('./socket');            // ← add
+const { initSocket } = require('./socket');
 
 const authRoutes          = require('./routes/auth');
 const userRoutes          = require('./routes/users');
@@ -14,15 +14,14 @@ const eventRoutes         = require('./routes/events');
 const formTemplatesRouter = require('./routes/formTemplates');
 const youtubeRoutes       = require('./routes/youtube');
 const waRoutes            = require('./routes/whatsapp');
+const siteContentRoutes   = require('./routes/siteContent');
 const errorHandler        = require('./middleware/errorHandler');
 
-
-
 const app    = express();
-const server = http.createServer(app);                // ← add
+const server = http.createServer(app);
 const PORT   = process.env.PORT || 4000;
 
-initSocket(server);                                   // ← add
+initSocket(server);
 
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true }));
 app.use(express.json({ limit: '10gb' }));
@@ -39,12 +38,12 @@ app.use('/emails',             emailRoutes);
 app.use('/api/whatsapp',       waRoutes);
 app.use('/api/youtube',        youtubeRoutes);
 app.use('/api/youtube/upload', require('./routes/upload'));
-
 app.use('/api/uploaded-forms', require('./routes/uploadedForms'));
+app.use('/api/site-content',   siteContentRoutes);
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
 app.use(errorHandler);
 
-server.listen(PORT, () =>                             // ← was app.listen
+server.listen(PORT, () =>
   console.log(`✅ Church Portal API running on http://localhost:${PORT}`)
 );
