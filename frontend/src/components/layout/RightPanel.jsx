@@ -137,7 +137,7 @@ function GroupsList({ lang }) {
                   {lang === 'sw' ? (g.name_sw || g.name) : g.name}
                 </p>
                 <p className="text-2xs text-ink-faint mt-0.5 font-mono">
-                  {g.member_count} {lang === 'sw' ? 'wanachama' : 'members'}
+                  {g.member_count} {lang === 'sw' ? 'washarika' : 'members'}
                 </p>
               </div>
               <span className="text-ink-faint text-xs opacity-0 group-hover:opacity-100 transition-opacity">→</span>

@@ -20,7 +20,7 @@ const GROUP_ICONS = {
 
 const ROLE_LABELS = {
   en: { pastor:'Pastor', elder:'Elder', group_leader:'Leader', member:'Member' },
-  sw: { pastor:'Mchungaji', elder:'Mzee', group_leader:'Kiongozi', member:'Mwanachama' },
+  sw: { pastor:'Mchungaji', elder:'Mzee', group_leader:'Kiongozi', member:'Mshirika' },
 };
 
 export default function GroupDetailPage() {
@@ -114,7 +114,7 @@ export default function GroupDetailPage() {
     try {
       setAddingMember(true);
       await groupApi.addMember(id, selectedUserId);
-      showToast(lang === 'sw' ? 'Mwanachama ameongezwa' : 'Member added');
+      showToast(lang === 'sw' ? 'Mshirika ameongezwa' : 'Member added');
       setAddOpen(false);
       setSelectedUserId('');
       fetchMembers();
@@ -129,7 +129,7 @@ export default function GroupDetailPage() {
   const handleRemoveMember = async (userId) => {
     try {
       await groupApi.removeMember(id, userId);
-      showToast(lang === 'sw' ? 'Mwanachama ameondolewa' : 'Member removed');
+      showToast(lang === 'sw' ? 'Mshirika ameondolewa' : 'Member removed');
       setRemoveId(null);
       fetchMembers();
       fetchGroup();
@@ -182,14 +182,14 @@ export default function GroupDetailPage() {
             </span>
             <span className="text-ink-faint">·</span>
             <span className="font-mono text-xs text-ink-faint">
-              {members.length} {lang === 'sw' ? 'wanachama' : 'members'}
+              {members.length} {lang === 'sw' ? 'mshirika' : 'members'}
             </span>
           </span>
         }
         action={isPastor && (
           <div className="flex items-center gap-2">
             <button onClick={() => setAddOpen(true)} className="btn-secondary text-sm">
-              + {lang === 'sw' ? 'Ongeza Mwanachama' : 'Add Member'}
+              + {lang === 'sw' ? 'Ongeza Mshirika' : 'Add Member'}
             </button>
             <button onClick={() => setEditOpen(true)} className="btn-primary text-sm">
               {lang === 'sw' ? 'Hariri' : 'Edit Group'}
@@ -229,7 +229,7 @@ export default function GroupDetailPage() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <p className="section-label">
-              {lang === 'sw' ? 'Wanachama' : 'Members'}
+              {lang === 'sw' ? 'Mshirika' : 'Members'}
               <span className="ml-2 badge-navy normal-case tracking-normal font-mono">{members.length}</span>
             </p>
           </div>
@@ -238,7 +238,7 @@ export default function GroupDetailPage() {
 
           {members.length === 0 ? (
             <div className="py-12 text-center text-sm text-ink-muted">
-              {lang === 'sw' ? 'Hakuna wanachama bado' : 'No members yet'}
+              {lang === 'sw' ? 'Hakuna mshirika bado' : 'No members yet'}
             </div>
           ) : (
             members.map((m, i) => (
@@ -318,7 +318,7 @@ export default function GroupDetailPage() {
       </Modal>
 
       {/* Add Member Modal */}
-      <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Ongeza Mwanachama' : 'Add Member'}>
+      <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Ongeza Mshirika' : 'Add Member'}>
         <div className="space-y-4">
           <div>
             <label className="field-label">{lang === 'sw' ? 'Chagua Mtu' : 'Select Person'}</label>
@@ -349,7 +349,7 @@ export default function GroupDetailPage() {
       </Modal>
 
       {/* Remove Member Confirm */}
-      <Modal isOpen={!!removeId} onClose={() => setRemoveId(null)} title={lang === 'sw' ? 'Ondoa Mwanachama?' : 'Remove Member?'}>
+      <Modal isOpen={!!removeId} onClose={() => setRemoveId(null)} title={lang === 'sw' ? 'Ondoa Mshirika?' : 'Remove Member?'}>
         <p className="text-sm text-ink-muted">{t('confirm_delete')}</p>
         <div className="hairline mt-5 mb-4" />
         <div className="flex gap-3 justify-end">

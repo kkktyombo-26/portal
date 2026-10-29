@@ -551,7 +551,7 @@ export default function PendingMembersPage() {
             Maombi ya kujiunga
           </h1>
           <p style={{ margin: "6px 0 0", fontSize: 14, color: "var(--color-text-secondary)" }}>
-            Kagua na idhinisha au ukatae wanachama wapya wanaoomba kujiunga na kanisa.
+            Kagua na idhinisha au ukatae washarika wapya wanaoomba kujiunga na kanisa.
           </p>
         </div>
 

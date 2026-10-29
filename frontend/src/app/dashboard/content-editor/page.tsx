@@ -632,10 +632,12 @@ export default function EditorPage() {
 
   return (
     <div className="pb-8">
-      <PageHeader
-        title={lang === 'sw' ? 'Mhariri wa Maudhui' : 'Content Editor'}
-        subtitle={lang === 'sw' ? 'Simamia kurasa ya umma na hadithi' : 'Manage the public landing page and stories'}
-      />
+     <PageHeader
+  breadcrumb={null}
+  title={lang === 'sw' ? 'Mhariri wa Maudhui' : 'Content Editor'}
+  subtitle={lang === 'sw' ? 'Simamia kurasa ya umma na hadithi' : 'Manage the public landing page and stories'}
+  action={null}
+/>
 
       {/* Main tabs */}
       <div className="flex gap-0 border-b border-hairline bg-canvas sticky top-0 z-10">

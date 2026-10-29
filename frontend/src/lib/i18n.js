@@ -196,7 +196,7 @@ export const translations = {
   sw: {
     // ── Nav ──────────────────────────────────────────────────────
     dashboard:      'Dashibodi',
-    members:        'Wanachama',
+    members:        'Washarika',
     groups:         'Vikundi',
     announcements:  'Matangazo',
     settings:       'Mipangilio',
@@ -222,11 +222,11 @@ tab_upload: "Pakia",
     pastor:         'Mchungaji',
     elder:          'Mzee',
     group_leader:   'Kiongozi wa Kikundi',
-    member:         'Mwanachama',
+    member:         'Mshirika',
 
     // ── Dashboard overview ───────────────────────────────────────
-    total_members:        'Jumla ya Wanachama',
-    active_members:       'Wanachama Wanaofanya Kazi',
+    total_members:        'Jumla ya Washarika',
+    active_members:       'Washarika Wanaofanya Kazi',
     total_groups:         'Vikundi',
     recent_announcements: 'Matangazo ya Hivi Karibuni',
 
@@ -243,19 +243,19 @@ tab_upload: "Pakia",
     posted_by:        'Imetumwa na',
 
     // ── Members ──────────────────────────────────────────────────
-    add_member:    'Ongeza Mwanachama',
+    add_member:    'Ongeza Mshirika',
     deactivate:    'Lemaza',
     activate:      'Wezesha',
-    delete_member: 'Ondoa Mwanachama',
+    delete_member: 'Ondoa Mshirika',
     assign_group:  'Weka Kikundi',
-    member_since:  'Mwanachama tangu',
+    member_since:  'Mshirika tangu',
 
     // ── Groups ───────────────────────────────────────────────────
     new_group:     'Kikundi Kipya',
     group_type:    'Aina ya Kikundi',
     group_name_en: 'Jina la Kikundi (Kiingereza)',
     group_name_sw: 'Jina la Kikundi (Kiswahili)',
-    members_count: 'Wanachama',
+    members_count: 'Washarika',
 
     // ── Common actions ───────────────────────────────────────────
     save:           'Hifadhi',
@@ -353,7 +353,7 @@ tab_upload: "Pakia",
     check_announce:      'Wajulishe mchungaji/mshereheshaji: mtiririko unaendelea',
 
     // Checklist items — During Service
-    check_monitor_chat:     'Fuatilia mazungumzo ya moja kwa moja (tenga mwanachama 1)',
+    check_monitor_chat:     'Fuatilia mazungumzo ya moja kwa moja (tenga msharika 1)',
     check_camera_switch:    'Badilisha kamera wakati wa mahubiri/ibada',
     check_copyright_watch:  'Angalia muziki wenye hakimiliki — zima sauti ikiwa inahitajika',
     check_internet_monitor: 'Angalia utulivu wa intaneti kila dakika 15',

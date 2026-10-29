@@ -9,7 +9,7 @@ const ROLE_LABELS = {
   pastor:       { en: 'Pastor',       sw: 'Mchungaji' },
   elder:        { en: 'Elder',        sw: 'Mzee' },
   group_leader: { en: 'Group Leader', sw: 'Kiongozi' },
-  member:       { en: 'Member',       sw: 'Mwanachama' },
+  member:       { en: 'Member',       sw: 'Mshirika' },
 };
 
 // ── Nav icons — custom SVG paths, no emoji ────────────────────────
@@ -134,10 +134,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           labelEn: 'IT Dashboard', labelSw: 'Dashibodi ya IT',
           icon: ICONS.it,
         },
-        canManageContent(user.role) && { href: '/dashboard/content-editor', label: 'Content Editor', sw: 'Mhariri', icon: ICONS.it },
+        canManageContent(user.role) && { href: '/dashboard/content-editor', labelEn: 'Content Editor', labelSw: 'Hariri Maudhui ya Web', icon: ICONS.it },
         canManageSocialMedia(user.role) && {
-          href: '/dashboard/youtube/upload',
-          labelEn: 'Upload to YouTube', labelSw: 'Pakia Video YouTube',
+          href: '/dashboard/youtube/trim',
+          labelEn: 'Cut YouTube Video', labelSw: 'Kata Kipande Video YouTube',
           icon: ICONS.upload,
         },
       ].filter(Boolean),
@@ -188,7 +188,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
               </svg>
             </div>
             <p className="font-display text-sm font-bold text-ink tracking-tight leading-tight truncate">
-              {lang === 'sw' ? 'Mfumo wa Kanisa' : 'Church Portal'}
+              {lang === 'sw' ? 'KKKT DMP YOMBO' : 'KKKT DMP YOMBO'}
             </p>
           </div>
           <button onClick={onMobileClose} className="md:hidden btn-ghost w-7 h-7 text-base leading-none">×</button>

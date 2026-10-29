@@ -67,7 +67,7 @@ const T = {
     portal_title: 'Pata Taarifa Maalum Kwako',
     portal_sub: 'Jiandikishe kupitia mfumo wetu ili upate ratiba kamili, matangazo ya vikundi, na rasilimali za kanisa — maalum kwako.',
     portal_cta: 'Jiandikishe Sasa',
-    portal_login: 'Tayari mwanachama? Ingia',
+    portal_login: 'Tayari mshirika? Ingia',
     portal_features: ['Matangazo & arifa', 'Ratiba za vikundi', 'Ukumbusho wa matukio', 'Rasilimali za kidijitali'],
     footer_rights: 'Haki zote zimehifadhiwa.',
     pastor_title: 'Kukutana na Mchungaji Wetu',
