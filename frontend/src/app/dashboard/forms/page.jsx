@@ -768,7 +768,7 @@ async function buildPdfDoc(tpl, lang) {
   doc.setDrawColor(231, 229, 224); doc.setLineWidth(0.3);
   doc.line(margin, y, pageW - margin, y); y += 8;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(168, 162, 158);
-  doc.text('Church Portal  ·  ' + new Date().toLocaleDateString(), margin, y); y += 10;
+  doc.text('KKKT DMP YOMBO  ·  ' + new Date().toLocaleDateString(), margin, y); y += 10;
 
   for (const field of fields) {
     const label = (lang === 'sw' ? field.label_sw : field.label_en) || field.label_en;

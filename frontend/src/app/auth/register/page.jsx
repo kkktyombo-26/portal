@@ -612,7 +612,7 @@ function LogoBlock({ sw }) {
     <div style={{ textAlign: 'center', marginBottom: 24 }}>
       <img src="https://res.cloudinary.com/dcka18xuw/image/upload/v1775397623/luther_rb1fbu.webp" alt="KKKT Yombo DMP" style={{ width: 64, height: 64, objectFit: 'contain', marginBottom: 12 }} />
       <h1 style={{ margin: '0 0 3px', fontSize: 16, fontWeight: 800, color: '#1B3A6B', letterSpacing: '0.01em' }}>KKKT Yombo DMP</h1>
-      <p style={{ margin: 0, fontSize: 11, color: '#9CA3AF', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{sw ? 'Mfumo wa Kanisa' : 'Church Portal'}</p>
+      <p style={{ margin: 0, fontSize: 11, color: '#9CA3AF', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{sw ? 'KKKT DMP YOMBO' : 'KKKT DMP YOMBO'}</p>
     </div>
   );
 }

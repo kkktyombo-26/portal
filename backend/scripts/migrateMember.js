@@ -52,6 +52,8 @@ async function main() {
         ADD COLUMN gender ENUM('Male','Female') NULL AFTER phone
     `);
 
+    await run('email',`ALTER TABLE users MODIFY COLUMN email VARCHAR(255) NULL;`);
+
     await run('date_of_birth column', `
       ALTER TABLE users
         ADD COLUMN date_of_birth DATE NULL AFTER gender

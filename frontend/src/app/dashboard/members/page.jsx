@@ -7,6 +7,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import Modal from '../../../components/ui/Modal';
 import Toast from '../../../components/ui/Toast';
 import RoleBadge from '../../../components/ui/RoleBadge';
+import AdminAddMemberModal from '../../../components/members/AdminMemberModal';
 
 // ─── Inline style tokens ──────────────────────────────────────────────────────
 const tokens = {
@@ -885,6 +886,7 @@ export default function MembersPage() {
   const [filter, setFilter]   = useState('all');  // all | active | inactive | amehamia | amefariki
   const [toast, setToast]     = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+  const [showAddMember, setShowAddMember] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [saving, setSaving]   = useState(false);
 
@@ -1026,6 +1028,26 @@ export default function MembersPage() {
                 </span>
               </button>
             ))}
+
+              {(user?.role === 'pastor' || user?.role === 'elder') && (
+    <button
+      onClick={() => setShowAddMember(true)}
+      style={{
+        padding: '8px 16px', borderRadius: 9,
+        background: tokens.navy, color: '#fff',
+        border: 'none', fontSize: 12, fontWeight: 700,
+        cursor: 'pointer', whiteSpace: 'nowrap',
+        display: 'flex', alignItems: 'center', gap: 6,
+        transition: 'background 0.12s',
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = tokens.navyLight; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = tokens.navy; }}
+    >
+      <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+      Add Member
+    </button>
+  )}
           </div>
         </div>
 
@@ -1085,6 +1107,18 @@ export default function MembersPage() {
           onSaved={() => { setEditUser(null); fetchMembers(); showToast(lang === 'sw' ? 'Mshirika amesasishwa' : 'Member updated'); }}
         />
       )}
+
+      {/* Add Member Modal */}
+{showAddMember && (
+  <AdminAddMemberModal
+    onClose={() => setShowAddMember(false)}
+    onAdded={() => {
+      setShowAddMember(false);
+      fetchMembers();
+      showToast('Member added successfully');
+    }}
+  />
+)}
 
       {/* Delete Confirm Modal */}
       <Modal isOpen={!!deleteId} onClose={() => setDeleteId(null)} title={t('delete_member')}>

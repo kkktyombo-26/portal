@@ -12,6 +12,12 @@ const generateToken = (user) => jwt.sign(
   { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
 );
 
+function generateTempPassword(length = 10) {
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789!@#';
+  return Array.from({ length }, () =>
+    chars[Math.floor(Math.random() * chars.length)]
+  ).join('');
+}
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/register
 // ═══════════════════════════════════════════════════════════
@@ -124,6 +130,282 @@ const [result] = await db.execute(
 
     console.log(`Sent admin notification email for new member application: ${newUser.full_name} (${newUser.email})`);
     res.status(201).json({ success: true, token, user: newUser });
+  } catch (err) { next(err); }
+};
+
+
+
+// ═══════════════════════════════════════════════════════════
+// POST /api/auth/admin-create  — pastor / elder only
+// Creates a fully active member, bypassing the OTP flow.
+// ═══════════════════════════════════════════════════════════
+
+exports.adminCreateUser = async (req, res, next) => {
+  try {
+    const {
+      full_name, email, phone, role = 'member',
+      group_id, namba_ya_usharika,
+      gender, date_of_birth, member_status = 'hai',
+      password: suppliedPassword,
+    } = req.body;
+
+    // ── Require at least email or phone ──────────────────────
+    if (!email && !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least an email address or phone number is required.',
+      });
+    }
+
+    // ── Duplicate check (only if email provided) ─────────────
+    if (email) {
+      const [existing] = await db.execute(
+        'SELECT id FROM users WHERE email = ?', [email]
+      );
+      if (existing.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: 'A user with this email already exists.',
+        });
+      }
+    }
+
+    // ── Duplicate check on phone (only if phone provided) ────
+    if (phone) {
+      const [existingPhone] = await db.execute(
+        'SELECT id FROM users WHERE phone = ?', [phone]
+      );
+      if (existingPhone.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: 'A user with this phone number already exists.',
+        });
+      }
+    }
+
+    // ── Password: use supplied one or generate a random one ──
+    const isGenerated = !suppliedPassword;
+    const rawPassword = suppliedPassword || generateTempPassword();
+    const hashed      = await bcrypt.hash(rawPassword, 12);
+
+    // ── Insert — already active & verified ───────────────────
+    const [result] = await db.execute(
+      `INSERT INTO users
+         (full_name, email, password, role, group_id,
+          phone, namba_ya_usharika,
+          gender, date_of_birth, member_status,
+          is_active, is_verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)`,
+      [
+        full_name,
+        email             || null,
+        hashed,
+        role,
+        group_id          || null,
+        phone             || null,
+        namba_ya_usharika || null,
+        gender            || null,
+        date_of_birth     || null,
+        member_status,
+      ]
+    );
+
+    const newUserId = result.insertId;
+
+    // ── Email: only if member has an email address ────────────
+    if (email) {
+      sendWelcomeEmail(email, {
+        memberName:        full_name,
+        role,
+        temporaryPassword: isGenerated ? rawPassword : null,
+        addedBy:           req.user.name,
+      }).catch(err => console.error('⚠️  Welcome email failed:', err.message));
+    }
+
+    // ── Socket: notify dashboards ─────────────────────────────
+    broadcast('member_added_by_admin', {
+      id:       newUserId,
+      full_name,
+      email:    email || null,
+      role,
+      addedBy:  req.user.name,
+    });
+
+    console.log(
+      `Admin ${req.user.name} created member ${full_name} (${email || phone}) — id=${newUserId}`
+    );
+
+    res.status(201).json({
+      success:           true,
+      message:           `${full_name} has been added successfully.`,
+      userId:            newUserId,
+      temporaryPassword: isGenerated ? rawPassword : undefined,
+    });
+  } catch (err) { next(err); }
+};
+
+
+// ═══════════════════════════════════════════════════════════
+// POST /api/auth/admin-bulk-create  — pastor / elder only
+//
+// Accepts an array of user objects and creates each one.
+// Returns a per-row result so the caller knows exactly which
+// rows succeeded and which failed (e.g. duplicate email).
+// ═══════════════════════════════════════════════════════════
+exports.adminBulkCreateUsers = async (req, res, next) => {
+  try {
+    const { users } = req.body; // [{ full_name, email, phone, role, ... }]
+
+    if (!Array.isArray(users) || users.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'A non-empty "users" array is required.',
+      });
+    }
+
+    if (users.length > 200) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 200 members per bulk upload.',
+      });
+    }
+
+    const results = [];   // { row, status: 'created'|'skipped', reason?, userId? }
+
+    for (let i = 0; i < users.length; i++) {
+      const row = i + 1; // 1-based for human-readable feedback
+      const {
+        full_name,
+        email,
+        phone,
+        role              = 'member',
+        group_id,
+        namba_ya_usharika,
+        gender,
+        date_of_birth,
+        member_status     = 'hai',
+        password: suppliedPassword,
+      } = users[i];
+
+      // ── Basic validation ────────────────────────────────
+      if (!full_name || !String(full_name).trim()) {
+        results.push({ row, status: 'skipped', reason: 'Missing full_name.' });
+        continue;
+      }
+      if (!email && !phone) {
+        results.push({ row, status: 'skipped', name: full_name, reason: 'Email or phone is required.' });
+        continue;
+      }
+
+      // ── Duplicate guards ────────────────────────────────
+      try {
+        if (email) {
+          const [dup] = await db.execute(
+            'SELECT id FROM users WHERE email = ?', [email]
+          );
+          if (dup.length > 0) {
+            results.push({ row, status: 'skipped', name: full_name, reason: `Email "${email}" already exists.` });
+            continue;
+          }
+        }
+
+        if (phone) {
+          const [dupPhone] = await db.execute(
+            'SELECT id FROM users WHERE phone = ?', [phone]
+          );
+          if (dupPhone.length > 0) {
+            results.push({ row, status: 'skipped', name: full_name, reason: `Phone "${phone}" already exists.` });
+            continue;
+          }
+        }
+
+        // ── Password ──────────────────────────────────────
+        const isGenerated = !suppliedPassword;
+        const rawPassword = suppliedPassword || generateTempPassword();
+        const hashed      = await bcrypt.hash(rawPassword, 12);
+
+        // ── Insert ─────────────────────────────────────────
+        const [result] = await db.execute(
+          `INSERT INTO users
+             (full_name, email, password, role, group_id,
+              phone, namba_ya_usharika,
+              gender, date_of_birth, member_status,
+              is_active, is_verified)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)`,
+          [
+            String(full_name).trim(),
+            email             || null,
+            hashed,
+            role,
+            group_id          || null,
+            phone             || null,
+            namba_ya_usharika || null,
+            gender            || null,
+            date_of_birth     || null,
+            member_status,
+          ]
+        );
+
+        const newUserId = result.insertId;
+
+        // ── Welcome email (fire-and-forget) ───────────────
+        if (email) {
+          sendWelcomeEmail(email, {
+            memberName:        String(full_name).trim(),
+            role,
+            temporaryPassword: isGenerated ? rawPassword : null,
+            addedBy:           req.user.name,
+          }).catch(err =>
+            console.error(`⚠️  Welcome email failed for ${email}:`, err.message)
+          );
+        }
+
+        results.push({
+          row,
+          status:            'created',
+          name:              String(full_name).trim(),
+          email:             email || null,
+          userId:            newUserId,
+          temporaryPassword: isGenerated ? rawPassword : undefined,
+        });
+      } catch (rowErr) {
+        // Don't abort the whole batch — capture the error and continue
+        console.error(`Bulk create row ${row} error:`, rowErr.message);
+        results.push({ row, status: 'error', name: full_name, reason: rowErr.message });
+      }
+    }
+
+    // ── Summary ─────────────────────────────────────────────
+    const created = results.filter(r => r.status === 'created');
+    const skipped = results.filter(r => r.status !== 'created');
+
+    // Socket broadcast once for all new members
+    if (created.length > 0) {
+      broadcast('members_bulk_added_by_admin', {
+        count:   created.length,
+        addedBy: req.user.name,
+        members: created.map(r => ({
+          id:        r.userId,
+          full_name: r.name,
+          email:     r.email,
+        })),
+      });
+    }
+
+    console.log(
+      `Admin ${req.user.name} bulk-created ${created.length}/${users.length} members ` +
+      `(${skipped.length} skipped/errored)`
+    );
+
+    return res.status(201).json({
+      success: true,
+      summary: {
+        total:   users.length,
+        created: created.length,
+        skipped: skipped.length,
+      },
+      results,
+    });
   } catch (err) { next(err); }
 };
  

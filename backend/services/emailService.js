@@ -170,7 +170,7 @@ async function sendOTP(to, otp, purpose = 'login', expiresIn = 10) {
 async function sendWelcomeEmail(to, { memberName, role = 'Mwanakamati', congregationGroup = '' }) {
   const body = `
     <h2 style="margin:0 0 4px;color:#111827;font-size:20px;">Karibu ${CHURCH_NAME}! 🙏</h2>
-    <p style="color:#6b7280;font-size:14px;margin:0 0 24px;">Welcome to the Church Portal</p>
+    <p style="color:#6b7280;font-size:14px;margin:0 0 24px;">Welcome to the KKKT DMP YOMBO</p>
 
     <p style="color:#374151;font-size:15px;margin:0 0 16px;">
       Habari <strong>${memberName}</strong>,<br/>

@@ -3,7 +3,7 @@
 
 import ProfilePage from '../../../components/profile/ProfilePage';
 
-export const metadata = { title: 'My Profile — Church Portal' };
+export const metadata = { title: 'My Profile — KKKT DMP YOMBO' };
 
 export default function Page() {
   return <ProfilePage />;

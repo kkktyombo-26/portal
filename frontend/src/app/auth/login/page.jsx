@@ -672,7 +672,7 @@ function LogoBlock({ sw }) {
         KKKT Yombo DMP
       </h1>
       <p style={{margin:0, fontSize:11, color:'#9CA3AF', letterSpacing:'0.06em', textTransform:'uppercase'}}>
-        {sw ? 'Mfumo wa Kanisa' : 'Church Portal'}
+        {sw ? 'KKKT DMP YOMBO' : 'KKKT YOMBO DMP'}
       </p>
     </div>
   );

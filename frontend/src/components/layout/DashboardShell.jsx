@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import RightPanel from './RightPanel';
 import { useAuth } from '../../hooks/useAuth';
 
+
 export default function DashboardShell({ children }) {
   const [sidebarOpen,    setSidebarOpen]    = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
@@ -13,14 +14,15 @@ export default function DashboardShell({ children }) {
     <div className="min-h-screen bg-surface flex">
 
       {/* ── Left sidebar ── */}
-      <Sidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
+      <div className="sticky top-0 h-screen flex-shrink-0">
+        <Sidebar mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
+      </div>
 
       {/* ── Main content ── */}
       <div className="flex-1 flex flex-col min-h-screen min-w-0">
 
         {/* Mobile top bar */}
         <header className="xl:hidden bg-canvas border-b border-hairline h-14 flex items-center px-4 gap-3 sticky top-0 z-20 flex-shrink-0">
-          {/* Left: hamburger (sidebar) */}
           <button onClick={() => setSidebarOpen(true)}
             className="btn-ghost w-9 h-9 flex items-center justify-center" aria-label="Menu">
             <svg width="18" height="13" viewBox="0 0 18 13" fill="none">
@@ -30,15 +32,12 @@ export default function DashboardShell({ children }) {
             </svg>
           </button>
 
-          {/* Title */}
           <span className="font-display text-base font-bold text-ink flex-1">
-            {lang === 'sw' ? 'Mfumo wa Kanisa' : 'Church Portal'}
+            {lang === 'sw' ? 'KKKT DMP YOMBO' : 'KKKT DMP YOMBO'}
           </span>
 
-          {/* Right: info panel toggle */}
           <button onClick={() => setRightPanelOpen(true)}
             className="btn-ghost w-9 h-9 flex items-center justify-center" aria-label="Church info">
-            {/* Info icon — bare, Rule 4 */}
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <circle cx="9" cy="9" r="7.5" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M9 8v5M9 6.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -53,11 +52,14 @@ export default function DashboardShell({ children }) {
       </div>
 
       {/* ── Right panel ── */}
-      <RightPanel
-        lang={lang}
-        mobileOpen={rightPanelOpen}
-        onMobileClose={() => setRightPanelOpen(false)}
-      />
+      <div className="sticky top-0 h-screen flex-shrink-0">
+        <RightPanel
+          lang={lang}
+          mobileOpen={rightPanelOpen}
+          onMobileClose={() => setRightPanelOpen(false)}
+        />
+      </div>
     </div>
   );
 }
+
