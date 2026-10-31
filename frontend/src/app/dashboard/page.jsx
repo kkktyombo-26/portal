@@ -8,8 +8,8 @@ import StatCard from '../../components/ui/StatCard';
 import RoleBadge from '../../components/ui/RoleBadge';
 
 const ROLE_GREETINGS = {
-  en: { pastor: 'Good day, Pastor', elder: 'Good day, Elder', group_leader: 'Good day', member: 'Welcome' },
-  sw: { pastor: 'Habari, Mchungaji', elder: 'Habari, Mzee', group_leader: 'Habari', member: 'Karibu' },
+  en: { pastor: ' Pastor', elder: ' Elder', group_leader: 'Leader', member: 'Msharika' },
+  sw: { pastor: 'Mchungaji', elder: 'Mzee', group_leader: 'Kiongozi', member: 'Msharika' },
 };
 
 export default function DashboardPage() {

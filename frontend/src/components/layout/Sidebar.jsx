@@ -168,7 +168,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           md:translate-x-0 md:static md:h-screen
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
-        style={{ boxShadow: 'inset 0 3px 0 0 var(--gold)' }}
+     
       >
 
         {/* ── Wordmark ──────────────────────────────────────────── */}
