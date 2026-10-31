@@ -2,9 +2,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 
-// Add these imports ↓
-const { broadcast, notifyUser } = require('../socket/index');        // adjust path as needed
-const { sendNotification, sendWelcomeEmail } = require('../services/emailService'); 
+const { broadcast, notifyUser } = require('../socket/index');
+const { sendNotification, sendWelcomeEmail } = require('../services/emailService');
 
 const generateToken = (user) => jwt.sign(
   { id: user.id, role: user.role, name: user.full_name, groupId: user.group_id },
@@ -18,23 +17,20 @@ function generateTempPassword(length = 10) {
     chars[Math.floor(Math.random() * chars.length)]
   ).join('');
 }
+
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/register
 // ═══════════════════════════════════════════════════════════
 exports.register = async (req, res, next) => {
   try {
-    // Destructure it from req.body
-const {
-  full_name, email, password, role, group_id,
-  phone, namba_ya_usharika,
-  verifiedToken,
-  profile_photo_url = null,   // ← NEW
-} = req.body;
+    const {
+      full_name, email, password, role, group_id,
+      phone, namba_ya_usharika,
+      verifiedToken,
+      profile_photo_url = null,
+    } = req.body;
 
-      // ── NEW: require a valid email-verification token ──────────────────────
     if (!verifiedToken) {
-
-      console.log('Email verification token missing for registration:', email);
       return res.status(400).json({
         success: false,
         code: 'EMAIL_NOT_VERIFIED',
@@ -50,7 +46,6 @@ const {
     );
 
     if (tokenRows.length === 0) {
-      console.log('Invalid or expired email verification token for registration:', email);  
       return res.status(400).json({
         success: false,
         code: 'INVALID_VERIFICATION_TOKEN',
@@ -58,50 +53,43 @@ const {
       });
     }
 
-    // Burn the token so it cannot be reused
     await db.execute(
       'UPDATE email_verification_otps SET verified_token = NULL WHERE id = ?',
       [tokenRows[0].id]
     );
-    // 
- 
+
     const [existing] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
     if (existing.length > 0) {
       return res.status(409).json({ success: false, message: 'Email already registered.' });
     }
- 
+
     const hashed = await bcrypt.hash(password, 12);
- 
-    // New members start inactive/unverified — a leader must approve them
-// Add it to the INSERT
-const [result] = await db.execute(
-  `INSERT INTO users
-     (full_name, email, password, role, group_id, phone, namba_ya_usharika,
-      profile_photo_url, is_active, is_verified)          -- ← NEW column
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
-  [
-    full_name, email, hashed,
-    role || 'member',
-    group_id          || null,
-    phone             || null,
-    namba_ya_usharika || null,
-    profile_photo_url || null,                            // ← NEW value
-  ]
-);
- 
+
+    const [result] = await db.execute(
+      `INSERT INTO users
+         (full_name, email, password, role, group_id, phone, namba_ya_usharika,
+          profile_photo_url, is_active, is_verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+      [
+        full_name, email, hashed,
+        role || 'member',
+        group_id          || null,
+        phone             || null,
+        namba_ya_usharika || null,
+        profile_photo_url || null,
+      ]
+    );
+
     const [rows] = await db.execute(
       `SELECT id, full_name, email, role, group_id, phone, namba_ya_usharika,
               is_active, is_verified, created_at
        FROM users WHERE id = ?`,
       [result.insertId]
     );
- 
+
     const newUser = rows[0];
     const token   = generateToken(newUser);
 
-    console.log(`New user registered: ${newUser.full_name} (${newUser.email}) — pending approval.`);
- 
-    // ── Socket: tell all pastor/elder dashboards about the new application ──
     broadcast('new_member_application', {
       user: {
         id:                newUser.id,
@@ -113,10 +101,6 @@ const [result] = await db.execute(
       },
     });
 
-
-    console.log(`Broadcasted new_member_application event for ${newUser.full_name} (${newUser.email})`);
- 
-    // ── Email: notify admin/pastor inbox ────────────────────────────────────
     const adminEmail = process.env.SUPPORT_EMAIL || process.env.GMAIL_USER;
     sendNotification(adminEmail, {
       title:        'Maombi Mapya ya Kujiunga',
@@ -126,27 +110,64 @@ const [result] = await db.execute(
       ctaLabel:     'Kagua Maombi',
       ctaUrl:       `${process.env.FRONTEND_URL}/dashboard/members/pending`,
     }).catch(err => console.error('⚠️  Admin notification email failed:', err.message));
-    
 
-    console.log(`Sent admin notification email for new member application: ${newUser.full_name} (${newUser.email})`);
     res.status(201).json({ success: true, token, user: newUser });
   } catch (err) { next(err); }
 };
 
 
-
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/admin-create  — pastor / elder only
 // Creates a fully active member, bypassing the OTP flow.
+// Handles all extended profile fields + dependants.
 // ═══════════════════════════════════════════════════════════
-
 exports.adminCreateUser = async (req, res, next) => {
   try {
     const {
-      full_name, email, phone, role = 'member',
-      group_id, namba_ya_usharika,
-      gender, date_of_birth, member_status = 'hai',
+      // ── Account ──────────────────────────────────────────
+      full_name,
+      email,
+      phone,
+      role              = 'member',
+      group_id,
+      namba_ya_usharika,
       password: suppliedPassword,
+
+      // ── Personal ─────────────────────────────────────────
+      gender,
+      date_of_birth,
+      place_of_birth,
+
+      // ── Marital ──────────────────────────────────────────
+      marital_status,
+      marriage_type,
+      marriage_date,
+      marriage_place,
+      spouse_name,
+      spouse_phone,
+      cohabiting_partner_name,
+
+      // ── Professional ─────────────────────────────────────
+      occupation,
+      workplace,
+      education,
+      profession,
+      willing_to_volunteer,
+
+      // ── Residence ────────────────────────────────────────
+      jumuiya,
+      block_no,
+      area_name,
+      slp,
+      neighbour_member_name,
+      neighbour_member_phone,
+      elder_name,
+      elder_phone,
+      previous_church,
+
+      // ── Dependants ────────────────────────────────────────
+      // Array of { full_name, date_of_birth?, relationship? }
+      dependants = [],
     } = req.body;
 
     // ── Require at least email or phone ──────────────────────
@@ -157,7 +178,7 @@ exports.adminCreateUser = async (req, res, next) => {
       });
     }
 
-    // ── Duplicate check (only if email provided) ─────────────
+    // ── Duplicate check on email ──────────────────────────────
     if (email) {
       const [existing] = await db.execute(
         'SELECT id FROM users WHERE email = ?', [email]
@@ -170,7 +191,7 @@ exports.adminCreateUser = async (req, res, next) => {
       }
     }
 
-    // ── Duplicate check on phone (only if phone provided) ────
+    // ── Duplicate check on phone ──────────────────────────────
     if (phone) {
       const [existingPhone] = await db.execute(
         'SELECT id FROM users WHERE phone = ?', [phone]
@@ -183,36 +204,113 @@ exports.adminCreateUser = async (req, res, next) => {
       }
     }
 
-    // ── Password: use supplied one or generate a random one ──
+    // ── Password ──────────────────────────────────────────────
     const isGenerated = !suppliedPassword;
     const rawPassword = suppliedPassword || generateTempPassword();
     const hashed      = await bcrypt.hash(rawPassword, 12);
 
-    // ── Insert — already active & verified ───────────────────
+    // ── Normalise willing_to_volunteer → TINYINT ──────────────
+    // Frontend sends true/false (boolean) or 'true'/'false' (string from bulk)
+    let volunteerVal = null;
+    if (willing_to_volunteer !== undefined && willing_to_volunteer !== null && willing_to_volunteer !== '') {
+      volunteerVal = (willing_to_volunteer === true || willing_to_volunteer === 'true') ? 1 : 0;
+    }
+
+    // ── INSERT user with all profile fields ───────────────────
     const [result] = await db.execute(
-      `INSERT INTO users
-         (full_name, email, password, role, group_id,
-          phone, namba_ya_usharika,
-          gender, date_of_birth, member_status,
-          is_active, is_verified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)`,
+      `INSERT INTO users (
+        full_name, email, password, role, group_id,
+        phone, namba_ya_usharika,
+        gender, date_of_birth, place_of_birth,
+        marital_status, marriage_type, marriage_date, marriage_place,
+        spouse_name, spouse_phone, cohabiting_partner_name,
+        occupation, workplace, education, profession, willing_to_volunteer,
+        jumuiya, block_no, area_name, slp,
+        neighbour_member_name, neighbour_member_phone,
+        elder_name, elder_phone, previous_church,
+        is_active, is_verified
+      ) VALUES (
+        ?, ?, ?, ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        1, 1
+      )`,
       [
         full_name,
-        email             || null,
+        email                   || null,
         hashed,
         role,
-        group_id          || null,
-        phone             || null,
-        namba_ya_usharika || null,
-        gender            || null,
-        date_of_birth     || null,
-        member_status,
+        group_id                || null,
+
+        phone                   || null,
+        namba_ya_usharika       || null,
+
+        gender                  || null,
+        date_of_birth           || null,
+        place_of_birth          || null,
+
+        marital_status          || null,
+        marriage_type           || null,
+        marriage_date           || null,
+        marriage_place          || null,
+
+        spouse_name             || null,
+        spouse_phone            || null,
+        cohabiting_partner_name || null,
+
+        occupation              || null,
+        workplace               || null,
+        education               || null,
+        profession              || null,
+        volunteerVal,
+
+        jumuiya                 || null,
+        block_no                || null,
+        area_name               || null,
+        slp                     || null,
+
+        neighbour_member_name   || null,
+        neighbour_member_phone  || null,
+
+        elder_name              || null,
+        elder_phone             || null,
+        previous_church         || null,
       ]
     );
 
     const newUserId = result.insertId;
 
-    // ── Email: only if member has an email address ────────────
+    // ── Insert dependants ─────────────────────────────────────
+    if (Array.isArray(dependants) && dependants.length > 0) {
+      const validDeps = dependants.filter(d => d.full_name && String(d.full_name).trim());
+
+      if (validDeps.length > 0) {
+        const depValues = validDeps.map(d => [
+          newUserId,
+          String(d.full_name).trim(),
+          d.date_of_birth  || null,
+          d.relationship   || null,
+        ]);
+
+        // Batch insert all dependants in one query
+        const placeholders = depValues.map(() => '(?, ?, ?, ?)').join(', ');
+        const flatValues   = depValues.flat();
+
+        await db.execute(
+          `INSERT INTO member_dependants (member_id, full_name, date_of_birth, relationship)
+           VALUES ${placeholders}`,
+          flatValues
+        );
+      }
+    }
+
+    // ── Welcome email ─────────────────────────────────────────
     if (email) {
       sendWelcomeEmail(email, {
         memberName:        full_name,
@@ -222,7 +320,7 @@ exports.adminCreateUser = async (req, res, next) => {
       }).catch(err => console.error('⚠️  Welcome email failed:', err.message));
     }
 
-    // ── Socket: notify dashboards ─────────────────────────────
+    // ── Socket broadcast ──────────────────────────────────────
     broadcast('member_added_by_admin', {
       id:       newUserId,
       full_name,
@@ -247,14 +345,10 @@ exports.adminCreateUser = async (req, res, next) => {
 
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/admin-bulk-create  — pastor / elder only
-//
-// Accepts an array of user objects and creates each one.
-// Returns a per-row result so the caller knows exactly which
-// rows succeeded and which failed (e.g. duplicate email).
 // ═══════════════════════════════════════════════════════════
 exports.adminBulkCreateUsers = async (req, res, next) => {
   try {
-    const { users } = req.body; // [{ full_name, email, phone, role, ... }]
+    const { users } = req.body;
 
     if (!Array.isArray(users) || users.length === 0) {
       return res.status(400).json({
@@ -270,10 +364,10 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
       });
     }
 
-    const results = [];   // { row, status: 'created'|'skipped', reason?, userId? }
+    const results = [];
 
     for (let i = 0; i < users.length; i++) {
-      const row = i + 1; // 1-based for human-readable feedback
+      const row = i + 1;
       const {
         full_name,
         email,
@@ -281,13 +375,34 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         role              = 'member',
         group_id,
         namba_ya_usharika,
+        password: suppliedPassword,
         gender,
         date_of_birth,
-        member_status     = 'hai',
-        password: suppliedPassword,
+        place_of_birth,
+        marital_status,
+        marriage_type,
+        marriage_date,
+        marriage_place,
+        spouse_name,
+        spouse_phone,
+        cohabiting_partner_name,
+        occupation,
+        workplace,
+        education,
+        profession,
+        willing_to_volunteer,
+        jumuiya,
+        block_no,
+        area_name,
+        slp,
+        neighbour_member_name,
+        neighbour_member_phone,
+        elder_name,
+        elder_phone,
+        previous_church,
       } = users[i];
 
-      // ── Basic validation ────────────────────────────────
+      // ── Basic validation ──────────────────────────────────
       if (!full_name || !String(full_name).trim()) {
         results.push({ row, status: 'skipped', reason: 'Missing full_name.' });
         continue;
@@ -297,12 +412,10 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         continue;
       }
 
-      // ── Duplicate guards ────────────────────────────────
       try {
+        // ── Duplicate guards ────────────────────────────────
         if (email) {
-          const [dup] = await db.execute(
-            'SELECT id FROM users WHERE email = ?', [email]
-          );
+          const [dup] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
           if (dup.length > 0) {
             results.push({ row, status: 'skipped', name: full_name, reason: `Email "${email}" already exists.` });
             continue;
@@ -310,9 +423,7 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         }
 
         if (phone) {
-          const [dupPhone] = await db.execute(
-            'SELECT id FROM users WHERE phone = ?', [phone]
-          );
+          const [dupPhone] = await db.execute('SELECT id FROM users WHERE phone = ?', [phone]);
           if (dupPhone.length > 0) {
             results.push({ row, status: 'skipped', name: full_name, reason: `Phone "${phone}" already exists.` });
             continue;
@@ -324,31 +435,83 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         const rawPassword = suppliedPassword || generateTempPassword();
         const hashed      = await bcrypt.hash(rawPassword, 12);
 
-        // ── Insert ─────────────────────────────────────────
+        // ── Normalise willing_to_volunteer ─────────────────
+        let volunteerVal = null;
+        if (willing_to_volunteer !== undefined && willing_to_volunteer !== null && willing_to_volunteer !== '') {
+          volunteerVal = (willing_to_volunteer === true || willing_to_volunteer === 'true') ? 1 : 0;
+        }
+
+        // ── INSERT ─────────────────────────────────────────
         const [result] = await db.execute(
-          `INSERT INTO users
-             (full_name, email, password, role, group_id,
-              phone, namba_ya_usharika,
-              gender, date_of_birth, member_status,
-              is_active, is_verified)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)`,
+          `INSERT INTO users (
+            full_name, email, password, role, group_id,
+            phone, namba_ya_usharika,
+            gender, date_of_birth, place_of_birth,
+            marital_status, marriage_type, marriage_date, marriage_place,
+            spouse_name, spouse_phone, cohabiting_partner_name,
+            occupation, workplace, education, profession, willing_to_volunteer,
+            jumuiya, block_no, area_name, slp,
+            neighbour_member_name, neighbour_member_phone,
+            elder_name, elder_phone, previous_church,
+            is_active, is_verified
+          ) VALUES (
+            ?, ?, ?, ?, ?,
+            ?, ?,
+            ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?,
+            ?, ?, ?,
+            1, 1
+          )`,
           [
             String(full_name).trim(),
-            email             || null,
+            email                   || null,
             hashed,
             role,
-            group_id          || null,
-            phone             || null,
-            namba_ya_usharika || null,
-            gender            || null,
-            date_of_birth     || null,
-            member_status,
+            group_id                || null,
+
+            phone                   || null,
+            namba_ya_usharika       || null,
+
+            gender                  || null,
+            date_of_birth           || null,
+            place_of_birth          || null,
+
+            marital_status          || null,
+            marriage_type           || null,
+            marriage_date           || null,
+            marriage_place          || null,
+
+            spouse_name             || null,
+            spouse_phone            || null,
+            cohabiting_partner_name || null,
+
+            occupation              || null,
+            workplace               || null,
+            education               || null,
+            profession              || null,
+            volunteerVal,
+
+            jumuiya                 || null,
+            block_no                || null,
+            area_name               || null,
+            slp                     || null,
+
+            neighbour_member_name   || null,
+            neighbour_member_phone  || null,
+
+            elder_name              || null,
+            elder_phone             || null,
+            previous_church         || null,
           ]
         );
 
         const newUserId = result.insertId;
 
-        // ── Welcome email (fire-and-forget) ───────────────
+        // ── Welcome email ─────────────────────────────────
         if (email) {
           sendWelcomeEmail(email, {
             memberName:        String(full_name).trim(),
@@ -368,18 +531,17 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
           userId:            newUserId,
           temporaryPassword: isGenerated ? rawPassword : undefined,
         });
+
       } catch (rowErr) {
-        // Don't abort the whole batch — capture the error and continue
         console.error(`Bulk create row ${row} error:`, rowErr.message);
         results.push({ row, status: 'error', name: full_name, reason: rowErr.message });
       }
     }
 
-    // ── Summary ─────────────────────────────────────────────
+    // ── Summary ───────────────────────────────────────────────
     const created = results.filter(r => r.status === 'created');
     const skipped = results.filter(r => r.status !== 'created');
 
-    // Socket broadcast once for all new members
     if (created.length > 0) {
       broadcast('members_bulk_added_by_admin', {
         count:   created.length,
@@ -399,40 +561,36 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
 
     return res.status(201).json({
       success: true,
-      summary: {
-        total:   users.length,
-        created: created.length,
-        skipped: skipped.length,
-      },
+      summary: { total: users.length, created: created.length, skipped: skipped.length },
       results,
     });
   } catch (err) { next(err); }
 };
- 
+
+
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/login
 // ═══════════════════════════════════════════════════════════
 exports.login = async (req, res, next) => {
   try {
     const { identifier, password } = req.body;
- 
+
     if (!identifier || !password) {
       return res.status(400).json({ success: false, message: 'Identifier and password are required.' });
     }
- 
+
     const [rows] = await db.execute(
       `SELECT * FROM users
        WHERE email = ? OR phone = ? OR namba_ya_usharika = ?`,
       [identifier, identifier, identifier]
     );
- 
+
     if (rows.length === 0) {
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
- 
+
     const user = rows[0];
- 
-    // Pending approval — let the frontend know with a specific code
+
     if (!user.is_active) {
       return res.status(403).json({
         success: false,
@@ -440,102 +598,98 @@ exports.login = async (req, res, next) => {
         message: 'Akaunti yako bado haikuidhinishwa. Tafadhali subiri idhini ya kiongozi.',
       });
     }
- 
+
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
- 
+
     await db.execute('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
- 
+
     const token = generateToken(user);
     const { password: _, ...safeUser } = user;
     res.json({ success: true, token, user: safeUser });
   } catch (err) { next(err); }
 };
- 
+
+
 // ═══════════════════════════════════════════════════════════
 // PATCH /api/auth/approve/:id   — pastor / elder only
 // ═══════════════════════════════════════════════════════════
 exports.approveUser = async (req, res, next) => {
   try {
     const { id } = req.params;
- 
+
     const [rows] = await db.execute(
       'SELECT id, full_name, email FROM users WHERE id = ?', [id]
     );
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
- 
+
     const user = rows[0];
- 
+
     await db.execute(
       'UPDATE users SET is_active = 1, is_verified = 1 WHERE id = ?', [id]
     );
- 
-    // ── Socket: notify the user in real-time ──────────────────────────────
+
     notifyUser(id, 'account_approved', {
       message:    'Akaunti yako imeidhinishwa! Sasa unaweza kuingia.',
       message_en: 'Your account has been approved! You can now sign in.',
     });
- 
-    // ── Email: welcome email ───────────────────────────────────────────────
+
     sendWelcomeEmail(user.email, {
       memberName: user.full_name,
       role:       'Mwanakamati',
     }).catch(err => console.error('⚠️  Welcome email failed:', err.message));
- 
+
     res.json({ success: true, message: `${user.full_name} approved successfully.` });
   } catch (err) { next(err); }
 };
- 
+
+
 // ═══════════════════════════════════════════════════════════
 // PATCH /api/auth/reject/:id    — pastor / elder only
-// Body: { reason? }
 // ═══════════════════════════════════════════════════════════
 exports.rejectUser = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { reason = '' } = req.body;
- 
+
     const [rows] = await db.execute(
       'SELECT id, full_name, email FROM users WHERE id = ?', [id]
     );
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
- 
+
     const user = rows[0];
- 
-    // Keep the row but mark as inactive + unverified (soft reject)
+
     await db.execute(
       'UPDATE users SET is_active = 0, is_verified = 0 WHERE id = ?', [id]
     );
- 
-    // ── Socket: notify user in real-time ──────────────────────────────────
+
     notifyUser(id, 'account_rejected', {
       message:    'Ombi lako halikukubaliwa. Wasiliana na kanisa kwa maelezo zaidi.',
       message_en: 'Your application was not approved. Please contact the church for more information.',
       reason,
     });
- 
-    // ── Email: rejection notice ───────────────────────────────────────────
+
     sendNotification(user.email, {
       title:        'Kuhusu Ombi Lako',
       titleSwahili: 'Regarding Your Application',
       message:      `Ndugu ${user.full_name}, ombi lako la kujiunga halikukubaliwa kwa sasa.${reason ? ` Sababu: ${reason}.` : ''} Wasiliana na ofisi ya kanisa kwa maelezo zaidi.`,
       type:         'warning',
     }).catch(err => console.error('⚠️  Rejection email failed:', err.message));
- 
+
     res.json({ success: true, message: `${user.full_name} rejected.` });
   } catch (err) { next(err); }
 };
- 
+
+
 // ═══════════════════════════════════════════════════════════
 // GET /api/auth/pending          — pastor / elder only
 // ═══════════════════════════════════════════════════════════
-// GET /api/auth/pending          — pastor / elder only
 exports.getPendingUsers = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
@@ -549,7 +703,8 @@ exports.getPendingUsers = async (req, res, next) => {
     res.json({ success: true, users: rows });
   } catch (err) { next(err); }
 };
- 
+
+
 // ═══════════════════════════════════════════════════════════
 // GET /api/auth/me
 // ═══════════════════════════════════════════════════════════

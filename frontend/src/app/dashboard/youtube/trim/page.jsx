@@ -40,55 +40,41 @@ function extractVideoId(url) {
 function FieldLabel({ children, hint }) {
   return (
     <div style={{ marginBottom: 6 }}>
-      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-ink-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-        {children}
-      </label>
-      {hint && <p style={{ fontSize: 11, color: 'var(--color-ink-faint)', marginTop: 2 }}>{hint}</p>}
+      <label className="form-label">{children}</label>
+      {hint && <p className="form-hint">{hint}</p>}
     </div>
   );
 }
 
-function Input({ value, onChange, placeholder, type = 'text', error }) {
+function Field({ value, onChange, placeholder, type = 'text', error }) {
   return (
     <input
       type={type}
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      style={{
-        width: '100%', boxSizing: 'border-box',
-        padding: '9px 12px', fontSize: 13,
-        border: `1px solid ${error ? 'var(--color-error-border)' : 'var(--color-border)'}`,
-        borderRadius: 8, outline: 'none',
-        background: 'var(--color-canvas)',
-        color: 'var(--color-ink)',
-        transition: 'border-color 0.15s, box-shadow 0.15s',
-      }}
-      onFocus={e => { e.target.style.borderColor = '#1B3A6B'; e.target.style.boxShadow = '0 0 0 3px rgba(27,58,107,0.12)'; }}
-      onBlur={e => { e.target.style.borderColor = error ? 'var(--color-error-border)' : 'var(--color-border)'; e.target.style.boxShadow = 'none'; }}
+      className={`input${error ? ' error' : ''}`}
     />
   );
 }
 
 function StatusPill({ status }) {
   const map = {
-    idle:        { label: 'Ready',      bg: 'var(--color-surface)',    color: 'var(--color-ink-muted)' },
-    preparing:   { label: 'Preparing…', bg: '#EFF6FF',                 color: '#1D4ED8' },
-    downloading: { label: 'Trimming…',  bg: 'var(--color-navy-muted)', color: 'var(--color-navy-text)' },
-    done:        { label: 'Complete',   bg: 'var(--color-success-bg)', color: 'var(--color-success-text)' },
-    error:       { label: 'Failed',     bg: 'var(--color-error-bg)',   color: 'var(--color-error-text)' },
+    idle:        { label: 'Ready',      className: 'badge badge-neutral' },
+    preparing:   { label: 'Preparing…', className: 'badge badge-navy'    },
+    downloading: { label: 'Trimming…',  className: 'badge badge-navy'    },
+    done:        { label: 'Complete',   className: 'badge badge-success'  },
+    error:       { label: 'Failed',     className: 'badge badge-danger'   },
   };
   const s = map[status] || map.idle;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-      background: s.bg, color: s.color,
-    }}>
+    <span className={s.className}>
       {status === 'downloading' && (
         <span style={{
           width: 6, height: 6, borderRadius: '50%',
-          background: 'var(--color-navy)', animation: 'pulse 1.5s ease-in-out infinite',
+          background: 'var(--navy)',
+          animation: 'pulse 1.5s ease-in-out infinite',
+          display: 'inline-block',
         }}/>
       )}
       {s.label}
@@ -103,13 +89,12 @@ export default function YTTrimPage() {
   const [end,      setEnd]      = useState('');
   const [endMode,  setEndMode]  = useState('endtime');
   const [filename, setFilename] = useState('');
-  const [status,   setStatus]   = useState('idle'); // idle | preparing | downloading | done | error
+  const [status,   setStatus]   = useState('idle');
   const [error,    setError]    = useState('');
   const [progress, setProgress] = useState(0);
   const [errors,   setErrors]   = useState({});
   const abortRef = useRef(null);
 
-  // Derived
   const videoId  = extractVideoId(url);
   const startSec = toSeconds(start);
   const endSec   = toSeconds(end);
@@ -140,7 +125,6 @@ export default function YTTrimPage() {
     setStatus('preparing');
     setProgress(0);
 
-    // Build request body — only fields the API accepts
     const body = {
       url:      url.trim(),
       start:    start.trim(),
@@ -169,7 +153,6 @@ export default function YTTrimPage() {
 
       setStatus('downloading');
 
-      // Stream response to a blob, tracking bytes received
       const reader = res.body.getReader();
       const chunks = [];
       let received = 0;
@@ -181,7 +164,6 @@ export default function YTTrimPage() {
         setProgress(received);
       }
 
-      // Derive filename from Content-Disposition header or fallback
       const cd    = res.headers.get('Content-Disposition') || '';
       const match = cd.match(/filename="?([^"]+)"?/);
       const fname = match?.[1] || body.filename || 'clip.mp4';
@@ -220,63 +202,60 @@ export default function YTTrimPage() {
   const busy = status === 'preparing' || status === 'downloading';
 
   return (
-    <div style={{ padding: '28px 24px', maxWidth: 680, margin: '0 auto' }}>
+    <div style={{ padding: '2rem 2.5rem', maxWidth: 680 }}>
 
       {/* ── Page header ── */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <span style={{
-            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-            background: 'linear-gradient(135deg, #1B3A6B 0%, #2a5298 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
-              <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/>
-            </svg>
-          </span>
-          <div>
-            <h1 style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-ink)', margin: 0, lineHeight: 1.2 }}>
-              Clip Trimmer
-            </h1>
-            <p style={{ fontSize: 12, color: 'var(--color-ink-faint)', margin: 0 }}>
-              Trim a YouTube video and download it as an MP4
-            </p>
+      <div style={{ marginBottom: '1.75rem' }}>
+        <p className="page-header-eyebrow" style={{ position: 'static' }}>IT Desk</p>
+        <div className="flex items-center justify-between gap-4 mt-1">
+          <div className="flex items-center gap-3">
+            <div style={{
+              width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+              background: 'var(--navy)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/>
+              </svg>
+            </div>
+            <div>
+              <h1 className="font-display font-bold" style={{ fontSize: '1.25rem', letterSpacing: '-0.02em', color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                Clip Trimmer
+              </h1>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', marginTop: 2 }}>
+                Trim a YouTube video and download it as an MP4
+              </p>
+            </div>
           </div>
-          <div style={{ marginLeft: 'auto' }}>
-            <StatusPill status={status} />
-          </div>
+          <StatusPill status={status} />
         </div>
       </div>
 
       {/* ── Form card ── */}
-      <div style={{
-        background: 'var(--color-canvas)',
-        border: '1px solid var(--color-hairline)',
-        borderRadius: 12,
-        overflow: 'hidden',
-        boxShadow: '0 2px 6px rgba(28,25,23,0.06)',
-      }}>
+      <div className="card">
 
         {/* Video URL */}
-        <div style={{ padding: '20px 20px 0' }}>
-          <FieldLabel hint="Paste any youtube.com or youtu.be link">Video URL</FieldLabel>
-          <Input
-            value={url}
-            onChange={v => { setUrl(v); setErrors(e => ({ ...e, url: '' })); }}
-            placeholder="https://www.youtube.com/watch?v=..."
-            error={errors.url}
-          />
-          {errors.url && <p style={{ fontSize: 11, color: 'var(--color-error-text)', marginTop: 4 }}>{errors.url}</p>}
+        <div className="card-body" style={{ paddingBottom: 0 }}>
+          <div className="form-group">
+            <FieldLabel hint="Paste any youtube.com or youtu.be link">Video URL</FieldLabel>
+            <Field
+              value={url}
+              onChange={v => { setUrl(v); setErrors(e => ({ ...e, url: '' })); }}
+              placeholder="https://www.youtube.com/watch?v=..."
+              error={errors.url}
+            />
+            {errors.url && <p className="form-error">{errors.url}</p>}
+          </div>
         </div>
 
         {/* Thumbnail preview */}
         {videoId && (
-          <div style={{ padding: '12px 20px 0' }}>
+          <div style={{ padding: '0.75rem 1.5rem 0' }}>
             <div style={{
-              borderRadius: 8, overflow: 'hidden',
-              border: '1px solid var(--color-hairline)',
+              borderRadius: 6, overflow: 'hidden',
+              border: '1px solid var(--border-subtle)',
               position: 'relative', background: '#000',
-              aspectRatio: '16/5', maxHeight: 120,
+              aspectRatio: '16/5', maxHeight: 110,
             }}>
               <img
                 src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
@@ -285,10 +264,10 @@ export default function YTTrimPage() {
               />
               <div style={{
                 position: 'absolute', inset: 0,
-                background: 'linear-gradient(to right, rgba(0,0,0,0.5) 0%, transparent 50%)',
-                display: 'flex', alignItems: 'center', padding: '0 16px',
+                background: 'linear-gradient(to right, rgba(6,13,26,0.65) 0%, transparent 55%)',
+                display: 'flex', alignItems: 'center', padding: '0 1rem',
               }}>
-                <p style={{ color: '#fff', fontSize: 12, fontWeight: 600, margin: 0, maxWidth: 260 }}>
+                <p style={{ color: '#fff', fontSize: '0.75rem', fontWeight: 600, margin: 0, maxWidth: 260 }}>
                   Video found — set your clip times below
                 </p>
               </div>
@@ -297,52 +276,39 @@ export default function YTTrimPage() {
         )}
 
         {/* Timing row */}
-        <div style={{ padding: '16px 20px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div>
+        <div style={{ padding: '1rem 1.5rem 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div className="form-group">
             <FieldLabel hint="HH:MM:SS or plain seconds">Start time</FieldLabel>
-            <Input
+            <Field
               value={start}
               onChange={v => { setStart(v); setErrors(e => ({ ...e, start: '' })); }}
               placeholder="0:30 or 30"
               error={errors.start}
             />
-            {errors.start && <p style={{ fontSize: 11, color: 'var(--color-error-text)', marginTop: 4 }}>{errors.start}</p>}
+            {errors.start && <p className="form-error">{errors.start}</p>}
           </div>
-          <div>
+          <div className="form-group">
             <FieldLabel hint={endMode === 'duration' ? 'How many seconds to clip' : 'HH:MM:SS or plain seconds'}>
               {endMode === 'duration' ? 'Duration (seconds)' : 'End time'}
             </FieldLabel>
-            <Input
+            <Field
               value={end}
               onChange={v => { setEnd(v); setErrors(e => ({ ...e, end: '' })); }}
               placeholder={endMode === 'duration' ? '60' : '1:30 or 90'}
               error={errors.end}
             />
-            {errors.end && <p style={{ fontSize: 11, color: 'var(--color-error-text)', marginTop: 4 }}>{errors.end}</p>}
+            {errors.end && <p className="form-error">{errors.end}</p>}
           </div>
         </div>
 
         {/* End mode toggle + duration preview */}
-        <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 2,
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-hairline)',
-            borderRadius: 8, padding: 3,
-          }}>
+        <div style={{ padding: '0.625rem 1.5rem 0', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div className="tabs-pill">
             {[['endtime', 'End time'], ['duration', 'Duration']].map(([val, label]) => (
               <button
                 key={val}
                 onClick={() => { setEndMode(val); setErrors(e => ({ ...e, end: '' })); }}
-                style={{
-                  padding: '4px 12px', fontSize: 11, fontWeight: 700,
-                  borderRadius: 6, border: 'none', cursor: 'pointer',
-                  background: endMode === val
-                    ? 'linear-gradient(135deg, #1B3A6B 0%, #2a5298 100%)'
-                    : 'transparent',
-                  color: endMode === val ? '#fff' : 'var(--color-ink-muted)',
-                  transition: 'all 0.15s',
-                }}
+                className={`tab-pill${endMode === val ? ' active' : ''}`}
               >
                 {label}
               </button>
@@ -350,125 +316,94 @@ export default function YTTrimPage() {
           </div>
 
           {duration != null && duration > 0 && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '4px 10px', borderRadius: 8,
-              background: 'var(--color-gold-light)',
-              border: '1px solid var(--color-gold-border)',
-            }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-gold-dark)" strokeWidth="2" strokeLinecap="round">
+            <div className="badge badge-gold" style={{ gap: '0.375rem' }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>
               </svg>
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-gold-dark)' }}>
-                {formatDuration(duration)} clip
-              </span>
+              {formatDuration(duration)} clip
               {duration > 3600 && (
-                <span style={{ fontSize: 11, color: 'var(--color-error-text)', fontWeight: 600 }}>
-                  — exceeds 1 hour limit
-                </span>
+                <span className="badge badge-danger" style={{ marginLeft: 4 }}>exceeds 1 hour limit</span>
               )}
             </div>
           )}
         </div>
 
         {/* Optional filename */}
-        <div style={{ padding: '16px 20px 0' }}>
-          <FieldLabel hint="Optional — defaults to clip.mp4">Save as</FieldLabel>
-          <Input
-            value={filename}
-            onChange={setFilename}
-            placeholder="my-clip"
-          />
+        <div style={{ padding: '1rem 1.5rem 0' }}>
+          <div className="form-group">
+            <FieldLabel hint="Optional — defaults to clip.mp4">Save as</FieldLabel>
+            <Field value={filename} onChange={setFilename} placeholder="my-clip" />
+          </div>
         </div>
 
-        {/* Progress bar (only while downloading) */}
+        {/* Progress bar */}
         {status === 'downloading' && (
-          <div style={{ padding: '14px 20px 0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-ink-muted)' }}>
+          <div style={{ padding: '0.875rem 1.5rem 0' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '0.375rem' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
                 Streaming clip…
               </span>
-              <span style={{ fontSize: 11, color: 'var(--color-ink-faint)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
                 {(progress / 1024 / 1024).toFixed(1)} MB received
               </span>
             </div>
-            <div style={{ height: 4, borderRadius: 999, background: 'var(--color-navy-muted)', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: 999,
-                background: 'linear-gradient(90deg, #1B3A6B, #C8A84B)',
+            <div className="progress-bar">
+              <div className="progress-fill" style={{
                 width: '100%',
-                animation: 'fillBar 2s ease infinite alternate',
+                background: 'linear-gradient(90deg, var(--navy) 0%, var(--gold) 100%)',
+                animation: 'shimmer 1.5s ease-in-out infinite',
+                backgroundSize: '400px 100%',
               }}/>
             </div>
           </div>
         )}
 
-        {/* Preparing spinner */}
+        {/* Preparing */}
         {status === 'preparing' && (
-          <div style={{ padding: '14px 20px 0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ padding: '0.875rem 1.5rem 0' }}>
+            <div className="flex items-center gap-2">
               <span style={{
-                width: 8, height: 8, borderRadius: '50%',
-                background: '#1B3A6B', animation: 'pulse 1.2s ease-in-out infinite',
+                width: 7, height: 7, borderRadius: '50%',
+                background: 'var(--navy)',
+                animation: 'pulse 1.2s ease-in-out infinite',
+                display: 'inline-block',
               }}/>
-              <span style={{ fontSize: 11, color: 'var(--color-ink-muted)', fontWeight: 600 }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
                 Contacting server…
               </span>
             </div>
           </div>
         )}
 
-        {/* Success state */}
+        {/* Success */}
         {status === 'done' && (
-          <div style={{
-            margin: '16px 20px 0', padding: '12px 14px', borderRadius: 8,
-            background: 'var(--color-success-bg)', border: '1px solid var(--color-success-border)',
-            display: 'flex', alignItems: 'center', gap: 10,
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success-text)" strokeWidth="2.5" strokeLinecap="round">
+          <div className="banner banner-success" style={{ margin: '1rem 1.5rem 0' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
               <path d="M20 6L9 17l-5-5"/>
             </svg>
-            <p style={{ fontSize: 13, color: 'var(--color-success-text)', fontWeight: 600, margin: 0 }}>
+            <p style={{ fontSize: '0.8125rem', fontWeight: 600, margin: 0 }}>
               Clip downloaded — check your downloads folder.
             </p>
           </div>
         )}
 
-        {/* Error state */}
+        {/* Error */}
         {status === 'error' && error && (
-          <div style={{
-            margin: '16px 20px 0', padding: '12px 14px', borderRadius: 8,
-            background: 'var(--color-error-bg)', border: '1px solid var(--color-error-border)',
-            display: 'flex', alignItems: 'flex-start', gap: 10,
-          }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-error-text)" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
+          <div className="banner banner-danger" style={{ margin: '1rem 1.5rem 0' }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
               <circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/>
             </svg>
-            <p style={{ fontSize: 13, color: 'var(--color-error-text)', margin: 0 }}>{error}</p>
+            <p style={{ fontSize: '0.8125rem', margin: 0 }}>{error}</p>
           </div>
         )}
 
         {/* Actions */}
-        <div style={{
-          padding: '16px 20px 20px',
-          display: 'flex', alignItems: 'center', gap: 10,
-          borderTop: status !== 'idle' ? '1px solid var(--color-hairline)' : 'none',
-          marginTop: 16,
-        }}>
+        <div
+          className="card-footer flex items-center gap-3"
+          style={{ marginTop: '1rem' }}
+        >
           {!busy && status !== 'done' && (
-            <button
-              onClick={handleTrim}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '9px 20px', borderRadius: 8, border: 'none',
-                background: 'linear-gradient(135deg, #1B3A6B 0%, #2a5298 100%)',
-                color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(27,58,107,0.25)',
-                transition: 'opacity 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-            >
+            <button onClick={handleTrim} className="btn btn-primary">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -478,55 +413,29 @@ export default function YTTrimPage() {
           )}
 
           {busy && (
-            <button
-              onClick={handleCancel}
-              style={{
-                padding: '9px 20px', borderRadius: 8, border: '1px solid var(--color-border)',
-                background: 'var(--color-canvas)', color: 'var(--color-ink-muted)',
-                fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
+            <button onClick={handleCancel} className="btn btn-secondary">
               Cancel
             </button>
           )}
 
           {status === 'done' && (
-            <button
-              onClick={handleReset}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '9px 20px', borderRadius: 8, border: 'none',
-                background: 'linear-gradient(135deg, #1B3A6B 0%, #2a5298 100%)',
-                color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              }}
-            >
+            <button onClick={handleReset} className="btn btn-primary">
               Trim another clip
             </button>
           )}
 
           {status === 'error' && (
-            <button
-              onClick={handleReset}
-              style={{
-                padding: '9px 16px', borderRadius: 8,
-                border: '1px solid var(--color-border)',
-                background: 'var(--color-canvas)', color: 'var(--color-ink-muted)',
-                fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
+            <button onClick={handleReset} className="btn btn-secondary">
               Try again
             </button>
           )}
 
-          {/* Health check link — points to correct /health endpoint */}
           <a
             href={`${API_BASE}/health`}
             target="_blank"
             rel="noreferrer"
-            style={{
-              marginLeft: 'auto', fontSize: 11, color: 'var(--color-ink-faint)',
-              textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
-            }}
+            className="flex items-center gap-1"
+            style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: 'var(--text-tertiary)' }}
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>
@@ -537,38 +446,34 @@ export default function YTTrimPage() {
       </div>
 
       {/* ── Usage notes ── */}
-      <div style={{
-        marginTop: 20, padding: '14px 16px', borderRadius: 10,
-        background: 'var(--color-surface)', border: '1px solid var(--color-hairline)',
-      }}>
-        <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--color-ink-faint)', margin: '0 0 8px' }}>
-          How it works
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+      <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '1.25rem' }}>
+        <p className="stat-label" style={{ marginBottom: '0.75rem' }}>How it works</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
           {[
             ['Paste URL',  'Any youtube.com or youtu.be link works.'],
             ['Set times',  'Use HH:MM:SS, M:SS, or plain seconds like 90.'],
             ['Download',   'The clip streams directly — nothing is saved on the server.'],
           ].map(([title, desc]) => (
-            <div key={title} style={{ display: 'flex', gap: 8 }}>
+            <div key={title} className="flex gap-2">
               <div style={{
-                width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-                background: 'var(--color-navy-muted)',
+                width: 22, height: 22, borderRadius: 4, flexShrink: 0, marginTop: 1,
+                background: 'var(--border-subtle)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                  <rect x="5" y="1.5" width="2" height="9" rx="1" fill="#1B3A6B"/>
-                  <rect x="1.5" y="4.5" width="9" height="2" rx="1" fill="#1B3A6B" opacity="0.5"/>
+                  <rect x="5" y="1.5" width="2" height="9" rx="1" fill="var(--navy)"/>
+                  <rect x="1.5" y="4.5" width="9" height="2" rx="1" fill="var(--navy)" opacity="0.4"/>
                 </svg>
               </div>
               <div>
-                <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-ink)', margin: '0 0 2px' }}>{title}</p>
-                <p style={{ fontSize: 11, color: 'var(--color-ink-muted)', margin: 0, lineHeight: 1.5 }}>{desc}</p>
+                <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px' }}>{title}</p>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{desc}</p>
               </div>
             </div>
           ))}
         </div>
       </div>
+
     </div>
   );
 }
