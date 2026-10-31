@@ -317,6 +317,37 @@
   .sidebar::-webkit-scrollbar-track { background: transparent; }
   .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
 
+  /*
+   * .sidebar-dashboard
+   * ─────────────────────────────────────────────────────────────
+   * Variant of .sidebar for the main app dashboard layout.
+   * Identical structure and chrome, but positioned relative to
+   * the topbar: starts at top: var(--topbar-h) so it sits flush
+   * below the topbar without overlapping it.
+   *
+   * Usage: replace .sidebar with .sidebar-dashboard on the
+   * <aside> in the dashboard layout. Do not use both classes
+   * on the same element.
+   * ─────────────────────────────────────────────────────────── */
+ /* AFTER */
+.sidebar-dashboard {
+  position: fixed;
+  top: var(--topbar-h);
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 0;
+  overflow-y: auto;
+  z-index: 30;
+  border-right: 2px solid var(--gold-dark);
+}
+
+  .sidebar-dashboard::-webkit-scrollbar { width: 4px; }
+  .sidebar-dashboard::-webkit-scrollbar-track { background: transparent; }
+  .sidebar-dashboard::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
+
   .nav-section-label {
     font-size: 0.625rem;
     font-weight: 600;
