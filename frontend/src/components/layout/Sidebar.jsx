@@ -183,13 +183,13 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
 
         {/* ── Wordmark ──────────────────────────────────────────── */}
         <div style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-          <div className="gold-bar-h" />
+        
 
           <div className="flex items-center justify-between px-5" style={{ height: 'calc(var(--topbar-h) - 3px)' }}>
             <div className="flex items-center gap-3 min-w-0">
               <div
                 className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0"
-                style={{ border: '1.5px solid var(--gold-dark)' }}
+                
               >
                 <img src="/luther.webp" alt="" width={28} height={28} className="object-contain block" />
               </div>
@@ -253,7 +253,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         </Link>
 
         {/* ── Navigation ────────────────────────────────────────── */}
-        <nav className="flex-1 overflow-y-auto py-3 scrollbar-thin">
+        <nav className="flex-1 overflow-y-auto py-3 scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-border scrollbar-track-transparent">
           {navSections.map((section, si) => {
             const sectionLabel = lang === 'sw' ? section.labelSw : section.labelEn;
             return (
