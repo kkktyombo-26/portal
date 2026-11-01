@@ -297,6 +297,30 @@
     line-height: 1;
   }
 
+
+  /* ── RIGHT PANEL ─────────────────────────────────────────── */
+.right-panel {
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  width: 260px;
+  background: var(--surface-card);
+  border-left: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  z-index: 30;
+}
+
+@media (max-width: 1279px) {   /* below xl breakpoint */
+  .right-panel {
+    top: 0;
+    width: 100%;
+    z-index: 50;               /* above topbar (z-40) */
+  }
+}
+
   /* ── SIDEBAR NAV ────────────────────────────────────────── */
   .sidebar {
     position: fixed;
@@ -317,36 +341,37 @@
   .sidebar::-webkit-scrollbar-track { background: transparent; }
   .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
 
-  /*
-   * .sidebar-dashboard
-   * ─────────────────────────────────────────────────────────────
-   * Variant of .sidebar for the main app dashboard layout.
-   * Identical structure and chrome, but positioned relative to
-   * the topbar: starts at top: var(--topbar-h) so it sits flush
-   * below the topbar without overlapping it.
-   *
-   * Usage: replace .sidebar with .sidebar-dashboard on the
-   * <aside> in the dashboard layout. Do not use both classes
-   * on the same element.
-   * ─────────────────────────────────────────────────────────── */
- /* AFTER */
+/* ── SIDEBAR (dashboard variant) ─────────────────────────── */
+/*
+  Desktop (md+): fixed, starts at top: var(--topbar-h), always visible.
+  Mobile (<md):  fixed, starts at top: 0, slides in/out as an overlay.
+                 The component manages translate-x via Tailwind classes.
+*/
 .sidebar-dashboard {
   position: fixed;
-  top: var(--topbar-h);
+  top: var(--topbar-h);   /* desktop: below topbar */
   left: 0;
   bottom: 0;
-  width: var(--sidebar-w);
+  width: var(--sidebar-w); /* 280px */
+  background: var(--surface-card);
   display: flex;
   flex-direction: column;
-  padding: 1.5rem 0;
-  overflow-y: auto;
-  z-index: 30;
+  overflow-y: auto;        /* scroll the nav on very short viewports */
+  z-index: 39;             /* above page, below right-panel on mobile */
   border-right: 2px solid var(--gold-dark);
 }
-
-  .sidebar-dashboard::-webkit-scrollbar { width: 4px; }
-  .sidebar-dashboard::-webkit-scrollbar-track { background: transparent; }
-  .sidebar-dashboard::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
+ 
+/* On mobile the sidebar overlays the topbar too, so start at top: 0 */
+@media (max-width: 767px) {
+  .sidebar-dashboard {
+    top: 0;
+    z-index: 39;
+  }
+}
+ 
+.sidebar-dashboard::-webkit-scrollbar { width: 4px; }
+.sidebar-dashboard::-webkit-scrollbar-track { background: transparent; }
+.sidebar-dashboard::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 2px; }
 
   .nav-section-label {
     font-size: 0.625rem;

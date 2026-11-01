@@ -22,8 +22,8 @@ function EventsBanner({ lang }) {
 
   if (!events.length) {
     return (
-      <div className="rounded-xl bg-navy text-white p-4 mb-5 min-h-[96px] flex items-center justify-center">
-        <span className="text-xs text-white/40 uppercase tracking-widest">
+      <div className="rounded-xl bg-navy-900 text-white p-4 mb-5 min-h-[96px] flex items-center justify-center">
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
           {lang === 'sw' ? 'Hakuna matukio' : 'No upcoming events'}
         </span>
       </div>
@@ -33,8 +33,7 @@ function EventsBanner({ lang }) {
   const ev = events[active];
 
   return (
-    <div className="rounded-xl overflow-hidden mb-5 relative select-none"
-      style={{ background: '#1B3A6B' }}>
+    <div className="rounded-xl overflow-hidden mb-5 relative select-none" style={{ background: '#1B3A6B' }}>
       {/* Gold accent bar */}
       <div style={{
         position: 'absolute', top: 0, left: 0,
@@ -44,18 +43,8 @@ function EventsBanner({ lang }) {
       }} />
 
       {/* Decorative rings */}
-      <div style={{
-        position: 'absolute', top: -30, right: -30,
-        width: 120, height: 120, borderRadius: '50%',
-        border: '1px solid rgba(255,255,255,0.07)',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', top: -10, right: -10,
-        width: 70, height: 70, borderRadius: '50%',
-        border: '1px solid rgba(255,255,255,0.05)',
-        pointerEvents: 'none',
-      }} />
+      <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.07)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: -10, right: -10, width: 70, height: 70, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.05)', pointerEvents: 'none' }} />
 
       {ev.image_url && (
         <div className="w-full h-20 overflow-hidden">
@@ -128,31 +117,31 @@ function GroupsList({ lang }) {
         {groups.slice(0, 5).map((g, i) => (
           <div key={g.id}>
             <Link href={`/dashboard/groups/${g.id}`}
-              className="flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-surface transition-colors duration-100 group">
-              <span className="w-7 h-7 rounded-md bg-parchment border border-hairline flex items-center justify-center text-xs text-ink-muted flex-shrink-0 group-hover:border-border transition-colors">
+              className="flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-neutral-50 transition-colors duration-100 group">
+              <span className="w-7 h-7 rounded-md bg-neutral-50 border border-neutral-100 flex items-center justify-center text-xs text-neutral-400 flex-shrink-0 group-hover:border-neutral-200 transition-colors">
                 {GROUP_ICONS[g.type] || '◇'}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-ink leading-none truncate">
+                <p className="text-sm font-medium text-neutral-900 leading-none truncate">
                   {lang === 'sw' ? (g.name_sw || g.name) : g.name}
                 </p>
-                <p className="text-2xs text-ink-faint mt-0.5 font-mono">
+                <p className="text-xs text-neutral-400 mt-0.5 font-mono">
                   {g.member_count} {lang === 'sw' ? 'washarika' : 'members'}
                 </p>
               </div>
-              <span className="text-ink-faint text-xs opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+              <span className="text-neutral-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">→</span>
             </Link>
-            {i < Math.min(groups.length, 5) - 1 && <div className="hairline ml-10" />}
+            {i < Math.min(groups.length, 5) - 1 && <div className="border-t border-neutral-100 ml-10" />}
           </div>
         ))}
         {groups.length > 5 && (
           <Link href="/dashboard/groups"
-            className="flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-surface transition-colors duration-100 group mt-1">
-            <span className="w-7 h-7 rounded-md bg-surface border border-dashed border-border flex items-center justify-center text-xs text-ink-faint flex-shrink-0">···</span>
-            <span className="text-sm font-medium text-ink-muted group-hover:text-ink transition-colors">
+            className="flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-neutral-50 transition-colors duration-100 group mt-1">
+            <span className="w-7 h-7 rounded-md bg-neutral-50 border border-dashed border-neutral-200 flex items-center justify-center text-xs text-neutral-400 flex-shrink-0">···</span>
+            <span className="text-sm font-medium text-neutral-500 group-hover:text-neutral-900 transition-colors">
               {lang === 'sw' ? `Vikundi vyote (${groups.length})` : `All groups (${groups.length})`}
             </span>
-            <span className="text-ink-faint text-xs opacity-0 group-hover:opacity-100 transition-opacity ml-auto">→</span>
+            <span className="text-neutral-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity ml-auto">→</span>
           </Link>
         )}
       </div>
@@ -189,17 +178,15 @@ const IG_ICON = (
   </svg>
 );
 
-// External arrow icon
 const ExtArrow = () => (
   <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"
-    style={{ flexShrink: 0, opacity: 0 }} className="group-hover:opacity-100 transition-opacity text-ink-faint">
+    style={{ flexShrink: 0, opacity: 0 }} className="group-hover:opacity-100 transition-opacity text-neutral-400">
     <path d="M2.5 9.5L9.5 2.5M9.5 2.5H4.5M9.5 2.5V7.5"/>
   </svg>
 );
 
-// Shared row base styles
-const ROW = 'flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-surface transition-colors duration-100 group';
-const ICON_WRAP = 'w-7 h-7 rounded-md bg-parchment border border-hairline flex items-center justify-center text-ink-muted flex-shrink-0 group-hover:border-border transition-colors';
+const ROW = 'flex items-center gap-3 py-2.5 px-1 rounded-md hover:bg-neutral-50 transition-colors duration-100 group';
+const ICON_WRAP = 'w-7 h-7 rounded-md bg-neutral-50 border border-neutral-100 flex items-center justify-center text-neutral-400 flex-shrink-0 group-hover:border-neutral-200 transition-colors';
 
 // ─── WhatsApp CTA card ────────────────────────────────────────────────────────
 function WhatsAppCard({ lang }) {
@@ -220,15 +207,8 @@ function WhatsAppCard({ lang }) {
       }}
       className="group"
     >
-      {/* Decorative circle */}
-      <div style={{
-        position: 'absolute', top: -20, right: -20,
-        width: 80, height: 80, borderRadius: '50%',
-        border: '1px solid rgba(255,255,255,0.1)',
-        pointerEvents: 'none',
-      }} />
+      <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)', pointerEvents: 'none' }} />
 
-      {/* Top row: icon + question */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <div style={{
           width: 34, height: 34, borderRadius: 10, flexShrink: 0,
@@ -243,33 +223,22 @@ function WhatsAppCard({ lang }) {
             WhatsApp
           </p>
           <p style={{ fontSize: 12.5, fontWeight: 600, color: '#fff', lineHeight: 1.4 }}>
-            {lang === 'sw'
-              ? 'Je, umejiunga na WhatsApp yetu?'
-              : 'Have you joined our WhatsApp?'}
+            {lang === 'sw' ? 'Je, umejiunga na WhatsApp yetu?' : 'Have you joined our WhatsApp?'}
           </p>
         </div>
       </div>
 
-      {/* CTA row */}
-      <div style={{
-        marginTop: 12,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
+      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.4, maxWidth: 160 }}>
-          {lang === 'sw'
-            ? 'Bonyeza hapa kujiunga na group la usharika'
-            : 'Tap to request to join the church group'}
+          {lang === 'sw' ? 'Bonyeza hapa kujiunga na group la usharika' : 'Tap to request to join the church group'}
         </p>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 4,
           background: 'rgba(255,255,255,0.15)',
           borderRadius: 99, padding: '5px 12px',
           color: '#fff', fontSize: 11, fontWeight: 600,
-          flexShrink: 0,
-          transition: 'background 0.15s',
-        }}
-          className="group-hover:bg-white/25"
-        >
+          flexShrink: 0, transition: 'background 0.15s',
+        }} className="group-hover:bg-white/25">
           {lang === 'sw' ? 'Jiunge' : 'Join'} →
         </div>
       </div>
@@ -283,43 +252,44 @@ function PanelContent({ lang }) {
     <div className="px-5 py-5 space-y-0">
       <EventsBanner lang={lang} />
       <GroupsList lang={lang} />
-      <div className="hairline mb-5" />
+      <div className="border-t border-neutral-100 mb-5" />
 
       <div>
-        <p className="section-label mb-3">
+        <p
+          className="mb-3"
+          style={{ fontSize: '0.625rem', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}
+        >
           {lang === 'sw' ? 'Mitandao ya Kijamii' : 'Follow Us'}
         </p>
 
-        {/* WhatsApp CTA card */}
         <WhatsAppCard lang={lang} />
 
-        {/* YouTube — internal */}
+        {/* YouTube */}
         <div>
           <Link href="/dashboard/youtube" className={ROW}>
             <span className={ICON_WRAP}>{YT_ICON}</span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ink leading-none">YouTube</p>
-              <p className="text-2xs text-ink-faint mt-0.5">
+              <p className="text-sm font-medium text-neutral-900 leading-none">YouTube</p>
+              <p className="text-xs text-neutral-400 mt-0.5">
                 {lang === 'sw' ? 'Tazama video za kanisa' : 'Watch church videos'}
               </p>
             </div>
-            <span className="text-ink-faint text-xs opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+            <span className="text-neutral-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">→</span>
           </Link>
-          <div className="hairline ml-10" />
+          <div className="border-t border-neutral-100 ml-10" />
         </div>
 
         {/* Facebook */}
         <div>
-          <a href="https://web.facebook.com/profile.php?id=61579436296006"
-            target="_blank" rel="noopener noreferrer" className={ROW}>
+          <a href="https://web.facebook.com/profile.php?id=61579436296006" target="_blank" rel="noopener noreferrer" className={ROW}>
             <span className={ICON_WRAP}>{FB_ICON}</span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ink leading-none">Facebook</p>
-              <p className="text-2xs text-ink-faint mt-0.5">@ChurchPortal</p>
+              <p className="text-sm font-medium text-neutral-900 leading-none">Facebook</p>
+              <p className="text-xs text-neutral-400 mt-0.5">@ChurchPortal</p>
             </div>
             <ExtArrow />
           </a>
-          <div className="hairline ml-10" />
+          <div className="border-t border-neutral-100 ml-10" />
         </div>
 
         {/* Instagram */}
@@ -327,14 +297,14 @@ function PanelContent({ lang }) {
           <a href="https://www.instagram.com/kkktyombo" target="_blank" rel="noopener noreferrer" className={ROW}>
             <span className={ICON_WRAP}>{IG_ICON}</span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ink leading-none">Instagram</p>
-              <p className="text-2xs text-ink-faint mt-0.5">@church.portal</p>
+              <p className="text-sm font-medium text-neutral-900 leading-none">Instagram</p>
+              <p className="text-xs text-neutral-400 mt-0.5">@church.portal</p>
             </div>
             <ExtArrow />
           </a>
         </div>
 
-        <p className="text-2xs text-ink-faint text-center mt-5 leading-relaxed px-2">
+        <p className="text-xs text-neutral-400 text-center mt-5 leading-relaxed px-2">
           {lang === 'sw' ? 'Karibu katika jamii yetu ya kidijitali' : 'Join our digital community'}
         </p>
       </div>
@@ -346,23 +316,62 @@ function PanelContent({ lang }) {
 export default function RightPanel({ lang = 'en', mobileOpen, onMobileClose }) {
   return (
     <>
+      {/*
+        Mobile scrim — sits behind the panel (z-49) but above page content.
+        Only visible on screens smaller than xl where the panel is an overlay.
+      */}
       {mobileOpen && (
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-30 xl:hidden animate-fade-in"
-          onClick={onMobileClose} />
+        <div
+          className="fixed inset-0 xl:hidden animate-fade-in"
+          style={{ zIndex: 48, background: 'rgba(9,9,15,0.50)', backdropFilter: 'blur(4px)' }}
+          onClick={onMobileClose}
+        />
       )}
 
-      <aside className={`
-        fixed top-0 right-0 h-full w-[260px] bg-canvas border-l border-hairline z-40
-        flex flex-col overflow-y-auto
-        transition-transform duration-200
-        xl:translate-x-0 xl:static xl:h-screen
-        ${mobileOpen ? 'translate-x-0' : 'translate-x-full'}
-      `}>
-        <div className="xl:hidden h-14 flex items-center justify-between px-5 border-b border-hairline flex-shrink-0">
-          <p className="text-sm font-semibold text-ink">
+      {/*
+        The panel itself.
+
+        Desktop (xl+):
+          - fixed, right: 0, starts below topbar, always visible (translate-x-0).
+          - width: 260px. z-30 so it sits alongside the sidebar.
+
+        Mobile/tablet (<xl):
+          - fixed, right: 0, starts at top: 0 (overlays mobile topbar too).
+          - width: min(100vw, 320px) so it never bleeds on small phones.
+          - slides in from the right; z-49 sits above the scrim.
+      */}
+      <aside className={[
+        'right-panel',
+        'transition-transform duration-200 ease-out',
+        // mobile: slide in from right; desktop: always visible
+        mobileOpen ? 'translate-x-0' : 'translate-x-full',
+        'xl:translate-x-0',
+      ].join(' ')}
+        style={{
+          // override the CSS rule to cap width on mobile
+          maxWidth: '320px',
+        }}
+      >
+        {/* Mobile header — close button */}
+        <div
+          className="xl:hidden flex-shrink-0 flex items-center justify-between px-5"
+          style={{
+            height: 'calc(var(--topbar-h) - 1px)',
+            borderBottom: '1px solid var(--border-subtle)',
+          }}
+        >
+          <p className="font-sans font-semibold" style={{ fontSize: '0.8125rem', color: 'var(--text-primary)' }}>
             {lang === 'sw' ? 'Habari za Kanisa' : 'Church Info'}
           </p>
-          <button onClick={onMobileClose} className="btn-ghost w-8 h-8 text-lg leading-none">×</button>
+          <button
+            onClick={onMobileClose}
+            className="btn btn-ghost btn-icon btn-sm"
+            aria-label="Close panel"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
 
         <PanelContent lang={lang} />

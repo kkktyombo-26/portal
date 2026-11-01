@@ -83,9 +83,7 @@ const ICONS = {
   ),
 };
 
-// ─── Nav item — light-surface override ───────────────────────────────────────
-// Renders a nav-item span with inline styles that override the CSS class's
-// dark-surface defaults (rgba-white colors) without touching globals.css.
+// ─── Nav item ─────────────────────────────────────────────────────────────────
 function NavItem({ active, icon, label }) {
   return (
     <span
@@ -95,10 +93,7 @@ function NavItem({ active, icon, label }) {
         background: active ? 'rgba(196,154,42,.15)' : undefined,
       }}
     >
-      <span
-        className="nav-item-icon"
-        style={{ opacity: active ? 1 : 0.55 }}
-      >
+      <span className="nav-item-icon" style={{ opacity: active ? 1 : 0.55 }}>
         {icon}
       </span>
       <span className="font-sans text-sm">{label}</span>
@@ -142,9 +137,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
     {
       labelEn: 'IT Desk', labelSw: 'Dawati la IT',
       items: [
-        canBroadcast(user.role)         && { href: '/dashboard/it',             labelEn: 'IT Dashboard',  labelSw: 'Dashibodi ya IT',    icon: ICONS.it     },
-        canManageContent(user.role)     && { href: '/dashboard/content-editor', labelEn: 'Content Editor',labelSw: 'Hariri Maudhui',     icon: ICONS.it     },
-        canManageSocialMedia(user.role) && { href: '/dashboard/youtube/trim',   labelEn: 'Trim Video',    labelSw: 'Kata Video YouTube', icon: ICONS.upload },
+        canBroadcast(user.role)         && { href: '/dashboard/it',             labelEn: 'IT Dashboard',   labelSw: 'Dashibodi ya IT',    icon: ICONS.it     },
+        canManageContent(user.role)     && { href: '/dashboard/content-editor', labelEn: 'Content Editor', labelSw: 'Hariri Maudhui',     icon: ICONS.it     },
+        canManageSocialMedia(user.role) && { href: '/dashboard/youtube/trim',   labelEn: 'Trim Video',     labelSw: 'Kata Video YouTube', icon: ICONS.upload },
       ].filter(Boolean),
     },
     {
@@ -164,48 +159,72 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
 
   return (
     <>
-      {/* Mobile scrim */}
+      {/*
+        Mobile scrim — sits behind the sidebar (z-39) but above page
+        content. Only visible when mobileOpen is true on small screens.
+      */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-30 bg-[rgba(9,9,15,0.50)] md:hidden"
+          className="fixed inset-0 md:hidden animate-fade-in"
+          style={{ zIndex: 38, background: 'rgba(9,9,15,0.50)', backdropFilter: 'blur(4px)' }}
           onClick={onMobileClose}
         />
       )}
 
+      {/*
+        The sidebar itself.
+
+        Desktop (md+):
+          - fixed, starts below the topbar, always visible (translate-x-0).
+          - z-30 so it sits under modals/toasts but above page content.
+
+        Mobile (<md):
+          - fixed, starts at top:0 (fills screen top-to-bottom like a drawer).
+          - slides in/out via translate-x; z-39 sits above the scrim.
+          - width: 280px so it doesn't cover the full screen.
+      */}
       <aside
         className={[
+          // shared
           'sidebar-dashboard',
-          'transition-transform duration-200',
-          'md:translate-x-0 md:static md:h-screen',
+          'transition-transform duration-200 ease-out',
+          // mobile: slide in from left; desktop: always visible
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          'md:translate-x-0',
         ].join(' ')}
+        style={{
+          // On mobile we want the sidebar to start at top:0 so it overlays
+          // the mobile topbar too (consistent with the right panel behaviour).
+          // On desktop the CSS class already sets top: var(--topbar-h).
+        }}
       >
-
         {/* ── Wordmark ──────────────────────────────────────────── */}
-        <div style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-        
-
-          <div className="flex items-center justify-between px-5" style={{ height: 'calc(var(--topbar-h) - 3px)' }}>
+        <div style={{ borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+          <div
+            className="flex items-center justify-between px-5"
+            style={{ height: 'calc(var(--topbar-h) - 3px)' }}
+          >
             <div className="flex items-center gap-3 min-w-0">
-              <div
-                className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0"
-                
-              >
+              <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0">
                 <img src="/luther.webp" alt="" width={28} height={28} className="object-contain block" />
               </div>
               <div>
-                <p className="font-display font-bold leading-tight"
-                  style={{ fontSize: '0.8125rem', color: 'var(--navy)', letterSpacing: '-0.02em' }}>
+                <p
+                  className="font-display font-bold leading-tight"
+                  style={{ fontSize: '0.8125rem', color: 'var(--navy)', letterSpacing: '-0.02em' }}
+                >
                   KKKT DMP
                 </p>
-                <span className="block font-sans font-semibold leading-none"
-                  style={{ fontSize: '0.5625rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--gold-dark)' }}>
+                <span
+                  className="block font-sans font-semibold leading-none"
+                  style={{ fontSize: '0.5625rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--gold-dark)' }}
+                >
                   Yombo
                 </span>
               </div>
             </div>
 
-            {/* Mobile close */}
+            {/* Close button — visible on mobile only */}
             <button
               onClick={onMobileClose}
               className="md:hidden btn btn-ghost btn-icon btn-sm"
@@ -234,17 +253,20 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="font-sans font-semibold truncate leading-snug"
-                style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+              <p
+                className="font-sans font-semibold truncate leading-snug"
+                style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}
+              >
                 {user.full_name}
               </p>
-              <p className="font-sans font-medium truncate"
-                style={{ fontSize: '0.6875rem', color: 'var(--gold-dark)', marginTop: '1px' }}>
+              <p
+                className="font-sans font-medium truncate"
+                style={{ fontSize: '0.6875rem', color: 'var(--gold-dark)', marginTop: '1px' }}
+              >
                 {ROLE_LABELS[user.role]?.[lang] ?? user.role}
               </p>
             </div>
 
-            {/* Chevron */}
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
               className="flex-shrink-0 opacity-30 group-hover:opacity-60 transition-opacity duration-150">
               <path d="M4.5 2.5l4 3.5-4 3.5" stroke="var(--navy)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -258,11 +280,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
             const sectionLabel = lang === 'sw' ? section.labelSw : section.labelEn;
             return (
               <div key={sectionLabel} className={si > 0 ? 'mt-3' : ''}>
-                {/* Section label — inline color overrides the rgba-white from globals.css */}
-                <p
-                  className="nav-section-label"
-                  style={{ color: 'var(--text-tertiary)' }}
-                >
+                <p className="nav-section-label" style={{ color: 'var(--text-tertiary)' }}>
                   {sectionLabel}
                 </p>
 
