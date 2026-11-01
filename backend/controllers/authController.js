@@ -18,22 +18,74 @@ function generateTempPassword(length = 10) {
   ).join('');
 }
 
+// ── Helper: normalise boolean/string → TINYINT (1 / 0 / null) ───────────────
+function toBit(val) {
+  if (val === undefined || val === null || val === '') return null;
+  return (val === true || val === 'true' || val === 1 || val === '1') ? 1 : 0;
+}
+
+// ── Helper: sync ministry memberships for a user ─────────────────────────────
+// ministryIds: number[] — the full desired set (replaces existing)
+async function syncMinistries(userId, ministryIds) {
+  if (!Array.isArray(ministryIds) || ministryIds.length === 0) return;
+
+  const ids = ministryIds.map(Number).filter(Boolean);
+  if (ids.length === 0) return;
+
+  // Delete all existing memberships for this user, then re-insert
+  await db.execute(
+    'DELETE FROM member_ministries WHERE member_id = ?',
+    [userId]
+  );
+
+  const placeholders = ids.map(() => '(?, ?)').join(', ');
+  const flat         = ids.flatMap(id => [userId, id]);
+
+  await db.execute(
+    `INSERT INTO member_ministries (member_id, ministry_id) VALUES ${placeholders}`,
+    flat
+  );
+}
+
+
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/register
+// Self-registration — OTP verified, account pending approval.
 // ═══════════════════════════════════════════════════════════
 exports.register = async (req, res, next) => {
   try {
     const {
-      full_name, email, password, role, group_id,
-      phone, namba_ya_usharika,
+      full_name,
+      email,
+      password,
+      role              = 'member',
+      group_id,
+      phone,
+      namba_ya_usharika,
       verifiedToken,
       profile_photo_url = null,
+
+      // Basic profile fields a member may fill during sign-up
+      gender,
+      date_of_birth,
+      place_of_birth,
+
+      // Address
+      street,
+      district,
+      region,
+      postal_code,
+      area_name,
+      block_no,
+      jumuiya,
+      slp,
     } = req.body;
 
+    // ── OTP gate ─────────────────────────────────────────────
     if (!verifiedToken) {
       return res.status(400).json({
         success: false,
-        code: 'EMAIL_NOT_VERIFIED',
+        code:    'EMAIL_NOT_VERIFIED',
         message: 'Email verification is required before registering.',
       });
     }
@@ -48,7 +100,7 @@ exports.register = async (req, res, next) => {
     if (tokenRows.length === 0) {
       return res.status(400).json({
         success: false,
-        code: 'INVALID_VERIFICATION_TOKEN',
+        code:    'INVALID_VERIFICATION_TOKEN',
         message: 'Email verification token is invalid or has expired. Please verify your email again.',
       });
     }
@@ -58,25 +110,55 @@ exports.register = async (req, res, next) => {
       [tokenRows[0].id]
     );
 
-    const [existing] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
+    // ── Duplicate guard ───────────────────────────────────────
+    const [existing] = await db.execute(
+      'SELECT id FROM users WHERE email = ?', [email]
+    );
     if (existing.length > 0) {
-      return res.status(409).json({ success: false, message: 'Email already registered.' });
+      return res.status(409).json({
+        success: false,
+        message: 'Email already registered.',
+      });
     }
 
     const hashed = await bcrypt.hash(password, 12);
 
     const [result] = await db.execute(
-      `INSERT INTO users
-         (full_name, email, password, role, group_id, phone, namba_ya_usharika,
-          profile_photo_url, is_active, is_verified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+      `INSERT INTO users (
+        full_name, email, password, role, group_id,
+        phone, namba_ya_usharika, profile_photo_url,
+        gender, date_of_birth, place_of_birth,
+        street, district, region, postal_code,
+        area_name, block_no, jumuiya, slp,
+        is_active, is_verified
+      ) VALUES (
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        0, 0
+      )`,
       [
-        full_name, email, hashed,
-        role || 'member',
+        full_name,
+        email,
+        hashed,
+        role,
         group_id          || null,
         phone             || null,
         namba_ya_usharika || null,
         profile_photo_url || null,
+        gender            || null,
+        date_of_birth     || null,
+        place_of_birth    || null,
+        street            || null,
+        district          || null,
+        region            || null,
+        postal_code       || null,
+        area_name         || null,
+        block_no          || null,
+        jumuiya           || null,
+        slp               || null,
       ]
     );
 
@@ -119,7 +201,7 @@ exports.register = async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/admin-create  — pastor / elder only
 // Creates a fully active member, bypassing the OTP flow.
-// Handles all extended profile fields + dependants.
+// Handles all profile fields + dependants + ministries.
 // ═══════════════════════════════════════════════════════════
 exports.adminCreateUser = async (req, res, next) => {
   try {
@@ -137,6 +219,11 @@ exports.adminCreateUser = async (req, res, next) => {
       gender,
       date_of_birth,
       place_of_birth,
+      member_since,
+      member_status,
+      willing_to_volunteer,
+      profile_photo_url,
+      cv_url,
 
       // ── Marital ──────────────────────────────────────────
       marital_status,
@@ -152,22 +239,32 @@ exports.adminCreateUser = async (req, res, next) => {
       workplace,
       education,
       profession,
-      willing_to_volunteer,
 
       // ── Residence ────────────────────────────────────────
-      jumuiya,
-      block_no,
+      street,
+      district,
+      region,
+      postal_code,
       area_name,
+      block_no,
+      jumuiya,
       slp,
+      previous_church,
       neighbour_member_name,
       neighbour_member_phone,
       elder_name,
       elder_phone,
-      previous_church,
 
-      // ── Dependants ────────────────────────────────────────
+      // ── Spiritual ────────────────────────────────────────
+      baptism_date,
+      confirmation_date,
+      takes_communion,
+
+      // ── Relations ────────────────────────────────────────
       // Array of { full_name, date_of_birth?, relationship? }
-      dependants = [],
+      dependants  = [],
+      // Array of ministry IDs (number[])
+      ministries  = [],
     } = req.body;
 
     // ── Require at least email or phone ──────────────────────
@@ -178,12 +275,12 @@ exports.adminCreateUser = async (req, res, next) => {
       });
     }
 
-    // ── Duplicate check on email ──────────────────────────────
+    // ── Duplicate guards ──────────────────────────────────────
     if (email) {
-      const [existing] = await db.execute(
+      const [dup] = await db.execute(
         'SELECT id FROM users WHERE email = ?', [email]
       );
-      if (existing.length > 0) {
+      if (dup.length > 0) {
         return res.status(409).json({
           success: false,
           message: 'A user with this email already exists.',
@@ -191,12 +288,11 @@ exports.adminCreateUser = async (req, res, next) => {
       }
     }
 
-    // ── Duplicate check on phone ──────────────────────────────
     if (phone) {
-      const [existingPhone] = await db.execute(
+      const [dupPhone] = await db.execute(
         'SELECT id FROM users WHERE phone = ?', [phone]
       );
-      if (existingPhone.length > 0) {
+      if (dupPhone.length > 0) {
         return res.status(409).json({
           success: false,
           message: 'A user with this phone number already exists.',
@@ -209,106 +305,122 @@ exports.adminCreateUser = async (req, res, next) => {
     const rawPassword = suppliedPassword || generateTempPassword();
     const hashed      = await bcrypt.hash(rawPassword, 12);
 
-    // ── Normalise willing_to_volunteer → TINYINT ──────────────
-    // Frontend sends true/false (boolean) or 'true'/'false' (string from bulk)
-    let volunteerVal = null;
-    if (willing_to_volunteer !== undefined && willing_to_volunteer !== null && willing_to_volunteer !== '') {
-      volunteerVal = (willing_to_volunteer === true || willing_to_volunteer === 'true') ? 1 : 0;
-    }
-
-    // ── INSERT user with all profile fields ───────────────────
+    // ── INSERT user ───────────────────────────────────────────
     const [result] = await db.execute(
       `INSERT INTO users (
         full_name, email, password, role, group_id,
-        phone, namba_ya_usharika,
+        phone, namba_ya_usharika, profile_photo_url, cv_url,
+
         gender, date_of_birth, place_of_birth,
+        member_since, member_status, willing_to_volunteer,
+
         marital_status, marriage_type, marriage_date, marriage_place,
         spouse_name, spouse_phone, cohabiting_partner_name,
-        occupation, workplace, education, profession, willing_to_volunteer,
-        jumuiya, block_no, area_name, slp,
-        neighbour_member_name, neighbour_member_phone,
-        elder_name, elder_phone, previous_church,
+
+        occupation, workplace, education, profession,
+
+        street, district, region, postal_code,
+        area_name, block_no, jumuiya, slp,
+        previous_church, neighbour_member_name, neighbour_member_phone,
+        elder_name, elder_phone,
+
+        baptism_date, confirmation_date, takes_communion,
+
         is_active, is_verified
       ) VALUES (
         ?, ?, ?, ?, ?,
-        ?, ?,
+        ?, ?, ?, ?,
+
         ?, ?, ?,
+        ?, ?, ?,
+
         ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?,
+
         ?, ?, ?, ?,
-        ?, ?,
+
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?,
+        ?, ?,
+
+        ?, ?, ?,
+
         1, 1
       )`,
       [
         full_name,
-        email                   || null,
+        email                    || null,
         hashed,
         role,
-        group_id                || null,
+        group_id                 || null,
 
-        phone                   || null,
-        namba_ya_usharika       || null,
+        phone                    || null,
+        namba_ya_usharika        || null,
+        profile_photo_url        || null,
+        cv_url                   || null,
 
-        gender                  || null,
-        date_of_birth           || null,
-        place_of_birth          || null,
+        gender                   || null,
+        date_of_birth            || null,
+        place_of_birth           || null,
+        member_since             || null,
+        member_status            || null,
+        toBit(willing_to_volunteer),
 
-        marital_status          || null,
-        marriage_type           || null,
-        marriage_date           || null,
-        marriage_place          || null,
+        marital_status           || null,
+        marriage_type            || null,
+        marriage_date            || null,
+        marriage_place           || null,
+        spouse_name              || null,
+        spouse_phone             || null,
+        cohabiting_partner_name  || null,
 
-        spouse_name             || null,
-        spouse_phone            || null,
-        cohabiting_partner_name || null,
+        occupation               || null,
+        workplace                || null,
+        education                || null,
+        profession               || null,
 
-        occupation              || null,
-        workplace               || null,
-        education               || null,
-        profession              || null,
-        volunteerVal,
+        street                   || null,
+        district                 || null,
+        region                   || null,
+        postal_code              || null,
+        area_name                || null,
+        block_no                 || null,
+        jumuiya                  || null,
+        slp                      || null,
+        previous_church          || null,
+        neighbour_member_name    || null,
+        neighbour_member_phone   || null,
+        elder_name               || null,
+        elder_phone              || null,
 
-        jumuiya                 || null,
-        block_no                || null,
-        area_name               || null,
-        slp                     || null,
-
-        neighbour_member_name   || null,
-        neighbour_member_phone  || null,
-
-        elder_name              || null,
-        elder_phone             || null,
-        previous_church         || null,
+        baptism_date             || null,
+        confirmation_date        || null,
+        toBit(takes_communion),
       ]
     );
 
     const newUserId = result.insertId;
 
-    // ── Insert dependants ─────────────────────────────────────
-    if (Array.isArray(dependants) && dependants.length > 0) {
-      const validDeps = dependants.filter(d => d.full_name && String(d.full_name).trim());
-
-      if (validDeps.length > 0) {
-        const depValues = validDeps.map(d => [
-          newUserId,
-          String(d.full_name).trim(),
-          d.date_of_birth  || null,
-          d.relationship   || null,
-        ]);
-
-        // Batch insert all dependants in one query
-        const placeholders = depValues.map(() => '(?, ?, ?, ?)').join(', ');
-        const flatValues   = depValues.flat();
-
-        await db.execute(
-          `INSERT INTO member_dependants (member_id, full_name, date_of_birth, relationship)
-           VALUES ${placeholders}`,
-          flatValues
-        );
-      }
+    // ── Dependants ────────────────────────────────────────────
+    const validDeps = (dependants ?? []).filter(d => d.full_name && String(d.full_name).trim());
+    if (validDeps.length > 0) {
+      const depValues = validDeps.map(d => [
+        newUserId,
+        String(d.full_name).trim(),
+        d.date_of_birth || null,
+        d.relationship  || null,
+      ]);
+      const placeholders = depValues.map(() => '(?, ?, ?, ?)').join(', ');
+      await db.execute(
+        `INSERT INTO member_dependants (member_id, full_name, date_of_birth, relationship)
+         VALUES ${placeholders}`,
+        depValues.flat()
+      );
     }
+
+    // ── Ministries ────────────────────────────────────────────
+    await syncMinistries(newUserId, ministries);
 
     // ── Welcome email ─────────────────────────────────────────
     if (email) {
@@ -320,13 +432,9 @@ exports.adminCreateUser = async (req, res, next) => {
       }).catch(err => console.error('⚠️  Welcome email failed:', err.message));
     }
 
-    // ── Socket broadcast ──────────────────────────────────────
+    // ── Broadcast ─────────────────────────────────────────────
     broadcast('member_added_by_admin', {
-      id:       newUserId,
-      full_name,
-      email:    email || null,
-      role,
-      addedBy:  req.user.name,
+      id: newUserId, full_name, email: email || null, role, addedBy: req.user.name,
     });
 
     console.log(
@@ -356,7 +464,6 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         message: 'A non-empty "users" array is required.',
       });
     }
-
     if (users.length > 200) {
       return res.status(400).json({
         success: false,
@@ -379,6 +486,11 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         gender,
         date_of_birth,
         place_of_birth,
+        member_since,
+        member_status,
+        willing_to_volunteer,
+        profile_photo_url,
+        cv_url,
         marital_status,
         marriage_type,
         marriage_date,
@@ -390,19 +502,27 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         workplace,
         education,
         profession,
-        willing_to_volunteer,
-        jumuiya,
-        block_no,
+        street,
+        district,
+        region,
+        postal_code,
         area_name,
+        block_no,
+        jumuiya,
         slp,
+        previous_church,
         neighbour_member_name,
         neighbour_member_phone,
         elder_name,
         elder_phone,
-        previous_church,
+        baptism_date,
+        confirmation_date,
+        takes_communion,
+        // Bulk doesn't support dependants/ministries per row — too complex for CSV.
+        // Use admin-create for single members needing these.
       } = users[i];
 
-      // ── Basic validation ──────────────────────────────────
+      // ── Validation ────────────────────────────────────────
       if (!full_name || !String(full_name).trim()) {
         results.push({ row, status: 'skipped', reason: 'Missing full_name.' });
         continue;
@@ -413,7 +533,7 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
       }
 
       try {
-        // ── Duplicate guards ────────────────────────────────
+        // ── Duplicate guards ──────────────────────────────
         if (email) {
           const [dup] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
           if (dup.length > 0) {
@@ -421,7 +541,6 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
             continue;
           }
         }
-
         if (phone) {
           const [dupPhone] = await db.execute('SELECT id FROM users WHERE phone = ?', [phone]);
           if (dupPhone.length > 0) {
@@ -435,83 +554,103 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         const rawPassword = suppliedPassword || generateTempPassword();
         const hashed      = await bcrypt.hash(rawPassword, 12);
 
-        // ── Normalise willing_to_volunteer ─────────────────
-        let volunteerVal = null;
-        if (willing_to_volunteer !== undefined && willing_to_volunteer !== null && willing_to_volunteer !== '') {
-          volunteerVal = (willing_to_volunteer === true || willing_to_volunteer === 'true') ? 1 : 0;
-        }
-
         // ── INSERT ─────────────────────────────────────────
         const [result] = await db.execute(
           `INSERT INTO users (
             full_name, email, password, role, group_id,
-            phone, namba_ya_usharika,
+            phone, namba_ya_usharika, profile_photo_url, cv_url,
+
             gender, date_of_birth, place_of_birth,
+            member_since, member_status, willing_to_volunteer,
+
             marital_status, marriage_type, marriage_date, marriage_place,
             spouse_name, spouse_phone, cohabiting_partner_name,
-            occupation, workplace, education, profession, willing_to_volunteer,
-            jumuiya, block_no, area_name, slp,
-            neighbour_member_name, neighbour_member_phone,
-            elder_name, elder_phone, previous_church,
+
+            occupation, workplace, education, profession,
+
+            street, district, region, postal_code,
+            area_name, block_no, jumuiya, slp,
+            previous_church, neighbour_member_name, neighbour_member_phone,
+            elder_name, elder_phone,
+
+            baptism_date, confirmation_date, takes_communion,
+
             is_active, is_verified
           ) VALUES (
             ?, ?, ?, ?, ?,
-            ?, ?,
+            ?, ?, ?, ?,
+
             ?, ?, ?,
+            ?, ?, ?,
+
             ?, ?, ?, ?,
             ?, ?, ?,
-            ?, ?, ?, ?, ?,
+
             ?, ?, ?, ?,
-            ?, ?,
+
+            ?, ?, ?, ?,
+            ?, ?, ?, ?,
             ?, ?, ?,
+            ?, ?,
+
+            ?, ?, ?,
+
             1, 1
           )`,
           [
             String(full_name).trim(),
-            email                   || null,
+            email                    || null,
             hashed,
             role,
-            group_id                || null,
+            group_id                 || null,
 
-            phone                   || null,
-            namba_ya_usharika       || null,
+            phone                    || null,
+            namba_ya_usharika        || null,
+            profile_photo_url        || null,
+            cv_url                   || null,
 
-            gender                  || null,
-            date_of_birth           || null,
-            place_of_birth          || null,
+            gender                   || null,
+            date_of_birth            || null,
+            place_of_birth           || null,
+            member_since             || null,
+            member_status            || null,
+            toBit(willing_to_volunteer),
 
-            marital_status          || null,
-            marriage_type           || null,
-            marriage_date           || null,
-            marriage_place          || null,
+            marital_status           || null,
+            marriage_type            || null,
+            marriage_date            || null,
+            marriage_place           || null,
+            spouse_name              || null,
+            spouse_phone             || null,
+            cohabiting_partner_name  || null,
 
-            spouse_name             || null,
-            spouse_phone            || null,
-            cohabiting_partner_name || null,
+            occupation               || null,
+            workplace                || null,
+            education                || null,
+            profession               || null,
 
-            occupation              || null,
-            workplace               || null,
-            education               || null,
-            profession              || null,
-            volunteerVal,
+            street                   || null,
+            district                 || null,
+            region                   || null,
+            postal_code              || null,
+            area_name                || null,
+            block_no                 || null,
+            jumuiya                  || null,
+            slp                      || null,
+            previous_church          || null,
+            neighbour_member_name    || null,
+            neighbour_member_phone   || null,
+            elder_name               || null,
+            elder_phone              || null,
 
-            jumuiya                 || null,
-            block_no                || null,
-            area_name               || null,
-            slp                     || null,
-
-            neighbour_member_name   || null,
-            neighbour_member_phone  || null,
-
-            elder_name              || null,
-            elder_phone             || null,
-            previous_church         || null,
+            baptism_date             || null,
+            confirmation_date        || null,
+            toBit(takes_communion),
           ]
         );
 
         const newUserId = result.insertId;
 
-        // ── Welcome email ─────────────────────────────────
         if (email) {
           sendWelcomeEmail(email, {
             memberName:        String(full_name).trim(),
@@ -546,11 +685,7 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
       broadcast('members_bulk_added_by_admin', {
         count:   created.length,
         addedBy: req.user.name,
-        members: created.map(r => ({
-          id:        r.userId,
-          full_name: r.name,
-          email:     r.email,
-        })),
+        members: created.map(r => ({ id: r.userId, full_name: r.name, email: r.email })),
       });
     }
 
@@ -576,7 +711,10 @@ exports.login = async (req, res, next) => {
     const { identifier, password } = req.body;
 
     if (!identifier || !password) {
-      return res.status(400).json({ success: false, message: 'Identifier and password are required.' });
+      return res.status(400).json({
+        success: false,
+        message: 'Identifier and password are required.',
+      });
     }
 
     const [rows] = await db.execute(
@@ -694,8 +832,7 @@ exports.getPendingUsers = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
       `SELECT id, full_name, email, phone, namba_ya_usharika,
-              avatar, profile_photo_url,
-              created_at
+              avatar, profile_photo_url, created_at
        FROM users
        WHERE is_active = 0 AND is_verified = 0
        ORDER BY created_at DESC`

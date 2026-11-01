@@ -50,6 +50,24 @@ export const userApi = {
   api.put(`/users/${userId}/password`, data),
 };
 
+export const ministryApi = {
+  // GET /api/ministries
+  // Returns full catalogue: [{ id, name, category, description }]
+  getAll: () =>
+    api.get('/ministries'),
+ 
+  // GET /api/ministries/member/:userId
+  // Returns member's current memberships: [{ ministry_id, name, category }]
+  getMemberMinistries: (userId) =>
+    api.get(`/ministries/member/${userId}`),
+ 
+  // PUT /api/ministries/member/:userId/sync
+  // Replaces the member's ministry set with the supplied ID array.
+  // ministryIds: number[]
+  syncMemberMinistries: (userId, ministryIds) =>
+    api.put(`/ministries/member/${userId}/sync`, { ministryIds }),
+};
+
 export const announcementApi = {
   getAll: ()     => api.get('/announcements'),
   create: (data) => api.post('/announcements', data),

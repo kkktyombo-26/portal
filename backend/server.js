@@ -15,6 +15,8 @@ const formTemplatesRouter = require('./routes/formTemplates');
 const youtubeRoutes       = require('./routes/youtube');
 const waRoutes            = require('./routes/whatsapp');
 const siteContentRoutes   = require('./routes/siteContent');
+
+const ministriesRouter = require('./routes/ministries');
 const errorHandler        = require('./middleware/errorHandler');
 
 const app    = express();
@@ -40,6 +42,7 @@ app.use('/api/youtube',        youtubeRoutes);
 app.use('/api/youtube/upload', require('./routes/upload'));
 app.use('/api/uploaded-forms', require('./routes/uploadedForms'));
 app.use('/api/site-content',   siteContentRoutes);
+app.use('/api/ministries', ministriesRouter);
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
 app.use(errorHandler);
