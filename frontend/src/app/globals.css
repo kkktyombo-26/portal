@@ -367,6 +367,13 @@
     }
   }
 
+  @media (min-width: 768px) {
+  .sidebar-dashboard,
+  .right-panel {
+    top: 0;
+  }
+}
+
   .sidebar-dashboard::-webkit-scrollbar { width: 4px; }
   .sidebar-dashboard::-webkit-scrollbar-track { background: transparent; }
   .sidebar-dashboard::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 2px; }
