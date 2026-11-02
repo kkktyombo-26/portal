@@ -20,6 +20,8 @@ const PASTOR_COLUMNS = `
   u.jumuiya, u.block_no, u.area_name,
   u.neighbour_member_name, u.neighbour_member_phone,
   u.elder_name, u.elder_phone, u.previous_church,
+  u.baptism_date, u.confirmation_date, u.takes_communion,
+  u.cv_url,
   g.name AS group_name
 `.trim();
 
@@ -169,12 +171,13 @@ exports.updateUser = async (req, res, next) => {
     params.push(targetId);
     await db.execute(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, params);
 
-    const [rows] = await db.execute(
-      `SELECT id, full_name, email, role, phone,
-              avatar, profile_photo_url, is_active, member_status
-       FROM users WHERE id = ?`,
-      [targetId]
-    );
+   const [rows] = await db.execute(
+  `SELECT id, full_name, email, role, phone,
+          avatar, profile_photo_url, is_active, member_status,
+          cv_url
+   FROM users WHERE id = ?`,
+  [targetId]
+);
     res.json({ success: true, data: rows[0], message: 'User updated.' });
   } catch (err) { next(err); }
 };
