@@ -5,7 +5,8 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../lib/i18n';
 import { userApi, dependantApi, ministryApi, committeeApi } from '../../lib/api';
-import CloudinaryService from '../../lib/cloudinary';
+// ── CHANGED: was `import CloudinaryService from '../../lib/cloudinary'`
+import R2UploadService from '../../lib/r2UploadService';
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const Icon = ({ path, size = 18, className = '' }) => (
@@ -179,7 +180,7 @@ function ServiceCheck({ label, checked, onChange }) {
   );
 }
 
-// ── Cloudinary upload progress ring ──────────────────────────────────────────
+// ── Upload progress ring ──────────────────────────────────────────────────────
 function ProgressRing({ percent, size = 64 }) {
   const r = (size - 6) / 2;
   const circ = 2 * Math.PI * r;
@@ -345,6 +346,9 @@ export default function ProfilePage() {
 
   // ════════════════════════════════════════════════════════════════════════
   // PHOTO UPLOAD
+  // ── CHANGED: CloudinaryService.uploadFromFile → R2UploadService.uploadFromFile
+  //    folder maps to an R2 key prefix on your backend instead of a Cloudinary folder
+  //    result.secureUrl is still result.secureUrl (R2UploadService mirrors the shape)
   // ════════════════════════════════════════════════════════════════════════
   async function handlePhotoChange(e) {
     const file = e.target.files?.[0];
@@ -360,11 +364,13 @@ export default function ProfilePage() {
 
     try {
       setPhotoStage('uploading');
-      const result = await CloudinaryService.uploadFromFile({
+      // ── CHANGED ──────────────────────────────────────────────────────────
+      const result = await R2UploadService.uploadFromFile({
         file,
         folder: 'church_portal/profile_photos',
         onProgress: pct => setPhotoProgress(pct),
       });
+      // ─────────────────────────────────────────────────────────────────────
       setPhotoStage('saving');
       await userApi.update(authUser.id, { profile_photo_url: result.secureUrl });
       setField('profile_photo_url', result.secureUrl);
@@ -382,6 +388,7 @@ export default function ProfilePage() {
 
   // ════════════════════════════════════════════════════════════════════════
   // CV UPLOAD
+  // ── CHANGED: same swap as above
   // ════════════════════════════════════════════════════════════════════════
   async function handleCvChange(e) {
     const file = e.target.files?.[0];
@@ -395,11 +402,13 @@ export default function ProfilePage() {
 
     try {
       setCvStage('uploading');
-      const result = await CloudinaryService.uploadFromFile({
+      // ── CHANGED ──────────────────────────────────────────────────────────
+      const result = await R2UploadService.uploadFromFile({
         file,
         folder: 'church_portal/cvs',
         onProgress: pct => setCvProgress(pct),
       });
+      // ─────────────────────────────────────────────────────────────────────
       setCvStage('saving');
       await userApi.update(authUser.id, { cv_url: result.secureUrl });
       setField('cv_url', result.secureUrl);
@@ -1086,15 +1095,13 @@ export default function ProfilePage() {
 
       </div>
 
-      {/* ── Floating save button — portalled into <body> to escape any
-            parent overflow:hidden or CSS transform stacking context ── */}
+      {/* ── Floating save button ── */}
       {activeTab === 'personal'  && <FloatingSaveBtn {...ss('personal')}  onClick={savePersonal}  />}
       {activeTab === 'family'    && <FloatingSaveBtn {...ss('family')}    onClick={saveFamily}    />}
       {activeTab === 'work'      && <FloatingSaveBtn {...ss('work')}      onClick={saveWork}      />}
       {activeTab === 'address'   && <FloatingSaveBtn {...ss('address')}   onClick={saveAddress}   />}
       {activeTab === 'spiritual' && <FloatingSaveBtn {...ss('spiritual')} onClick={saveSpiritual} />}
       {activeTab === 'security'  && <FloatingSaveBtn {...ss('security')}  onClick={saveSecurity}  />}
-      {/* dependants tab saves inline per item — no floating button needed */}
 
     </div>
   );

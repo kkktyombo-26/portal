@@ -153,6 +153,8 @@ exports.updateUser = async (req, res, next) => {
     push(fields, params, 'elder_name',             body.elder_name);
     push(fields, params, 'elder_phone',            body.elder_phone);
     push(fields, params, 'previous_church',        body.previous_church);
+    push(fields, params, 'profile_photo_url', body.profile_photo_url);
+    push(fields, params, 'cv_url',            body.cv_url);
 
     if (role === 'pastor') {
       push(fields, params, 'role',          body.role);

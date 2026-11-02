@@ -20,6 +20,8 @@ const ministriesRouter    = require('./routes/ministries');
 const committeesRouter    = require('./routes/committee');
 const errorHandler        = require('./middleware/errorHandler');
 
+const r2Routes = require('./routes/r2-routes');
+
 const app    = express();
 const server = http.createServer(app);
 const PORT   = process.env.PORT || 4000;
@@ -45,6 +47,7 @@ app.use('/api/uploaded-forms', require('./routes/uploadedForms'));
 app.use('/api/site-content',   siteContentRoutes);
 app.use('/api/ministries',     ministriesRouter);
 app.use('/api/committees',     committeesRouter);
+app.use('/api/r2', r2Routes);
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
 app.use(errorHandler);
