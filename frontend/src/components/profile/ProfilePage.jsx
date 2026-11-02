@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../lib/i18n';
-import { userApi, dependantApi, ministryApi } from '../../lib/api';
+import { userApi, dependantApi, ministryApi, committeeApi } from '../../lib/api';
 import CloudinaryService from '../../lib/cloudinary';
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -81,37 +82,68 @@ function Select({ className = '', children, ...props }) {
   );
 }
 
-function SaveBtn({ saving, saved, onClick, label = 'Save changes' }) {
+// ── Floating Save Button ──────────────────────────────────────────────────────
+
+function FloatingSaveBtn({ saving, saved, onClick }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={saving}
-      className="flex items-center gap-2 px-4 py-2 text-sm font-medium
-        bg-amber-500 hover:bg-amber-600 active:bg-amber-700
-        text-white rounded-lg shadow-sm transition disabled:opacity-60"
-    >
-      {saving
-        ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-        : saved
-          ? <Icon path={icons.check} size={15} />
-          : null}
-      {saving ? 'Saving…' : saved ? 'Saved' : label}
-    </button>
+    <div className="fab-profile-save">
+      <button
+        onClick={onClick}
+        disabled={saving}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '12px 20px',
+          fontSize: '14px',
+          fontWeight: 600,
+          fontFamily: 'Inter, system-ui, sans-serif',
+          color: '#ffffff',
+          backgroundColor: saved ? '#16a34a' : '#f59e0b',
+          border: 'none',
+          borderRadius: '9999px',
+          cursor: saving ? 'not-allowed' : 'pointer',
+          opacity: saving ? 0.75 : 1,
+          boxShadow: '0 8px 24px rgba(245,158,11,0.35)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {saving ? (
+          <span style={{
+            width: 15, height: 15, borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.35)',
+            borderTopColor: '#fff',
+            display: 'inline-block',
+            animation: 'spin 0.7s linear infinite',
+            flexShrink: 0,
+          }} />
+        ) : saved ? (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        ) : (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+          </svg>
+        )}
+        <span>{saving ? 'Saving…' : saved ? 'Saved!' : 'Save changes'}</span>
+      </button>
+    </div>
   );
 }
 
+
 // ── Section wrapper ──────────────────────────────────────────────────────────
-function Section({ icon, title, children, saving, saved, onSave, noPadding = false }) {
+function Section({ icon, title, children, noPadding = false }) {
   return (
-    <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
-        <div className="flex items-center gap-3">
-          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-50 text-amber-600">
-            <Icon path={icon} size={16} />
-          </span>
-          <h2 className="font-semibold text-stone-800">{title}</h2>
-        </div>
-        {onSave && <SaveBtn saving={saving} saved={saved} onClick={onSave} />}
+    <div className="bg-white rounded-2xl border border-stone-100 shadow-sm">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-stone-100">
+        <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex-shrink-0">
+          <Icon path={icon} size={16} />
+        </span>
+        <h2 className="font-semibold text-stone-800">{title}</h2>
       </div>
       <div className={noPadding ? '' : 'px-6 py-5'}>
         {children}
@@ -129,8 +161,8 @@ function SubHeading({ children }) {
   );
 }
 
-// ── Ministry checkbox ────────────────────────────────────────────────────────
-function MinistryCheck({ label, checked, onChange }) {
+// ── Shared checkbox (ministries & committees) ────────────────────────────────
+function ServiceCheck({ label, checked, onChange }) {
   return (
     <label className="flex items-center gap-2.5 cursor-pointer group">
       <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition
@@ -147,7 +179,7 @@ function MinistryCheck({ label, checked, onChange }) {
   );
 }
 
-// ── Cloudinary upload progress ring (used for photo) ─────────────────────────
+// ── Cloudinary upload progress ring ──────────────────────────────────────────
 function ProgressRing({ percent, size = 64 }) {
   const r = (size - 6) / 2;
   const circ = 2 * Math.PI * r;
@@ -217,14 +249,12 @@ export default function ProfilePage() {
   });
 
   // ── Photo upload state ────────────────────────────────────────────────────
-  // photoStage: 'idle' | 'uploading' | 'saving' | 'done'
   const [photoStage,    setPhotoStage]    = useState('idle');
   const [photoProgress, setPhotoProgress] = useState(0);
   const [photoError,    setPhotoError]    = useState(null);
   const photoInputRef = useRef(null);
 
   // ── CV upload state ───────────────────────────────────────────────────────
-  // cvStage: 'idle' | 'uploading' | 'saving' | 'done'
   const [cvStage,    setCvStage]    = useState('idle');
   const [cvProgress, setCvProgress] = useState(0);
   const [cvFileName, setCvFileName] = useState(null);
@@ -232,9 +262,15 @@ export default function ProfilePage() {
   const cvInputRef = useRef(null);
 
   // ── Ministries ────────────────────────────────────────────────────────────
-  const [ministries,      setMinistries]  = useState([]);
-  const [memberMinistries,setMemberMin]   = useState([]);
-  const [minLoading,      setMinLoading]  = useState(false);
+  const [ministries,       setMinistries]  = useState([]);
+  const [memberMinistries, setMemberMin]   = useState([]);
+
+  // ── Committees ───────────────────────────────────────────────────────────
+  const [committees,       setCommittees]  = useState([]);
+  const [memberCommittees, setMemberCom]   = useState([]);
+
+  // Single loading flag shared by both spiritual data fetches
+  const [minLoading, setMinLoading] = useState(false);
 
   // ── Dependants ────────────────────────────────────────────────────────────
   const [dependants, setDependants] = useState([]);
@@ -257,17 +293,23 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [authUser?.id]);
 
-  // ── Load ministries (lazy) ────────────────────────────────────────────────
+  // ── Load spiritual data (lazy) — ministries + committees together ─────────
   useEffect(() => {
-    if (!authUser?.id || activeTab !== 'spiritual' || ministries.length > 0) return;
+    if (!authUser?.id || activeTab !== 'spiritual') return;
+    if (ministries.length > 0 || committees.length > 0) return;
+
     setMinLoading(true);
     Promise.all([
       ministryApi.getAll(),
       ministryApi.getMemberMinistries(authUser.id),
+      committeeApi.getAll(),
+      committeeApi.getMemberCommittees(authUser.id),
     ])
-      .then(([catRes, memRes]) => {
-        setMinistries(catRes.data.data ?? []);
-        setMemberMin((memRes.data.data ?? []).map(m => m.ministry_id ?? m.id));
+      .then(([minCat, minMem, comCat, comMem]) => {
+        setMinistries(minCat.data.data ?? []);
+        setMemberMin((minMem.data.data ?? []).map(m => m.ministry_id ?? m.id));
+        setCommittees(comCat.data.data ?? []);
+        setMemberCom((comMem.data.data ?? []).map(c => c.committee_id ?? c.id));
       })
       .catch(() => {})
       .finally(() => setMinLoading(false));
@@ -302,47 +344,35 @@ export default function ProfilePage() {
   };
 
   // ════════════════════════════════════════════════════════════════════════
-  // PHOTO UPLOAD — Cloudinary first, then URL → backend
+  // PHOTO UPLOAD
   // ════════════════════════════════════════════════════════════════════════
   async function handlePhotoChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Reset
     e.target.value = '';
     setPhotoError(null);
     setPhotoProgress(0);
 
-    // Validate size (5 MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setPhotoError('Image must be under 5 MB.');
-      return;
-    }
+    if (file.size > 5 * 1024 * 1024) { setPhotoError('Image must be under 5 MB.'); return; }
 
-    // Show local preview immediately while upload runs
     const localPreview = URL.createObjectURL(file);
-    setField('_photoPreview', localPreview); // temporary local blob
+    setField('_photoPreview', localPreview);
 
     try {
-      // 1. Upload to Cloudinary with progress
       setPhotoStage('uploading');
       const result = await CloudinaryService.uploadFromFile({
         file,
         folder: 'church_portal/profile_photos',
         onProgress: pct => setPhotoProgress(pct),
       });
-
-      // 2. Persist URL to backend
       setPhotoStage('saving');
       await userApi.update(authUser.id, { profile_photo_url: result.secureUrl });
-
-      // 3. Commit to profile state, drop the local blob
       setField('profile_photo_url', result.secureUrl);
       setField('_photoPreview', null);
       URL.revokeObjectURL(localPreview);
       setPhotoStage('done');
       setTimeout(() => setPhotoStage('idle'), 2000);
-    } catch (err) {
+    } catch {
       setPhotoError('Photo upload failed. Please try again.');
       setField('_photoPreview', null);
       URL.revokeObjectURL(localPreview);
@@ -351,42 +381,31 @@ export default function ProfilePage() {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // CV UPLOAD — Cloudinary first, then URL → backend
+  // CV UPLOAD
   // ════════════════════════════════════════════════════════════════════════
   async function handleCvChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     e.target.value = '';
     setCvError(null);
     setCvProgress(0);
     setCvFileName(file.name);
 
-    // Validate size (10 MB)
-    if (file.size > 10 * 1024 * 1024) {
-      setCvError('CV must be under 10 MB.');
-      setCvFileName(null);
-      return;
-    }
+    if (file.size > 10 * 1024 * 1024) { setCvError('CV must be under 10 MB.'); setCvFileName(null); return; }
 
     try {
-      // 1. Upload to Cloudinary
       setCvStage('uploading');
       const result = await CloudinaryService.uploadFromFile({
         file,
         folder: 'church_portal/cvs',
         onProgress: pct => setCvProgress(pct),
       });
-
-      // 2. Persist URL to backend
       setCvStage('saving');
       await userApi.update(authUser.id, { cv_url: result.secureUrl });
-
-      // 3. Commit
       setField('cv_url', result.secureUrl);
       setCvStage('done');
       setTimeout(() => setCvStage('idle'), 2000);
-    } catch (err) {
+    } catch {
       setCvError('CV upload failed. Please try again.');
       setCvStage('idle');
       setCvFileName(null);
@@ -446,12 +465,15 @@ export default function ProfilePage() {
   const saveSpiritual = async () => {
     setSaving('spiritual', true);
     try {
-      await userApi.update(authUser.id, {
-        baptism_date:      profile.baptism_date,
-        confirmation_date: profile.confirmation_date,
-        takes_communion:   profile.takes_communion,
-      });
-      await ministryApi.syncMemberMinistries(authUser.id, memberMinistries);
+      await Promise.all([
+        userApi.update(authUser.id, {
+          baptism_date:      profile.baptism_date,
+          confirmation_date: profile.confirmation_date,
+          takes_communion:   profile.takes_communion,
+        }),
+        ministryApi.syncMemberMinistries(authUser.id, memberMinistries),
+        committeeApi.syncMemberCommittees(authUser.id, memberCommittees),
+      ]);
       setSaved('spiritual', true);
       setTimeout(() => setSaved('spiritual', false), 2500);
     } catch (err) {
@@ -484,8 +506,12 @@ export default function ProfilePage() {
     }
   };
 
-  const toggleMinistry = (id) =>
+  // ── Toggle helpers ────────────────────────────────────────────────────────
+  const toggleMinistry  = (id) =>
     setMemberMin(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const toggleCommittee = (id) =>
+    setMemberCom(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   // ── Password handler ──────────────────────────────────────────────────────
   const saveSecurity = async () => {
@@ -519,11 +545,9 @@ export default function ProfilePage() {
     return acc;
   }, {});
 
-  // The display URL for the avatar: prefer local preview while uploading,
-  // fall back to the committed Cloudinary URL.
   const avatarSrc = profile?._photoPreview || profile?.profile_photo_url || null;
 
-  // ── Loading / error states ────────────────────────────────────────────────
+  // ── Loading / error ───────────────────────────────────────────────────────
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <span className="w-6 h-6 border-2 border-stone-300 border-t-amber-400 rounded-full animate-spin" />
@@ -547,44 +571,33 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+      <div className="max-w-3xl mx-auto px-4 xl:pr-6 py-6 pb-24 space-y-4">
 
         {/* ── Avatar / identity card ──────────────────────────────────── */}
         <div className="bg-white rounded-2xl border border-stone-100 shadow-sm px-6 py-5 flex items-center gap-5">
-
-          {/* Photo bubble */}
           <div className="relative flex-shrink-0 group">
-            {/* Avatar image / initials */}
             <div className="w-16 h-16 rounded-full overflow-hidden bg-amber-100 flex items-center
               justify-center text-amber-700 text-2xl font-bold select-none">
               {avatarSrc
                 ? <img src={avatarSrc} alt={profile.full_name} className="w-full h-full object-cover" />
-                : (profile.full_name ?? '?')[0].toUpperCase()
+                : (profile.full_name?.trim() || '?')[0].toUpperCase()
               }
             </div>
 
-            {/* Upload overlay (camera icon, shown on hover) */}
             {photoStage === 'idle' || photoStage === 'done' ? (
               <label
                 className={`absolute inset-0 rounded-full flex items-center justify-center
-                  bg-black/40 cursor-pointer
-                  transition-opacity duration-150
+                  bg-black/40 cursor-pointer transition-opacity duration-150
                   ${photoStage === 'done' ? 'opacity-0' : 'opacity-0 group-hover:opacity-100'}`}
                 title="Change photo"
               >
                 <Icon path={icons.camera} size={18} className="text-white" />
-                <input
-                  ref={photoInputRef}
-                  type="file"
+                <input ref={photoInputRef} type="file"
                   accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={handlePhotoChange}
-                />
+                  className="hidden" onChange={handlePhotoChange} />
               </label>
             ) : (
-              /* Progress overlay while uploading/saving */
-              <div className="absolute inset-0 rounded-full bg-black/50 flex flex-col
-                items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-black/50 flex flex-col items-center justify-center">
                 <ProgressRing percent={photoProgress} size={64} />
                 <span className="absolute text-white text-[10px] font-bold">
                   {photoStage === 'saving' ? '…' : `${photoProgress}%`}
@@ -592,38 +605,27 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {/* Done tick */}
             {photoStage === 'done' && (
               <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full
                 bg-green-500 border-2 border-white flex items-center justify-center">
                 <Icon path={icons.check} size={10} className="text-white" />
               </span>
             )}
-
-            {/* Status dot (idle/done only) */}
             {(photoStage === 'idle' || photoStage === 'done') && (
-              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full
-                border-2 border-white
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white
                 ${profile.member_status === 'hai' ? 'bg-green-400' : 'bg-stone-300'}`} />
             )}
           </div>
 
-          {/* Name / role */}
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-stone-900 truncate">{profile.full_name}</p>
             <p className="text-xs text-stone-400 capitalize">
               {profile.role} · {MEMBER_STATUS.find(s => s.value === profile.member_status)?.label ?? 'Member'}
             </p>
-            {/* Photo error inline */}
-            {photoError && (
-              <p className="text-xs text-red-500 mt-1">{photoError}</p>
-            )}
-            {/* Upload hint (idle, no photo yet) */}
+            {photoError && <p className="text-xs text-red-500 mt-1">{photoError}</p>}
             {!avatarSrc && photoStage === 'idle' && (
-              <button
-                onClick={() => photoInputRef.current?.click()}
-                className="mt-1 text-xs text-amber-600 hover:underline"
-              >
+              <button onClick={() => photoInputRef.current?.click()}
+                className="mt-1 text-xs text-amber-600 hover:underline">
                 + Add photo
               </button>
             )}
@@ -637,14 +639,11 @@ export default function ProfilePage() {
         {/* ── Tab bar ─────────────────────────────────────────────────── */}
         <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-hide">
           {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition
                 ${activeTab === tab.id
                   ? 'bg-white text-amber-600 shadow-sm border border-stone-100'
-                  : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'}`}
-            >
+                  : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'}`}>
               <Icon path={tab.icon} size={13} />
               {tab.label}
             </button>
@@ -655,8 +654,7 @@ export default function ProfilePage() {
             PERSONAL
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === 'personal' && (
-          <Section icon={icons.user} title="Personal Information"
-            {...ss('personal')} onSave={savePersonal}>
+          <Section icon={icons.user} title="Personal Information">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Full name">
                 <Input value={profile.full_name ?? ''} onChange={e => setField('full_name', e.target.value)} />
@@ -703,82 +701,51 @@ export default function ProfilePage() {
               </Field>
             </div>
 
-            {/* ── CV upload ──────────────────────────────────────────── */}
+            {/* CV upload */}
             <div className="mt-6 pt-5 border-t border-stone-100">
               <SubHeading>CV / Résumé</SubHeading>
-
-              {/* Hidden file input */}
-              <input
-                ref={cvInputRef}
-                type="file"
-                accept=".pdf,.doc,.docx"
-                className="hidden"
-                onChange={handleCvChange}
-              />
-
+              <input ref={cvInputRef} type="file" accept=".pdf,.doc,.docx"
+                className="hidden" onChange={handleCvChange} />
               <div className="flex flex-wrap items-center gap-3">
-
-                {/* Choose / replace button */}
-                <button
-                  type="button"
-                  onClick={() => cvInputRef.current?.click()}
+                <button type="button" onClick={() => cvInputRef.current?.click()}
                   disabled={cvStage === 'uploading' || cvStage === 'saving'}
                   className="flex items-center gap-2 px-3 py-2 text-sm border border-stone-200 rounded-lg
                     bg-white text-stone-600 hover:border-amber-400 hover:text-amber-600
-                    disabled:opacity-50 disabled:cursor-not-allowed transition"
-                >
+                    disabled:opacity-50 disabled:cursor-not-allowed transition">
                   <Icon path={icons.upload} size={14} />
                   {profile.cv_url ? 'Replace CV' : 'Upload CV'}
                 </button>
-
-                {/* Progress / status feedback */}
                 {cvStage === 'uploading' && (
                   <div className="flex items-center gap-2 text-xs text-stone-500">
-                    <span className="w-3.5 h-3.5 border-2 border-stone-300 border-t-amber-500
-                      rounded-full animate-spin flex-shrink-0" />
+                    <span className="w-3.5 h-3.5 border-2 border-stone-300 border-t-amber-500 rounded-full animate-spin flex-shrink-0" />
                     Uploading… {cvProgress}%
-                    {/* Slim progress bar */}
                     <div className="w-24 h-1.5 bg-stone-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-amber-400 rounded-full transition-all"
-                        style={{ width: `${cvProgress}%` }}
-                      />
+                      <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${cvProgress}%` }} />
                     </div>
                   </div>
                 )}
-
                 {cvStage === 'saving' && (
                   <div className="flex items-center gap-2 text-xs text-stone-500">
-                    <span className="w-3.5 h-3.5 border-2 border-stone-300 border-t-amber-500
-                      rounded-full animate-spin flex-shrink-0" />
+                    <span className="w-3.5 h-3.5 border-2 border-stone-300 border-t-amber-500 rounded-full animate-spin flex-shrink-0" />
                     Saving…
                   </div>
                 )}
-
                 {cvStage === 'done' && (
                   <div className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
-                    <Icon path={icons.check} size={13} />
-                    CV uploaded
+                    <Icon path={icons.check} size={13} />CV uploaded
                   </div>
                 )}
-
                 {cvStage === 'idle' && cvFileName && (
                   <span className="text-xs text-stone-500 truncate max-w-[180px]">{cvFileName}</span>
                 )}
-
-                {/* Link to existing CV */}
                 {profile.cv_url && cvStage === 'idle' && (
                   <a href={profile.cv_url} target="_blank" rel="noreferrer"
                     className="flex items-center gap-1.5 text-xs text-amber-600 hover:underline ml-auto">
-                    <Icon path={icons.file} size={13} />
-                    View current CV
+                    <Icon path={icons.file} size={13} />View current CV
                   </a>
                 )}
               </div>
-
-              {/* Error */}
               {cvError && <p className="mt-2 text-xs text-red-500">{cvError}</p>}
-              {/* Hint */}
               {cvStage === 'idle' && !cvError && (
                 <p className="mt-1.5 text-xs text-stone-400">PDF or Word · max 10 MB</p>
               )}
@@ -790,8 +757,7 @@ export default function ProfilePage() {
             FAMILY
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === 'family' && (
-          <Section icon={icons.heart} title="Family & Marital Status"
-            {...ss('family')} onSave={saveFamily}>
+          <Section icon={icons.heart} title="Family & Marital Status">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Marital status" className="sm:col-span-2">
                 <Select value={profile.marital_status ?? ''} onChange={e => setField('marital_status', e.target.value)}>
@@ -839,8 +805,7 @@ export default function ProfilePage() {
             WORK & EDUCATION
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === 'work' && (
-          <Section icon={icons.briefcase} title="Work & Education"
-            {...ss('work')} onSave={saveWork}>
+          <Section icon={icons.briefcase} title="Work & Education">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Occupation">
                 <Input value={profile.occupation ?? ''} onChange={e => setField('occupation', e.target.value)}
@@ -872,8 +837,7 @@ export default function ProfilePage() {
             ADDRESS
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === 'address' && (
-          <Section icon={icons.mapPin} title="Address & Contact Details"
-            {...ss('address')} onSave={saveAddress}>
+          <Section icon={icons.mapPin} title="Address & Contact Details">
             <SubHeading>General address</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <Field label="Street / Plot no.">
@@ -946,8 +910,8 @@ export default function ProfilePage() {
             SPIRITUAL
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === 'spiritual' && (
-          <Section icon={icons.cross} title="Spiritual Services (Huduma za Kiroho)"
-            {...ss('spiritual')} onSave={saveSpiritual}>
+          <Section icon={icons.cross} title="Spiritual Services (Huduma za Kiroho)">
+
             <SubHeading>Sacraments (Sakramenti)</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <Field label="Baptism date (Tarehe ya Ubatizo)">
@@ -978,28 +942,46 @@ export default function ProfilePage() {
                 </label>
               </div>
             </div>
-            <SubHeading>Ministry involvement (Huduma)</SubHeading>
+
             {minLoading ? (
               <div className="flex justify-center py-6">
                 <span className="w-5 h-5 border-2 border-stone-200 border-t-amber-400 rounded-full animate-spin" />
               </div>
-            ) : ministries.length === 0 ? (
-              <p className="text-sm text-stone-400">No ministries found.</p>
             ) : (
-              <div className="space-y-5">
-                {Object.entries(ministryGroups).map(([cat, items]) => (
-                  <div key={cat}>
-                    <p className="text-xs font-medium text-stone-400 mb-2">{cat}</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {items.map(m => (
-                        <MinistryCheck key={m.id} label={m.name}
-                          checked={memberMinistries.includes(m.id)}
-                          onChange={() => toggleMinistry(m.id)} />
-                      ))}
-                    </div>
+              <>
+                <SubHeading>Ministry involvement (Huduma)</SubHeading>
+                {ministries.length === 0 ? (
+                  <p className="text-sm text-stone-400 mb-6">No ministries found.</p>
+                ) : (
+                  <div className="space-y-5 mb-8">
+                    {Object.entries(ministryGroups).map(([cat, items]) => (
+                      <div key={cat}>
+                        <p className="text-xs font-medium text-stone-400 mb-2">{cat}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {items.map(m => (
+                            <ServiceCheck key={m.id} label={m.name}
+                              checked={memberMinistries.includes(m.id)}
+                              onChange={() => toggleMinistry(m.id)} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+
+                <SubHeading>Committee membership (Kamati)</SubHeading>
+                {committees.length === 0 ? (
+                  <p className="text-sm text-stone-400">No committees found.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {committees.map(c => (
+                      <ServiceCheck key={c.id} label={c.name}
+                        checked={memberCommittees.includes(c.id)}
+                        onChange={() => toggleCommittee(c.id)} />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </Section>
         )}
@@ -1071,8 +1053,7 @@ export default function ProfilePage() {
             SECURITY
         ══════════════════════════════════════════════════════════════ */}
         {activeTab === 'security' && (
-          <Section icon={icons.lock} title="Change Password"
-            {...ss('security')} onSave={saveSecurity}>
+          <Section icon={icons.lock} title="Change Password">
             <div className="max-w-sm space-y-4">
               {[
                 { key: 'current_password', label: 'Current password' },
@@ -1104,6 +1085,17 @@ export default function ProfilePage() {
         )}
 
       </div>
+
+      {/* ── Floating save button — portalled into <body> to escape any
+            parent overflow:hidden or CSS transform stacking context ── */}
+      {activeTab === 'personal'  && <FloatingSaveBtn {...ss('personal')}  onClick={savePersonal}  />}
+      {activeTab === 'family'    && <FloatingSaveBtn {...ss('family')}    onClick={saveFamily}    />}
+      {activeTab === 'work'      && <FloatingSaveBtn {...ss('work')}      onClick={saveWork}      />}
+      {activeTab === 'address'   && <FloatingSaveBtn {...ss('address')}   onClick={saveAddress}   />}
+      {activeTab === 'spiritual' && <FloatingSaveBtn {...ss('spiritual')} onClick={saveSpiritual} />}
+      {activeTab === 'security'  && <FloatingSaveBtn {...ss('security')}  onClick={saveSecurity}  />}
+      {/* dependants tab saves inline per item — no floating button needed */}
+
     </div>
   );
 }

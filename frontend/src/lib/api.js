@@ -100,6 +100,12 @@ export const formTemplateApi = {
   remove:  (id)             => api.delete(`/form-templates/${id}`),
 };
 
+export const committeeApi = {
+  getAll:               ()            => api.get('/committees'),
+  getMemberCommittees:  (userId)      => api.get(`/committees/member/${userId}`),
+  syncMemberCommittees: (userId, ids) => api.put(`/committees/member/${userId}/sync`, { committeeIds: ids }),
+};
+
 // ── Site Content API ──────────────────────────────────────────────────────────
 export const siteContentApi = {
   // GET /api/site-content  → { success, data: { hero_slides: […], schedule: […], … } }
