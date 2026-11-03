@@ -1,5 +1,3 @@
-
-
 'use client';
 
 /**
@@ -23,11 +21,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { pledgeApi } from '../../../lib/pledgeApi';
-import { userApi } from '../../../lib/api';
-import CampaignsTab     from '../../../components/pledges/CampaignsTab';
-import PledgesTab       from '../../../components/pledges/PledgesTab';
-import PaymentsTab      from '../../../components/pledges/PaymentsTab';
-import ReportTab        from '../../../components/pledges/ReportTab';
+import { fmtMoney, fmtDate, pctBar } from '../../../lib/pledgeUtils';
+import CampaignsTab from '../../../components/pledges/CampaignsTab';
+import PledgesTab   from '../../../components/pledges/PledgesTab';
+import PaymentsTab  from '../../../components/pledges/PaymentsTab';
+import ReportTab    from '../../../components/pledges/ReportTab';
 
 // ── Icon helpers ──────────────────────────────────────────────────────────────
 const HandIcon = () => (
@@ -53,29 +51,11 @@ const ChartIcon = () => (
 );
 
 const TABS = [
-  { id: 'campaigns', label: 'Campaigns',    icon: HandIcon,   roles: ['pastor','elder','group_leader'] },
-  { id: 'pledges',   label: 'Pledges',      icon: UsersIcon,  roles: ['pastor','elder','group_leader','member'] },
-  { id: 'payments',  label: 'Payments',     icon: WalletIcon, roles: ['pastor','elder','group_leader','member'] },
-  { id: 'report',    label: 'Report',       icon: ChartIcon,  roles: ['pastor','elder','group_leader'] },
+  { id: 'campaigns', label: 'Campaigns', icon: HandIcon,   roles: ['pastor','elder','group_leader'] },
+  { id: 'pledges',   label: 'Pledges',   icon: UsersIcon,  roles: ['pastor','elder','group_leader','member'] },
+  { id: 'payments',  label: 'Payments',  icon: WalletIcon, roles: ['pastor','elder','group_leader','member'] },
+  { id: 'report',    label: 'Report',    icon: ChartIcon,  roles: ['pastor','elder','group_leader'] },
 ];
-
-// ── Format helpers ────────────────────────────────────────────────────────────
-export function fmtMoney(n) {
-  const num = Number(n) || 0;
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
-  if (num >= 1_000)     return `${(num / 1_000).toFixed(0)}K`;
-  return num.toLocaleString();
-}
-
-export function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
-}
-
-export function pctBar(paid, pledged) {
-  if (!pledged || pledged <= 0) return 0;
-  return Math.min(100, Math.round((paid / pledged) * 100));
-}
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, accent }) {
@@ -136,20 +116,20 @@ export default function PledgesPage() {
         pledgeApi.getCampaigns(),
         pledgeApi.getTypes(),
       ]);
-      const c = cRes.data.data  || [];
-      const t = tRes.data.data  || [];
+      const c = cRes.data.data || [];
+      const t = tRes.data.data || [];
       setCampaigns(c);
       setPledgeTypes(t);
 
       // Derive header summary
-      const totPledged = c.reduce((a, x) => a + Number(x.total_pledged || 0), 0);
-      const totPaid    = c.reduce((a, x) => a + Number(x.total_paid    || 0), 0);
+      const totPledged = c.reduce((a, x) => a + Number(x.total_pledged    || 0), 0);
+      const totPaid    = c.reduce((a, x) => a + Number(x.total_paid       || 0), 0);
       const members    = c.reduce((a, x) => a + Number(x.subscriber_count || 0), 0);
       setSummary({
         totalPledged: totPledged,
         totalPaid:    totPaid,
         fulfilled:    0, // comes from report endpoint when needed
-        members:      members,
+        members,
         campaigns:    c.filter(x => x.is_active).length,
       });
     } catch (err) {
@@ -195,11 +175,11 @@ export default function PledgesPage() {
         {!loading && (
           <div className="flex flex-wrap gap-6 mt-5" style={{ position: 'relative' }}>
             {[
-              { label: 'Active Campaigns',  val: summary.campaigns },
-              { label: 'Total Members',     val: summary.members.toLocaleString() },
-              { label: 'Total Pledged',     val: `TShs ${fmtMoney(summary.totalPledged)}` },
-              { label: 'Total Collected',   val: `TShs ${fmtMoney(summary.totalPaid)}` },
-              { label: 'Collection Rate',   val: `${pct}%` },
+              { label: 'Active Campaigns', val: summary.campaigns },
+              { label: 'Total Members',    val: summary.members.toLocaleString() },
+              { label: 'Total Pledged',    val: `TShs ${fmtMoney(summary.totalPledged)}` },
+              { label: 'Total Collected',  val: `TShs ${fmtMoney(summary.totalPaid)}` },
+              { label: 'Collection Rate',  val: `${pct}%` },
             ].map(s => (
               <div key={s.label}>
                 <p style={{ fontSize: '0.6875rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.45)', marginBottom: '0.2rem' }}>
@@ -236,7 +216,7 @@ export default function PledgesPage() {
       <div className="page-body">
         {loading ? (
           <div className="flex flex-col gap-4 mt-6">
-            {[1,2,3].map(i => (
+            {[1, 2, 3].map(i => (
               <div key={i} className="skeleton" style={{ height: 72, borderRadius: 12 }} />
             ))}
           </div>
