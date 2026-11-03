@@ -8,10 +8,17 @@
  * are mapped to new values before the MODIFY COLUMN, so MySQL doesn't
  * reject the ALTER with error 1265 (Data truncated).
  *
- * Final ENUM: jumuiya | ministry | musical | spiritual | administrative | other
- *   - musical   : Kwaya / choirs
- *   - spiritual  : Spiritual groups (e.g. prayer groups, Bible study circles)
- *   - choir → musical, youth/women/men → jumuiya, elders → administrative
+ * Final ENUM: jumuiya | huduma | kwaya | idara | kamati | vingine
+ *   - jumuiya    : Local fellowship cells
+ *   - huduma     : Service / ministry roles
+ *   - kwaya      : Choirs
+ *   - idara      : Umbrella organisations (UMOJA WA VIJANA, UMOJA WA WANAWAKE, etc.)
+ *   - kamati     : Committees
+ *   - vingine    : Other / miscellaneous
+ *
+ *  Remapping from previous ENUMs:
+ *   jumuiya → jumuiya, ministry → huduma, musical → kwaya,
+ *   spiritual → huduma, administrative → kamati, other → vingine
  */
 
 const path = require('path');
@@ -55,32 +62,29 @@ async function main() {
     //
     await run('type column — widen to VARCHAR for safe remapping', `
       ALTER TABLE \`groups\`
-        MODIFY COLUMN type VARCHAR(50) NOT NULL DEFAULT 'other'
+        MODIFY COLUMN type VARCHAR(50) NOT NULL DEFAULT 'vingine'
     `);
 
     // ── A1. Map old ENUM values → new ENUM values ─────────────────────────────
     //
-    //  Old value   →  New value        Rationale
-    //  ──────────────────────────────────────────────────────────────────────
-    //  choir       →  musical          Kwaya = musical group
-    //  youth       →  jumuiya          Youth fellowship = Jumuiya ya Vijana
-    //  elders      →  administrative   Elders council = Baraza la Wazee
-    //  women       →  jumuiya          Women's fellowship = Jumuiya ya Wanawake
-    //  men         →  jumuiya          Men's fellowship = Jumuiya ya Wanaume
-    //  children    →  spiritual        Children's ministry / Sunday school
-    //  other       →  other            No change
-    //
-    // Adjust mappings below if your church uses a different convention.
+    //  Old value      →  New value   Rationale
+    //  ────────────────────────────────────────────────────────────────────
+    //  jumuiya        →  jumuiya     Direct match
+    //  ministry       →  huduma      Ministry → Huduma (service)
+    //  musical        →  kwaya       Musical → Kwaya (choir)
+    //  spiritual      →  huduma      Spiritual → Huduma
+    //  administrative →  kamati      Administrative → Kamati (committee)
+    //  other          →  vingine     Other → Vingine (miscellaneous)
     //
     console.log('\n── A1. Remap old type values → new ENUM values');
 
     const mappings = [
-      ['choir',    'musical'],
-      ['youth',    'jumuiya'],
-      ['elders',   'administrative'],
-      ['women',    'jumuiya'],
-      ['men',      'jumuiya'],
-      ['children', 'spiritual'],
+      ['jumuiya',        'jumuiya'],
+      ['ministry',       'huduma'],
+      ['musical',        'kwaya'],
+      ['spiritual',      'huduma'],
+      ['administrative', 'kamati'],
+      ['other',          'vingine'],
     ];
 
     for (const [oldVal, newVal] of mappings) {
@@ -95,23 +99,23 @@ async function main() {
       }
     }
 
-    // Catch anything unexpected — set to 'other' so the MODIFY doesn't fail
+    // Catch anything unexpected — set to 'vingine' so the MODIFY doesn't fail
     const [unexpected] = await pool.query(`
       UPDATE \`groups\`
-      SET type = 'other'
-      WHERE type NOT IN ('jumuiya','ministry','musical','spiritual','administrative','other')
+      SET type = 'vingine'
+      WHERE type NOT IN ('jumuiya','huduma','kwaya','idara','kamati','vingine')
     `);
     if (unexpected.affectedRows > 0) {
-      console.log(`  ⚠  ${unexpected.affectedRows} row(s) with unrecognised type set to 'other'`);
+      console.log(`  ⚠  ${unexpected.affectedRows} row(s) with unrecognised type set to 'vingine'`);
     }
 
     // ── A2. Now safe to apply the final ENUM ──────────────────────────────────
-    await run('type column — apply final ENUM jumuiya|ministry|musical|spiritual|administrative|other', `
+    await run('type column — apply final ENUM jumuiya|huduma|kwaya|idara|kamati|vingine', `
       ALTER TABLE \`groups\`
         MODIFY COLUMN type
-          ENUM('jumuiya','ministry','musical','spiritual','administrative','other')
-          NOT NULL DEFAULT 'other'
-          COMMENT 'jumuiya=Jumuiya ya Kanisa, ministry=Huduma/Kitengo, musical=Kwaya, spiritual=Kiroho/Maombi, administrative=Kamati/Baraza, other'
+          ENUM('jumuiya','huduma','kwaya','idara','kamati','vingine')
+          NOT NULL DEFAULT 'vingine'
+          COMMENT 'jumuiya=Vikundi vya Kanisa, huduma=Huduma/Kitengo, kwaya=Kwaya, idara=Idara (UMOJA WA VIJANA n.k.), kamati=Kamati/Baraza, vingine=Mengineyo'
     `);
 
     // ── A3. Remaining columns ─────────────────────────────────────────────────

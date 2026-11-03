@@ -75,14 +75,44 @@ export const announcementApi = {
 };
 
 export const groupApi = {
-  getAll:       ()            => api.get('/groups'),
-  getById:      (id)          => api.get(`/groups/${id}`),
-  create:       (data)        => api.post('/groups', data),
-  update:       (id, d)       => api.put(`/groups/${id}`, d),
-  delete:       (id)          => api.delete(`/groups/${id}`),
-  getMembers:   (id)          => api.get(`/groups/${id}/members`),
-  addMember:    (id, userId)  => api.post(`/groups/${id}/members`, { user_id: userId }),
-  removeMember: (id, userId)  => api.delete(`/groups/${id}/members/${userId}`),
+  // GET /api/groups?type=jumuiya&year=2025&is_archived=0
+  getAll: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null))
+    ).toString();
+    return api.get(`/groups${qs ? `?${qs}` : ''}`);
+  },
+ 
+  // GET /api/groups/:id
+  getById: (id) => api.get(`/groups/${id}`),
+ 
+  // POST /api/groups
+  create: (data) => api.post('/groups', data),
+  // data shape: { name, name_sw, type, description?, year?, start_date?, end_date?, leader_id? }
+ 
+  // PUT /api/groups/:id
+  update: (id, data) => api.put(`/groups/${id}`, data),
+ 
+  // PUT /api/groups/:id/archive
+  archive: (id) => api.put(`/groups/${id}/archive`),
+ 
+  // DELETE /api/groups/:id
+  delete: (id) => api.delete(`/groups/${id}`),
+ 
+  // GET /api/groups/:id/members?year=2025&status=active
+  getMembers: (id, params = {}) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null))
+    ).toString();
+    return api.get(`/groups/${id}/members${qs ? `?${qs}` : ''}`);
+  },
+ 
+  // POST /api/groups/:id/members
+  addMember: (id, data) => api.post(`/groups/${id}/members`, data),
+  // data shape: { user_id, year?, role_in_group?, joined_date? }
+ 
+  // DELETE /api/groups/:id/members/:membershipId   (soft-remove by membership row id)
+  removeMember: (id, membershipId) => api.delete(`/groups/${id}/members/${membershipId}`),
 };
 
 export const eventApi = {
