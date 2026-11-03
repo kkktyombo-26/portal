@@ -15,7 +15,7 @@ const formTemplatesRouter = require('./routes/formTemplates');
 const youtubeRoutes       = require('./routes/youtube');
 const waRoutes            = require('./routes/whatsapp');
 const siteContentRoutes   = require('./routes/siteContent');
-
+const pledgeRoutes = require('./routes/pledgeRoutes');
 const ministriesRouter    = require('./routes/ministries');
 const committeesRouter    = require('./routes/committee');
 const errorHandler        = require('./middleware/errorHandler');
@@ -48,6 +48,7 @@ app.use('/api/site-content',   siteContentRoutes);
 app.use('/api/ministries',     ministriesRouter);
 app.use('/api/committees',     committeesRouter);
 app.use('/api/r2', r2Routes);
+app.use('/api/pledges', pledgeRoutes);
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
 app.use(errorHandler);

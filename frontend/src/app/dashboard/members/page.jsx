@@ -6,6 +6,7 @@ import { userApi, dependantApi } from '../../../lib/api';
 import PageHeader from '../../../components/ui/PageHeader';
 import Modal from '../../../components/ui/Modal';
 import Toast from '../../../components/ui/Toast';
+import { JUMUIYA_LIST } from '../../../lib/constants';
 import RoleBadge from '../../../components/ui/RoleBadge';
 import AdminAddMemberModal from '../../../components/members/AdminMemberModal';
 
@@ -671,7 +672,18 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
             <div>
               <SectionDivider title="Address" />
               <Grid2>
-                <FieldInput label="Jumuiya" value={form.jumuiya} onChange={set('jumuiya')} placeholder="Local community group" />
+                <>
+  <FieldInput
+    label="Jumuiya"
+    value={form.jumuiya}
+    onChange={set('jumuiya')}
+    placeholder="Select or type jumuiya…"
+    listId="jumuiya-options"
+  />
+  <datalist id="jumuiya-options">
+    {JUMUIYA_LIST.map(j => <option key={j} value={j} />)}
+  </datalist>
+</>
                 <FieldInput label="Block No." value={form.block_no} onChange={set('block_no')} placeholder="e.g. B-12" />
               </Grid2>
               <Grid2>

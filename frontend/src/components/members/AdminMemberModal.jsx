@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { authApi } from '../../lib/api';
 import * as XLSX from 'xlsx';
+import { JUMUIYA_LIST } from '../../lib/constants';
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 const Icon = ({ path, size = 16, className = '' }) => (
@@ -897,9 +898,17 @@ export default function AdminAddMemberModal({ onClose, onAdded }) {
                 <>
                   <SectionLabel>Location</SectionLabel>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Jumuiya">
-                      <TextInput value={form.jumuiya} onChange={e => set('jumuiya', e.target.value)} placeholder="e.g. Jumuiya ya Upendo" />
-                    </Field>
+                   <Field label="Jumuiya">
+  <TextInput
+    list="jumuiya-options"
+    value={form.jumuiya}
+    onChange={e => set('jumuiya', e.target.value)}
+    placeholder="Select or type jumuiya…"
+  />
+  <datalist id="jumuiya-options">
+    {JUMUIYA_LIST.map(j => <option key={j} value={j} />)}
+  </datalist>
+</Field>
                     <Field label="Block no.">
                       <TextInput value={form.block_no} onChange={e => set('block_no', e.target.value)} placeholder="e.g. B-12" />
                     </Field>
