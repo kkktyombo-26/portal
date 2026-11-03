@@ -75,6 +75,11 @@ const ICONS = {
       <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>
     </svg>
   ),
+  pledges: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8l-1.5-1.5a1.5 1.5 0 0 0-2 2.2l3.5 3.8A6 6 0 0 0 8 21h8a6 6 0 0 0 6-6v-4a2 2 0 0 0-4 0"/>
+    </svg>
+  ),
   logout: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -111,6 +116,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
 
   const isActive = (href) => pathname === href;
 
+  const canManagePledges = (role) =>
+    ['pastor', 'elder', 'group_leader'].includes(role);
+
   const navSections = [
     {
       labelEn: 'Overview', labelSw: 'Jumla',
@@ -133,6 +141,17 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         { href: '/dashboard/announcements', labelEn: 'Announcements', labelSw: 'Matangazo', icon: ICONS.announcements },
         { href: '/dashboard/events',        labelEn: 'Schedule',      labelSw: 'Ratiba',    icon: ICONS.schedule     },
       ],
+    },
+    {
+      labelEn: 'Finance', labelSw: 'Fedha',
+      items: [
+        canManagePledges(user.role) && {
+          href:    '/dashboard/pledges',
+          labelEn: 'Pledges',
+          labelSw: 'Ahadi',
+          icon:    ICONS.pledges,
+        },
+      ].filter(Boolean),
     },
     {
       labelEn: 'IT Desk', labelSw: 'Dawati la IT',
