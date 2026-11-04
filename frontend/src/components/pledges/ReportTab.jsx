@@ -1,4 +1,5 @@
 'use client';
+
 /**
  * ReportTab.jsx
  * ─────────────
@@ -14,59 +15,96 @@
  *   fmtDate    fn(dateStr)
  *   lang       string
  *
- * Note: this component fetches its own campaigns and groups to populate
- * the filter dropdowns — no prop-drilling needed.
+ * Bilingual: all visible strings go through t() (en / sw).
+ * Add the rp_* keys from this file to src/lib/i18n.js.
+ *
+ * Styling: uses the KKKT DMP Yombo design system (globals.css component
+ * layer + tailwind.config.js tokens). No raw blue/emerald/red/neutral
+ * utilities — those colours don't exist in the custom palette.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { pledgeApi } from '../../lib/pledgeApi';
-import { groupApi } from '../../lib/api';
+import { groupApi }  from '../../lib/api';
+import { useTranslation } from '../../lib/i18n';
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
+const DownloadIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+    <path d="M6.5 1v8M3.5 6.5l3 3 3-3M2 11h9"
+      stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const EmptyIcon = () => (
+  <svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="empty-state-icon">
+    <rect x="4" y="4" width="28" height="28" rx="4" stroke="currentColor" strokeWidth="1.5"/>
+    <path d="M12 22l5-6 4 4 4-6"
+      stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
 
 // ─── Summary card ─────────────────────────────────────────────────────────────
-
 function SummaryCard({ label, value, sub }) {
   return (
-    <div className="bg-white border border-neutral-200 rounded-xl px-5 py-4">
-      <p className="text-xs text-neutral-500">{label}</p>
-      <p className="text-2xl font-semibold text-neutral-900 mt-1">{value}</p>
-      {sub && <p className="text-xs text-neutral-400 mt-0.5">{sub}</p>}
+    <div className="card card-body" style={{ padding: '1rem 1.25rem' }}>
+      <p style={{
+        fontSize: '0.6875rem', fontWeight: 600, letterSpacing: '0.07em',
+        textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.25rem',
+      }}>
+        {label}
+      </p>
+      <p style={{
+        fontSize: '1.375rem', fontWeight: 700,
+        color: 'var(--text-primary)', fontFamily: 'Lora, serif',
+        letterSpacing: '-0.02em', lineHeight: 1.2,
+      }}>
+        {value}
+      </p>
+      {sub && (
+        <p className="form-hint" style={{ marginTop: '0.25rem' }}>{sub}</p>
+      )}
     </div>
   );
 }
 
 // ─── Progress bar ─────────────────────────────────────────────────────────────
-
 function Bar({ pct }) {
-  const c = pct >= 100 ? 'bg-emerald-500' : pct >= 50 ? 'bg-blue-500' : 'bg-amber-400';
+  const clamped = Math.min(100, Math.max(0, pct));
   return (
-    <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
-      <div className={`h-1.5 rounded-full ${c}`} style={{ width: `${Math.min(100, pct)}%` }} />
+    <div className="progress-bar">
+      <div
+        className={`progress-fill ${clamped >= 100 ? 'success' : ''}`}
+        style={{ width: `${clamped}%` }}
+      />
     </div>
   );
 }
 
 // ─── Main tab ─────────────────────────────────────────────────────────────────
-
 export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
+  const { t } = useTranslation(lang);
+
   const [campaigns, setCampaigns] = useState([]);
-  const [groups, setGroups]       = useState([]);
+  const [groups,    setGroups]    = useState([]);
 
   // Filters
-  const [year, setYear]               = useState(new Date().getFullYear());
-  const [campaignId, setCampaignId]   = useState('');
-  const [groupId, setGroupId]         = useState('');
-  const [status, setStatus]           = useState('');
+  const [year,       setYear]       = useState(new Date().getFullYear());
+  const [campaignId, setCampaignId] = useState('');
+  const [groupId,    setGroupId]    = useState('');
+  const [status,     setStatus]     = useState('');
 
   // Results
-  const [rows, setRows]               = useState([]);
-  const [totals, setTotals]           = useState(null);
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState('');
+  const [rows,    setRows]    = useState([]);
+  const [totals,  setTotals]  = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
 
   const canViewGroups = ['pastor', 'elder', 'group_leader'].includes(role);
 
-  // ── Bootstrap dropdowns ───────────────────────────────────────────────────
+  const money = (n) => (fmtMoney ? fmtMoney(n) : Number(n).toLocaleString());
 
+  // ── Bootstrap dropdowns ───────────────────────────────────────────────────
   useEffect(() => {
     pledgeApi.getCampaigns().then(r => {
       setCampaigns(r.data?.data ?? r.data ?? []);
@@ -80,7 +118,6 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
   }, [canViewGroups]);
 
   // ── Fetch report ──────────────────────────────────────────────────────────
-
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -91,49 +128,48 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
       if (groupId)    params.group_id    = groupId;
       if (status)     params.status      = status;
 
-      const r = await pledgeApi.getReport(params);
-      // Backend: { success, totals: {...}, data: Row[] }
+      const r       = await pledgeApi.getReport(params);
       const payload = r.data ?? {};
       setTotals(payload.totals ?? null);
       setRows(payload.data ?? []);
     } catch (e) {
-      setError(e?.response?.data?.message ?? 'Failed to load report.');
+      setError(e?.response?.data?.message ?? t('rp_err_load'));
     } finally {
       setLoading(false);
     }
-  }, [year, campaignId, groupId, status]);
+  }, [year, campaignId, groupId, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Run on mount + whenever filters change
   useEffect(() => { load(); }, [load]);
 
-  // ── Derived totals (fallback if backend doesn't send them) ────────────────
-
+  // ── Derived totals ────────────────────────────────────────────────────────
   const totalPledged = totals?.total_pledged ?? rows.reduce((s, r) => s + Number(r.pledged_amount ?? 0), 0);
-  const totalPaid    = totals?.total_paid    ?? rows.reduce((s, r) => s + Number(r.total_paid ?? 0), 0);
+  const totalPaid    = totals?.total_paid    ?? rows.reduce((s, r) => s + Number(r.total_paid    ?? 0), 0);
   const totalBalance = totals?.total_balance ?? (totalPledged - totalPaid);
   const overallPct   = totalPledged > 0 ? Math.round((totalPaid / totalPledged) * 100) : 0;
 
   // ── Year options ──────────────────────────────────────────────────────────
-
   const currentYear = new Date().getFullYear();
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
-  // ── Export CSV helper ─────────────────────────────────────────────────────
-
+  // ── Export CSV ────────────────────────────────────────────────────────────
   const exportCsv = () => {
     if (!rows.length) return;
-    const headers = ['Member', 'Campaign', 'Group', 'Pledge Type', 'Pledged', 'Paid', 'Balance', 'Status'];
+    const headers = [
+      t('rp_col_member'), t('rp_col_campaign'), t('rp_col_group'),
+      t('rp_col_type'), t('rp_col_pledged'), t('rp_col_paid'),
+      t('rp_col_balance'), 'Status',
+    ];
     const csvRows = rows.map(r => [
-      r.member_name ?? '',
-      r.campaign_name ?? '',
-      r.group_name ?? '',
-      r.pledge_type ?? '',
+      r.member_name    ?? '',
+      r.campaign_name  ?? '',
+      r.group_name     ?? '',
+      r.pledge_type    ?? '',
       r.pledged_amount ?? 0,
-      r.total_paid ?? 0,
+      r.total_paid     ?? 0,
       (Number(r.pledged_amount ?? 0) - Number(r.total_paid ?? 0)).toFixed(0),
-      r.status ?? '',
+      r.status         ?? '',
     ]);
-    const csv = [headers, ...csvRows].map(row => row.map(v => `"${v}"`).join(',')).join('\n');
+    const csv  = [headers, ...csvRows].map(row => row.map(v => `"${v}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -144,56 +180,55 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
-
   return (
-    <div className="p-5 space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-base font-semibold text-neutral-900">Pledge Report</h2>
+    <div className="flex flex-col gap-5" style={{ marginTop: '1.5rem' }}>
+
+      {/* ── Toolbar ──────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <h2 className="card-title" style={{ fontSize: '1rem' }}>{t('rp_title')}</h2>
+
         {rows.length > 0 && (
-          <button
-            onClick={exportCsv}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm border border-neutral-200 text-neutral-600 rounded-lg hover:bg-neutral-50 transition-colors"
-          >
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <path d="M6.5 1v8M3.5 6.5l3 3 3-3M2 11h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Export CSV
+          <button className="btn btn-secondary btn-sm" onClick={exportCsv}>
+            <DownloadIcon />
+            {t('rp_export_csv')}
           </button>
         )}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      {/* ── Filters ──────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem' }}>
         {/* Year */}
         <select
+          className="select"
+          style={{ width: 100 }}
           value={year}
           onChange={e => setYear(Number(e.target.value))}
-          className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
 
         {/* Campaign */}
         <select
+          className="select"
+          style={{ minWidth: 180 }}
           value={campaignId}
           onChange={e => setCampaignId(e.target.value)}
-          className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]"
         >
-          <option value="">All campaigns</option>
+          <option value="">{t('rp_all_campaigns')}</option>
           {campaigns.map(c => (
-            <option key={c.id} value={c.id}>{c.name} ({c.year})</option>
+            <option key={c.id} value={c.id}>{c.name} ({c.pledge_year})</option>
           ))}
         </select>
 
         {/* Group */}
         {canViewGroups && groups.length > 0 && (
           <select
+            className="select"
+            style={{ minWidth: 160 }}
             value={groupId}
             onChange={e => setGroupId(e.target.value)}
-            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px]"
           >
-            <option value="">All groups</option>
+            <option value="">{t('rp_all_groups')}</option>
             {groups.map(g => (
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
@@ -202,115 +237,148 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
 
         {/* Status */}
         <select
+          className="select"
+          style={{ width: 160 }}
           value={status}
           onChange={e => setStatus(e.target.value)}
-          className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="pending">Pending</option>
-          <option value="rejected">Rejected</option>
+          <option value="">{t('rp_all_statuses')}</option>
+          <option value="active">{t('pl_status_active')}</option>
+          <option value="pending">{t('pl_status_pending')}</option>
+          <option value="rejected">{t('pl_status_rejected')}</option>
         </select>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2.5">{error}</div>
-      )}
+      {/* ── Error ────────────────────────────────────────────────────────── */}
+      {error && <div className="banner banner-danger">{error}</div>}
 
-      {/* Summary cards */}
-      {!loading && (rows.length > 0 || totals) && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <SummaryCard
-            label="Total Pledged"
-            value={fmtMoney ? fmtMoney(totalPledged) : totalPledged.toLocaleString()}
-            sub={`${rows.length} pledges`}
-          />
-          <SummaryCard
-            label="Total Paid"
-            value={fmtMoney ? fmtMoney(totalPaid) : totalPaid.toLocaleString()}
-            sub={`${overallPct}% fulfilled`}
-          />
-          <SummaryCard
-            label="Outstanding"
-            value={fmtMoney ? fmtMoney(totalBalance) : totalBalance.toLocaleString()}
-            sub={`${100 - overallPct}% remaining`}
-          />
-          <SummaryCard
-            label="Overall Progress"
-            value={`${overallPct}%`}
-            sub={totals?.active_campaigns ? `${totals.active_campaigns} active campaigns` : undefined}
-          />
-        </div>
-      )}
-
-      {/* Loading skeleton */}
+      {/* ── Loading skeletons ─────────────────────────────────────────────── */}
       {loading && (
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[1,2,3,4].map(i => (
-              <div key={i} className="h-20 bg-neutral-100 rounded-xl animate-pulse" />
+        <div className="flex flex-col gap-3">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="skeleton" style={{ height: 80, borderRadius: 12 }} />
             ))}
           </div>
-          <div className="h-64 bg-neutral-100 rounded-xl animate-pulse mt-4" />
+          <div className="skeleton" style={{ height: 260, borderRadius: 12, marginTop: '0.25rem' }} />
         </div>
       )}
 
-      {/* Empty */}
+      {/* ── Summary cards ─────────────────────────────────────────────────── */}
+      {!loading && (rows.length > 0 || totals) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem' }}>
+          <SummaryCard
+            label={t('rp_total_pledged')}
+            value={money(totalPledged)}
+            sub={`${rows.length} ${t('rp_pledges')}`}
+          />
+          <SummaryCard
+            label={t('rp_total_paid')}
+            value={money(totalPaid)}
+            sub={`${overallPct}% ${t('rp_fulfilled')}`}
+          />
+          <SummaryCard
+            label={t('rp_outstanding')}
+            value={money(totalBalance)}
+            sub={`${100 - overallPct}% ${t('rp_remaining')}`}
+          />
+          <SummaryCard
+            label={t('rp_overall_progress')}
+            value={`${overallPct}%`}
+            sub={totals?.active_campaigns
+              ? `${totals.active_campaigns} ${t('rp_active_campaigns')}`
+              : undefined}
+          />
+        </div>
+      )}
+
+      {/* ── Empty state ───────────────────────────────────────────────────── */}
       {!loading && rows.length === 0 && (
-        <div className="text-center py-16 text-neutral-400">
-          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="mx-auto mb-3 opacity-40">
-            <rect x="4" y="4" width="28" height="28" rx="4" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M12 22l5-6 4 4 4-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <p className="text-sm">No data for the selected filters.</p>
+        <div className="empty-state">
+          <EmptyIcon />
+          <p className="empty-state-body">{t('rp_no_data')}</p>
         </div>
       )}
 
-      {/* Data table */}
+      {/* ── Desktop table ─────────────────────────────────────────────────── */}
       {!loading && rows.length > 0 && (
         <>
-          {/* Desktop table */}
-          <div className="hidden md:block overflow-x-auto rounded-xl border border-neutral-200">
-            <table className="w-full text-sm">
+          <div className="hidden md:block" style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
               <thead>
-                <tr className="bg-neutral-50 border-b border-neutral-200">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Member</th>
-                  {canViewGroups && <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Group</th>}
-                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Campaign</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Type</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-neutral-500">Pledged</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-neutral-500">Paid</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-neutral-500">Balance</th>
-                  <th className="px-4 py-3 text-xs font-medium text-neutral-500">Progress</th>
+                <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+                  {[
+                    { label: t('rp_col_member'),   align: 'left'  },
+                    canViewGroups
+                      ? { label: t('rp_col_group'), align: 'left' }
+                      : null,
+                    { label: t('rp_col_campaign'), align: 'left'  },
+                    { label: t('rp_col_type'),     align: 'left'  },
+                    { label: t('rp_col_pledged'),  align: 'right' },
+                    { label: t('rp_col_paid'),     align: 'right' },
+                    { label: t('rp_col_balance'),  align: 'right' },
+                    { label: t('rp_col_progress'), align: 'left'  },
+                  ].filter(Boolean).map(col => (
+                    <th
+                      key={col.label}
+                      style={{
+                        padding: '0.625rem 1rem',
+                        textAlign: col.align,
+                        fontSize: '0.6875rem', fontWeight: 600,
+                        letterSpacing: '0.06em', textTransform: 'uppercase',
+                        color: 'var(--text-tertiary)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody>
                 {rows.map((row, idx) => {
                   const pledged = Number(row.pledged_amount ?? 0);
-                  const paid    = Number(row.total_paid ?? 0);
+                  const paid    = Number(row.total_paid    ?? 0);
                   const balance = pledged - paid;
                   const pct     = pledged > 0 ? Math.round((paid / pledged) * 100) : 0;
 
                   return (
-                    <tr key={row.pledge_id ?? idx} className="hover:bg-neutral-50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-neutral-900">{row.member_name ?? '—'}</td>
-                      {canViewGroups && <td className="px-4 py-3 text-neutral-600">{row.group_name ?? '—'}</td>}
-                      <td className="px-4 py-3 text-neutral-600">{row.campaign_name ?? '—'}</td>
-                      <td className="px-4 py-3 text-neutral-500 capitalize">{(row.pledge_type ?? '—').replace('_', ' ')}</td>
-                      <td className="px-4 py-3 text-right font-mono text-neutral-900">
-                        {fmtMoney ? fmtMoney(pledged) : pledged.toLocaleString()}
+                    <tr
+                      key={row.pledge_id ?? idx}
+                      style={{
+                        borderBottom: '1px solid var(--border-subtle)',
+                        transition: 'background var(--dur-base)',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-subtle)'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}
+                    >
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                        {row.member_name ?? '—'}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-emerald-700">
-                        {fmtMoney ? fmtMoney(paid) : paid.toLocaleString()}
+                      {canViewGroups && (
+                        <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                          {row.group_name ?? '—'}
+                        </td>
+                      )}
+                      <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                        {row.campaign_name ?? '—'}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-neutral-500">
-                        {fmtMoney ? fmtMoney(balance) : balance.toLocaleString()}
+                      <td style={{ padding: '0.75rem 1rem', color: 'var(--text-tertiary)', textTransform: 'capitalize' }}>
+                        {(row.pledge_type ?? '—').replace('_', ' ')}
                       </td>
-                      <td className="px-4 py-3 w-40">
-                        <div className="space-y-1">
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>
+                        {money(pledged)}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--success)' }}>
+                        {money(paid)}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
+                        {money(balance)}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', minWidth: 120 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <Bar pct={pct} />
-                          <p className="text-xs text-neutral-400 text-right">{pct}%</p>
+                          <span className="form-hint" style={{ marginTop: 0, textAlign: 'right' }}>{pct}%</span>
                         </div>
                       </td>
                     </tr>
@@ -320,28 +388,40 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
             </table>
           </div>
 
-          {/* Mobile cards */}
-          <div className="md:hidden space-y-3">
+          {/* ── Mobile cards ──────────────────────────────────────────────── */}
+          <div className="md:hidden flex flex-col gap-3">
             {rows.map((row, idx) => {
               const pledged = Number(row.pledged_amount ?? 0);
-              const paid    = Number(row.total_paid ?? 0);
+              const paid    = Number(row.total_paid    ?? 0);
               const balance = pledged - paid;
               const pct     = pledged > 0 ? Math.round((paid / pledged) * 100) : 0;
 
               return (
-                <div key={row.pledge_id ?? idx} className="bg-white border border-neutral-200 rounded-xl p-4 space-y-3">
+                <div key={row.pledge_id ?? idx} className="card card-body flex flex-col gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-neutral-900">{row.member_name ?? '—'}</p>
-                    <p className="text-xs text-neutral-500">{row.campaign_name ?? '—'}{row.group_name ? ` · ${row.group_name}` : ''}</p>
+                    <p className="card-title" style={{ fontSize: '0.875rem' }}>{row.member_name ?? '—'}</p>
+                    <p className="card-subtitle">
+                      {row.campaign_name ?? '—'}
+                      {row.group_name ? ` · ${row.group_name}` : ''}
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
-                    <span>Pledged: <strong className="text-neutral-900">{fmtMoney ? fmtMoney(pledged) : pledged.toLocaleString()}</strong></span>
-                    <span>Paid: <strong className="text-emerald-700">{fmtMoney ? fmtMoney(paid) : paid.toLocaleString()}</strong></span>
-                    <span>Balance: <strong className="text-neutral-700">{fmtMoney ? fmtMoney(balance) : balance.toLocaleString()}</strong></span>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    <span>
+                      {t('rp_col_pledged')}:{' '}
+                      <strong style={{ color: 'var(--text-primary)' }}>{money(pledged)}</strong>
+                    </span>
+                    <span>
+                      {t('rp_col_paid')}:{' '}
+                      <strong style={{ color: 'var(--success)' }}>{money(paid)}</strong>
+                    </span>
+                    <span>
+                      {t('rp_col_balance')}:{' '}
+                      <strong style={{ color: 'var(--text-secondary)' }}>{money(balance)}</strong>
+                    </span>
                   </div>
-                  <div className="space-y-1">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     <Bar pct={pct} />
-                    <p className="text-xs text-neutral-400">{pct}% fulfilled</p>
+                    <p className="form-hint" style={{ marginTop: 0 }}>{pct}% {t('rp_fulfilled')}</p>
                   </div>
                 </div>
               );
