@@ -236,17 +236,17 @@ export default function PledgesPage() {
               />
             )}
             {activeTab === 'pledges' && (
-              <PledgesTab
-                campaigns={campaigns}
-                pledgeTypes={pledgeTypes}
-                role={role}
-                initialCampaign={selectedCampaign}
-                onDrillPayments={drillToPayments}
-                addToast={addToast}
-                fmtMoney={fmtMoney}
-                fmtDate={fmtDate}
-                pctBar={pctBar}
-              />
+            <PledgesTab
+  campaigns={campaigns}
+  pledgeTypes={pledgeTypes}
+  role={role}
+  initialCampaign={selectedCampaign}   // PledgesTab should use this to pre-filter
+  onDrillPayments={drillToPayments}
+  addToast={addToast}
+  fmtMoney={fmtMoney}
+  fmtDate={fmtDate}
+  pctBar={pctBar}
+/>
             )}
             {activeTab === 'payments' && (
               <PaymentsTab

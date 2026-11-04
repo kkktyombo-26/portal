@@ -8,10 +8,18 @@
  *   pastor / elder      → create any scope, soft-delete
  *   group_leader        → create group-scope only (own group)
  *   member              → read-only (this tab is hidden for them anyway)
+ *
+ * Bilingual: all strings go through t() (en / sw). Pass `lang` from page.jsx.
+ * Add the keys from translations-campaigns.js to src/lib/i18n.js.
+ *
+ * Theme: colours come from design-system tokens / classes only.
+ * The expanded row no longer fills with --surface-page (a third surface
+ * inside a card); it is separated by a 1px rule instead.
  */
 
 import { useState } from 'react';
 import { pledgeApi } from '../../lib/pledgeApi';
+import { useTranslation } from '../../lib/i18n';
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const PlusIcon = () => (
@@ -30,20 +38,32 @@ const XIcon = () => (
   </svg>
 );
 
-// ── Scope badge ───────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const SCOPE_BADGE = {
-  church: { cls: 'badge-gold',    label: 'Church-wide' },
-  group:  { cls: 'badge-navy',    label: 'Group'       },
-  member: { cls: 'badge-neutral', label: 'Member'      },
+  church: 'badge-gold',
+  group:  'badge-navy',
+  member: 'badge-neutral',
+};
+
+// Replace {placeholders} in a translated string
+const fill = (str, vars = {}) =>
+  Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), str);
+
+const statLabel = {
+  fontSize: '0.6875rem',
+  color: 'var(--text-tertiary)',
+  fontWeight: 600,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
 };
 
 // ── Progress bar inline ───────────────────────────────────────────────────────
 function MiniProgress({ pct }) {
-  const color = pct >= 100 ? 'var(--success)' : pct >= 60 ? '#F59E0B' : 'var(--danger)';
+  const color = pct >= 100 ? 'var(--success)' : pct >= 60 ? 'var(--gold)' : 'var(--danger)';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
       <div className="progress-bar" style={{ flex: 1 }}>
-        <div className="progress-fill" style={{ width: `${pct}%`, background: color }} />
+        <div className="progress-fill" style={{ width: `${Math.min(100, pct)}%`, background: color }} />
       </div>
       <span style={{ fontSize: '0.6875rem', fontWeight: 600, color, minWidth: 32, textAlign: 'right' }}>
         {pct}%
@@ -53,7 +73,7 @@ function MiniProgress({ pct }) {
 }
 
 // ── Create / Edit modal ───────────────────────────────────────────────────────
-function CampaignModal({ pledgeTypes, role, editing, onClose, onSaved, addToast }) {
+function CampaignModal({ pledgeTypes, role, editing, onClose, onSaved, addToast, t, lang }) {
   const isEdit = !!editing;
   const currentYear = new Date().getFullYear();
 
@@ -75,9 +95,9 @@ function CampaignModal({ pledgeTypes, role, editing, onClose, onSaved, addToast 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.name.trim())      return setError('Campaign name is required.');
-    if (!form.pledge_type_id)   return setError('Pledge type is required.');
-    if (!form.pledge_year)      return setError('Year is required.');
+    if (!form.name.trim())    return setError(t('cp_err_name'));
+    if (!form.pledge_type_id) return setError(t('cp_err_type'));
+    if (!form.pledge_year)    return setError(t('cp_err_year'));
 
     setSaving(true);
     try {
@@ -92,102 +112,95 @@ function CampaignModal({ pledgeTypes, role, editing, onClose, onSaved, addToast 
 
       if (isEdit) {
         await pledgeApi.updateCampaign(editing.id, payload);
-        addToast(`Campaign "${form.name}" updated.`);
+        addToast(fill(t('cp_toast_updated'), { name: form.name }));
       } else {
         await pledgeApi.createCampaign(payload);
-        addToast(`Campaign "${form.name}" created.`);
+        addToast(fill(t('cp_toast_created'), { name: form.name }));
       }
       onSaved();
     } catch (err) {
-      setError(err.message || 'Save failed.');
+      setError(err.message || t('cp_err_save'));
     } finally {
       setSaving(false);
     }
   };
 
   const canSetScope = role !== 'group_leader';
+  const typeName = (pt) => (lang === 'sw' ? pt.name_sw || pt.name_en : pt.name_en || pt.name_sw);
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      {/* FIX: modal uses flex-column so header/footer are fixed and body scrolls */}
       <div
         className="modal"
-        style={{
-          maxWidth: 520,
-          display: 'flex',
-          flexDirection: 'column',
-          maxHeight: 'min(90vh, 680px)',
-        }}
+        style={{ maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: 'min(90vh, 680px)' }}
       >
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <div>
-            <p className="modal-title">{isEdit ? 'Edit Campaign' : 'New Pledge Campaign'}</p>
-            <p style={{ fontSize: '0.8125rem', color: 'var(--text-tertiary)', marginTop: 2 }}>
-              {isEdit ? `Editing: ${editing.name}` : 'Create a new ahadi campaign'}
+            <p className="modal-title">{isEdit ? t('cp_edit_title') : t('cp_new_title')}</p>
+            <p className="card-subtitle">
+              {isEdit ? fill(t('cp_editing'), { name: editing.name }) : t('cp_new_subtitle')}
             </p>
           </div>
-          <button className="btn btn-ghost btn-icon" onClick={onClose}><XIcon /></button>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label={t('cancel')}>
+            <XIcon />
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          {/* FIX: modal-body scrolls independently */}
           <div
             className="modal-body"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1rem',
-              overflowY: 'auto',
-              flex: 1,
-              minHeight: 0,
-            }}
+            style={{ display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto', flex: 1, minHeight: 0 }}
           >
-
             {/* Name */}
             <div className="form-group">
-              <label className="form-label">Campaign Name *</label>
-              <input className="input" value={form.name} onChange={e => set('name', e.target.value)}
-                placeholder="e.g. Jengo 2026" />
+              <label className="form-label">{t('cp_name')} *</label>
+              <input
+                className="input"
+                value={form.name}
+                onChange={e => set('name', e.target.value)}
+                placeholder={t('cp_name_placeholder')}
+              />
             </div>
 
             {/* Type + Year */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div className="form-group">
-                <label className="form-label">Pledge Type *</label>
-                <select className="select" value={form.pledge_type_id} onChange={e => set('pledge_type_id', e.target.value)}>
-                  <option value="">Select type…</option>
-                  {pledgeTypes.map(t => (
-                    <option key={t.id} value={t.id}>{t.name_sw} — {t.name_en}</option>
+                <label className="form-label">{t('cp_pledge_type')} *</label>
+                <select
+                  className="select"
+                  value={form.pledge_type_id}
+                  onChange={e => set('pledge_type_id', e.target.value)}
+                >
+                  <option value="">{t('cp_select_type')}</option>
+                  {pledgeTypes.map(pt => (
+                    <option key={pt.id} value={pt.id}>{typeName(pt)}</option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Year *</label>
-                <input className="input" type="number" min="2000" max="2100"
-                  value={form.pledge_year} onChange={e => set('pledge_year', e.target.value)} />
+                <label className="form-label">{t('cp_year')} *</label>
+                <input
+                  className="input" type="number" min="2000" max="2100"
+                  value={form.pledge_year}
+                  onChange={e => set('pledge_year', e.target.value)}
+                />
               </div>
             </div>
 
             {/* Scope — hidden for group_leader (locked to 'group') */}
             {canSetScope && !isEdit && (
               <div className="form-group">
-                <label className="form-label">Scope</label>
+                <label className="form-label">{t('cp_scope')}</label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  {['church','group','member'].map(s => (
+                  {['church', 'group', 'member'].map(s => (
                     <button
-                      key={s} type="button"
+                      key={s}
+                      type="button"
                       onClick={() => set('scope', s)}
-                      className="btn btn-sm"
-                      style={{
-                        flex: 1,
-                        background: form.scope === s ? '#F59E0B' : 'var(--surface-page)',
-                        color:      form.scope === s ? '#fff'    : 'var(--text-secondary)',
-                        border:     `1px solid ${form.scope === s ? '#F59E0B' : 'var(--border-default)'}`,
-                        fontWeight: form.scope === s ? 600 : 400,
-                        textTransform: 'capitalize',
-                      }}
+                      className={`btn btn-sm ${form.scope === s ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ flex: 1 }}
                     >
-                      {s}
+                      {t(`cp_scope_${s}`)}
                     </button>
                   ))}
                 </div>
@@ -196,26 +209,30 @@ function CampaignModal({ pledgeTypes, role, editing, onClose, onSaved, addToast 
 
             {/* Target amount */}
             <div className="form-group">
-              <label className="form-label">Target Amount (TShs) — optional</label>
+              <label className="form-label">{t('cp_target')}</label>
               <div className="input-group">
-                <span className="input-icon" style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text-tertiary)' }}>
+                <span className="input-icon" style={{ width: 'auto', fontSize: '0.8125rem', fontWeight: 500 }}>
                   TShs
                 </span>
-                <input className="input" style={{ paddingLeft: '3rem' }} type="number" min="0" step="1000"
-                  value={form.target_amount} onChange={e => set('target_amount', e.target.value)}
-                  placeholder="0" />
+                <input
+                  className="input" style={{ paddingLeft: '3rem' }}
+                  type="number" min="0" step="1000"
+                  value={form.target_amount}
+                  onChange={e => set('target_amount', e.target.value)}
+                  placeholder="0"
+                />
               </div>
             </div>
 
             {/* Dates */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div className="form-group">
-                <label className="form-label">Start Date</label>
+                <label className="form-label">{t('cp_start_date')}</label>
                 <input className="input" type="date" value={form.start_date}
                   onChange={e => set('start_date', e.target.value)} />
               </div>
               <div className="form-group">
-                <label className="form-label">End Date</label>
+                <label className="form-label">{t('cp_end_date')}</label>
                 <input className="input" type="date" value={form.end_date}
                   onChange={e => set('end_date', e.target.value)} />
               </div>
@@ -223,19 +240,22 @@ function CampaignModal({ pledgeTypes, role, editing, onClose, onSaved, addToast 
 
             {/* Description */}
             <div className="form-group">
-              <label className="form-label">Description — optional</label>
-              <textarea className="textarea" rows={2} value={form.description}
+              <label className="form-label">{t('cp_description')}</label>
+              <textarea
+                className="textarea" rows={2}
+                value={form.description}
                 onChange={e => set('description', e.target.value)}
-                placeholder="Brief description for this campaign…" />
+                placeholder={t('cp_description_placeholder')}
+              />
             </div>
 
-            {error && <p className="form-error">{error}</p>}
+            {error && <div className="banner banner-danger">{error}</div>}
           </div>
 
           <div className="modal-footer" style={{ flexShrink: 0 }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>{t('cancel')}</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Campaign'}
+              {saving ? t('cp_saving') : isEdit ? t('cp_save_changes') : t('cp_create')}
             </button>
           </div>
         </form>
@@ -244,20 +264,23 @@ function CampaignModal({ pledgeTypes, role, editing, onClose, onSaved, addToast 
   );
 }
 
-// ── Confirm delete modal ──────────────────────────────────────────────────────
-function ConfirmDeleteModal({ campaign, onClose, onDeleted, addToast }) {
+// ── Confirm deactivate modal ──────────────────────────────────────────────────
+function ConfirmDeleteModal({ campaign, onClose, onDeleted, addToast, t }) {
   const [loading, setLoading] = useState(false);
+
   const handle = async () => {
     setLoading(true);
     try {
       const res = await pledgeApi.deleteCampaign(campaign.id);
+      const affected = res.data?.affected_pledges ?? 0;
       addToast(
-        `"${campaign.name}" deactivated.${res.data.affected_pledges > 0 ? ` (${res.data.affected_pledges} pledge(s) affected)` : ''}`,
+        fill(t('cp_toast_deactivated'), { name: campaign.name }) +
+          (affected > 0 ? ` ${fill(t('cp_toast_affected'), { n: affected })}` : ''),
         'warning'
       );
       onDeleted();
     } catch (err) {
-      addToast(err.message || 'Delete failed.', 'danger');
+      addToast(err.message || t('cp_err_delete'), 'danger');
     } finally {
       setLoading(false);
     }
@@ -267,22 +290,27 @@ function ConfirmDeleteModal({ campaign, onClose, onDeleted, addToast }) {
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 400 }}>
         <div className="modal-header">
-          <p className="modal-title">Deactivate Campaign?</p>
-          <button className="btn btn-ghost btn-icon" onClick={onClose}><XIcon /></button>
+          <p className="modal-title">{t('cp_deactivate_title')}</p>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label={t('cancel')}>
+            <XIcon />
+          </button>
         </div>
         <div className="modal-body">
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            <strong style={{ color: 'var(--text-primary)' }}>{campaign.name}</strong> will be
-            deactivated. Existing pledges and payment history are preserved.
+          <p style={{ lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--text-primary)' }}>{campaign.name}</strong>{' '}
+            {t('cp_deactivate_body')}
             {Number(campaign.subscriber_count) > 0 && (
-              <> This campaign has <strong>{campaign.subscriber_count} member pledge(s)</strong>.</>
+              <>
+                {' '}
+                {fill(t('cp_deactivate_pledges'), { n: campaign.subscriber_count })}
+              </>
             )}
           </p>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-secondary" onClick={onClose}>{t('cancel')}</button>
           <button className="btn btn-danger" onClick={handle} disabled={loading}>
-            {loading ? 'Deactivating…' : 'Deactivate'}
+            {loading ? t('cp_deactivating') : t('cp_deactivate')}
           </button>
         </div>
       </div>
@@ -294,25 +322,26 @@ function ConfirmDeleteModal({ campaign, onClose, onDeleted, addToast }) {
 // CAMPAIGNS TAB
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function CampaignsTab({
-  campaigns, pledgeTypes, role, onRefresh, onDrill, addToast, fmtMoney, fmtDate, pctBar
+  campaigns, pledgeTypes, role, onRefresh, onDrill, addToast, fmtMoney, fmtDate, pctBar, lang,
 }) {
-  const [showCreate,  setShowCreate]  = useState(false);
-  const [editing,     setEditing]     = useState(null);
-  const [deleting,    setDeleting]    = useState(null);
-  const [filterYear,  setFilterYear]  = useState('');
-  const [filterScope, setFilterScope] = useState('');
-  const [filterActive,setFilterActive]= useState('1'); // '1' | '0' | ''
-  const [expandedId,  setExpandedId]  = useState(null);
+  const { t } = useTranslation(lang);
 
-  const canCreate = ['pastor','elder','group_leader'].includes(role);
-  const canDelete = ['pastor','elder'].includes(role);
+  const [showCreate,   setShowCreate]   = useState(false);
+  const [editing,      setEditing]      = useState(null);
+  const [deleting,     setDeleting]     = useState(null);
+  const [filterYear,   setFilterYear]   = useState('');
+  const [filterScope,  setFilterScope]  = useState('');
+  const [filterActive, setFilterActive] = useState('1'); // '1' | '0' | ''
+  const [expandedId,   setExpandedId]   = useState(null);
 
-  // Years available in data
-  const years = [...new Set(campaigns.map(c => c.pledge_year))].sort((a,b) => b - a);
+  const canCreate = ['pastor', 'elder', 'group_leader'].includes(role);
+  const canDelete = ['pastor', 'elder'].includes(role);
+
+  const years = [...new Set(campaigns.map(c => c.pledge_year))].sort((a, b) => b - a);
 
   const filtered = campaigns.filter(c => {
-    if (filterYear   && String(c.pledge_year) !== filterYear)   return false;
-    if (filterScope  && c.scope !== filterScope)                return false;
+    if (filterYear   && String(c.pledge_year) !== filterYear)        return false;
+    if (filterScope  && c.scope !== filterScope)                     return false;
     if (filterActive !== '' && String(c.is_active) !== filterActive) return false;
     return true;
   });
@@ -326,37 +355,35 @@ export default function CampaignsTab({
   return (
     <>
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1.5rem', marginTop: '1.5rem' }}>
-
-        {/* Filters */}
-        <select className="select" style={{ width: 120 }} value={filterYear}
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', margin: '1.5rem 0' }}>
+        <select className="select" style={{ width: 130 }} value={filterYear}
           onChange={e => setFilterYear(e.target.value)}>
-          <option value="">All years</option>
+          <option value="">{t('cp_all_years')}</option>
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
 
-        <select className="select" style={{ width: 140 }} value={filterScope}
+        <select className="select" style={{ width: 150 }} value={filterScope}
           onChange={e => setFilterScope(e.target.value)}>
-          <option value="">All scopes</option>
-          <option value="church">Church-wide</option>
-          <option value="group">Group</option>
-          <option value="member">Member</option>
+          <option value="">{t('cp_all_scopes')}</option>
+          <option value="church">{t('cp_scope_church')}</option>
+          <option value="group">{t('cp_scope_group')}</option>
+          <option value="member">{t('cp_scope_member')}</option>
         </select>
 
-        <select className="select" style={{ width: 120 }} value={filterActive}
+        <select className="select" style={{ width: 130 }} value={filterActive}
           onChange={e => setFilterActive(e.target.value)}>
-          <option value="1">Active</option>
-          <option value="0">Inactive</option>
-          <option value="">All</option>
+          <option value="1">{t('active')}</option>
+          <option value="0">{t('inactive')}</option>
+          <option value="">{t('all')}</option>
         </select>
 
-        <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: 'var(--text-tertiary)' }}>
-          {filtered.length} campaign{filtered.length !== 1 ? 's' : ''}
+        <span className="form-hint" style={{ marginLeft: 'auto', marginTop: 0 }}>
+          {filtered.length} {filtered.length === 1 ? t('cp_campaign_one') : t('cp_campaign_many')}
         </span>
 
         {canCreate && (
           <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
-            <PlusIcon /> New Campaign
+            <PlusIcon /> {t('cp_new_campaign')}
           </button>
         )}
       </div>
@@ -369,12 +396,12 @@ export default function CampaignsTab({
             <path d="M16 12V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/>
             <line x1="18" y1="22" x2="30" y2="22"/><line x1="18" y1="28" x2="24" y2="28"/>
           </svg>
-          <p className="empty-state-title">No campaigns found</p>
-          <p className="empty-state-body">Adjust your filters or create a new pledge campaign.</p>
+          <p className="empty-state-title">{t('cp_empty_title')}</p>
+          <p className="empty-state-body">{t('cp_empty_body')}</p>
           {canCreate && (
             <div className="empty-state-actions">
               <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                <PlusIcon /> New Campaign
+                <PlusIcon /> {t('cp_new_campaign')}
               </button>
             </div>
           )}
@@ -387,7 +414,7 @@ export default function CampaignsTab({
             const target  = Number(c.target_amount || 0);
             const pct     = pctBar(paid, pledged || target);
             const isOpen  = expandedId === c.id;
-            const scopeMeta = SCOPE_BADGE[c.scope] || SCOPE_BADGE.church;
+            const scopeCls = SCOPE_BADGE[c.scope] || SCOPE_BADGE.church;
 
             return (
               <div key={c.id} className="card" style={{ opacity: c.is_active ? 1 : 0.6 }}>
@@ -397,40 +424,38 @@ export default function CampaignsTab({
                   {/* Year badge */}
                   <div style={{
                     minWidth: 48, height: 48, borderRadius: 10,
-                    background: c.is_active ? '#FFFBEB' : '#F5F5F4',
-                    color: c.is_active ? '#B45309' : 'var(--text-tertiary)',
+                    background: c.is_active ? 'var(--gold-subtle)' : 'var(--border-subtle)',
+                    color: c.is_active ? 'var(--gold-dark)' : 'var(--text-tertiary)',
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0,
                   }}>
                     <span style={{ fontSize: '0.5625rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1 }}>
-                      {c.pledge_type_name?.slice(0,3).toUpperCase() || 'PLG'}
+                      {c.pledge_type_name?.slice(0, 3).toUpperCase() || 'PLG'}
                     </span>
                     <span style={{ fontSize: '0.875rem', fontWeight: 700, lineHeight: 1.2 }}>
                       {String(c.pledge_year).slice(-2)}
                     </span>
                   </div>
 
-                  {/* Campaign name + meta */}
+                  {/* Name + meta */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'Lora, serif' }}>
-                        {c.name}
-                      </span>
-                      <span className={`badge ${scopeMeta.cls}`}>{scopeMeta.label}</span>
-                      {!c.is_active && <span className="badge badge-danger">Inactive</span>}
+                      <span className="card-title" style={{ fontSize: '0.9375rem' }}>{c.name}</span>
+                      <span className={`badge ${scopeCls}`}>{t(`cp_scope_${c.scope}`)}</span>
+                      {!c.is_active && <span className="badge badge-danger">{t('inactive')}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                      <span className="form-hint" style={{ marginTop: 0 }}>
                         {c.pledge_type_name} · {c.pledge_year}
                       </span>
                       {c.group_name && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                          Group: {c.group_name}
+                        <span className="form-hint" style={{ marginTop: 0 }}>
+                          {t('cp_group')}: {c.group_name}
                         </span>
                       )}
                       {c.start_date && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                          {fmtDate(c.start_date)} — {fmtDate(c.end_date)}
+                        <span className="form-hint" style={{ marginTop: 0 }}>
+                          {fmtDate(c.start_date)} — {c.end_date ? fmtDate(c.end_date) : '…'}
                         </span>
                       )}
                     </div>
@@ -439,22 +464,18 @@ export default function CampaignsTab({
                   {/* Quick stats */}
                   <div style={{ display: 'flex', gap: '1.5rem', flexShrink: 0, alignItems: 'center' }}>
                     <div style={{ textAlign: 'right' }}>
-                      <p style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Members</p>
-                      <p style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Lora, serif' }}>
-                        {c.subscriber_count || 0}
-                      </p>
+                      <p style={statLabel}>{t('cp_members')}</p>
+                      <p className="card-title" style={{ fontWeight: 700 }}>{c.subscriber_count || 0}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <p style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Collected</p>
-                      <p style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-accent)', fontFamily: 'Lora, serif' }}>
+                      <p style={statLabel}>{t('cp_collected')}</p>
+                      <p className="card-title" style={{ fontWeight: 700, color: 'var(--text-accent)' }}>
                         {fmtMoney(paid)}
                       </p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <p style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Pledged</p>
-                      <p style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Lora, serif' }}>
-                        {fmtMoney(pledged)}
-                      </p>
+                      <p style={statLabel}>{t('cp_pledged')}</p>
+                      <p className="card-title" style={{ fontWeight: 700 }}>{fmtMoney(pledged)}</p>
                     </div>
                   </div>
 
@@ -463,7 +484,8 @@ export default function CampaignsTab({
                     className="btn btn-ghost btn-icon btn-sm"
                     onClick={() => setExpandedId(isOpen ? null : c.id)}
                     style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}
-                    aria-label="Expand"
+                    aria-label={t('cp_expand')}
+                    aria-expanded={isOpen}
                   >
                     <ChevronIcon />
                   </button>
@@ -473,30 +495,25 @@ export default function CampaignsTab({
                 <div style={{ padding: '0 1.25rem 0.75rem' }}>
                   <MiniProgress pct={pct} />
                   {target > 0 && (
-                    <p style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)', marginTop: 4 }}>
-                      Target: TShs {fmtMoney(target)}
+                    <p className="form-hint" style={{ marginTop: 4 }}>
+                      {t('target')}: TShs {fmtMoney(target)}
                     </p>
                   )}
                 </div>
 
-                {/* Expanded actions row */}
+                {/* Expanded actions row — separated by a rule, no extra surface */}
                 {isOpen && (
                   <div style={{
                     borderTop: '1px solid var(--border-subtle)',
                     padding: '0.75rem 1.25rem',
-                    display: 'flex', gap: '0.5rem', alignItems: 'center',
-                    background: 'var(--surface-page)',
-                    borderRadius: '0 0 12px 12px',
+                    display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap',
                   }}>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => onDrill(c)}
-                    >
-                      View Pledges ({c.subscriber_count || 0})
+                    <button className="btn btn-secondary btn-sm" onClick={() => onDrill(c)}>
+                      {t('cp_view_pledges')} ({c.subscriber_count || 0})
                     </button>
                     {canCreate && (
                       <button className="btn btn-ghost btn-sm" onClick={() => setEditing(c)}>
-                        Edit
+                        {t('edit')}
                       </button>
                     )}
                     {canDelete && c.is_active && (
@@ -505,12 +522,17 @@ export default function CampaignsTab({
                         style={{ color: 'var(--danger)', marginLeft: 'auto' }}
                         onClick={() => setDeleting(c)}
                       >
-                        Deactivate
+                        {t('cp_deactivate')}
                       </button>
                     )}
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginLeft: canDelete ? '' : 'auto' }}>
-                      Created by {c.created_by_name}
-                    </span>
+                    {c.created_by_name && (
+                      <span
+                        className="form-hint"
+                        style={{ marginTop: 0, marginLeft: canDelete && c.is_active ? undefined : 'auto' }}
+                      >
+                        {t('cp_created_by')} {c.created_by_name}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -528,6 +550,8 @@ export default function CampaignsTab({
           onClose={() => { setShowCreate(false); setEditing(null); }}
           onSaved={handleSaved}
           addToast={addToast}
+          t={t}
+          lang={lang}
         />
       )}
       {deleting && (
@@ -536,6 +560,7 @@ export default function CampaignsTab({
           onClose={() => setDeleting(null)}
           onDeleted={() => { setDeleting(null); onRefresh(); }}
           addToast={addToast}
+          t={t}
         />
       )}
     </>
