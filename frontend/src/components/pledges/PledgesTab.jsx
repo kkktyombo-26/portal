@@ -17,24 +17,43 @@
  * Roles:
  *   pastor / elder     → subscribe any member, approve / reject, delete
  *   group_leader       → subscribe members of their group, delete within group
- *   member             → read-only
+ *   member             → read own pledges only
  *
  * Props (from page.jsx):
- *   selectedMember   { id, name }
- *   initialCampaign  { id }          — pre-selects a campaign in the modal
- *   campaigns        Campaign[]
- *   role             string
- *   fmtMoney / fmtDate / pctBar      formatters
- *   onDrillPayments  fn(pledge)
- *   lang             'en' | 'sw'
+ *   selectedMember    { id, name } | null   — controlled from page; can be set here too
+ *   onSelectMember    fn({ id, name })       — lifts member selection up to page
+ *   initialCampaign   { id } | null          — pre-selects a campaign filter
+ *   campaigns         Campaign[]
+ *   role              string
+ *   fmtMoney / fmtDate / pctBar             formatters
+ *   onDrillPayments   fn(pledge)
+ *   addToast          fn(msg, type)
+ *   lang              'en' | 'sw'
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { pledgeApi } from '../../lib/pledgeApi';
 import { useTranslation } from '../../lib/i18n';
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
+// ─── Icons ────────────────────────────────────────────────────────────────────
+const PlusIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+    <path d="M6.5 1v11M1 6.5h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+const CloseIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+    <path d="M4 4l10 10M14 4L4 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+const SearchIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+    <circle cx="6.5" cy="6.5" r="4.5"/>
+    <path d="M10.5 10.5l3.5 3.5"/>
+  </svg>
+);
 
+// ─── Status badge ─────────────────────────────────────────────────────────────
 const STATUS_BADGE = {
   active:   'badge-success',
   pending:  'badge-warning',
@@ -52,7 +71,6 @@ function StatusPill({ status, t }) {
 }
 
 // ─── Progress bar ─────────────────────────────────────────────────────────────
-
 function ProgressBar({ pct }) {
   const clamped = Math.min(100, Math.max(0, pct));
   return (
@@ -65,15 +83,120 @@ function ProgressBar({ pct }) {
   );
 }
 
-// ─── Subscribe modal ──────────────────────────────────────────────────────────
+// ─── Member picker ────────────────────────────────────────────────────────────
+/**
+ * Shown at the top of the tab whenever no member is selected.
+ * Fetches the member list from the API (filtered by campaign if one is active)
+ * and lets the user pick one.
+ *
+ * For the 'member' role we skip the picker entirely — the page wires
+ * selectedMember to the logged-in user before rendering this tab.
+ */
+function MemberPicker({ campaignId, onSelect, t }) {
+  const [query,   setQuery]   = useState('');
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
 
+  useEffect(() => {
+    let cancelled = false;
+    const fetch = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        // If a campaign is active, we can scope the member list to its subscribers;
+        // otherwise fall back to the full members list.
+        const res = campaignId
+          ? await pledgeApi.getCampaignMembers(campaignId)
+          : await pledgeApi.getMembers();
+        if (!cancelled) {
+          setMembers(res.data?.data ?? res.data ?? []);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e?.response?.data?.message ?? t('pl_err_load_members'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetch();
+    return () => { cancelled = true; };
+  }, [campaignId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filtered = members.filter(m =>
+    !query.trim() ||
+    m.name?.toLowerCase().includes(query.toLowerCase()) ||
+    m.phone?.includes(query)
+  );
+
+  return (
+    <div style={{ maxWidth: 480 }}>
+      <p className="card-title" style={{ marginBottom: '0.75rem' }}>{t('pl_pick_member')}</p>
+
+      {/* Search box */}
+      <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
+        <span style={{
+          position: 'absolute', left: '0.75rem', top: '50%',
+          transform: 'translateY(-50%)', color: 'var(--text-tertiary)',
+          pointerEvents: 'none',
+        }}>
+          <SearchIcon />
+        </span>
+        <input
+          className="input"
+          style={{ paddingLeft: '2.25rem' }}
+          placeholder={t('pl_search_member')}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+        />
+      </div>
+
+      {error && <div className="banner banner-danger" style={{ marginBottom: '0.5rem' }}>{error}</div>}
+
+      {loading ? (
+        <div className="flex flex-col gap-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="skeleton" style={{ height: 44, borderRadius: 8 }} />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="form-hint">{t('pl_no_members_found')}</p>
+      ) : (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: '0.25rem',
+          maxHeight: 320, overflowY: 'auto',
+        }}>
+          {filtered.map(m => (
+            <button
+              key={m.id}
+              className="btn btn-ghost"
+              style={{
+                justifyContent: 'flex-start', textAlign: 'left',
+                padding: '0.5rem 0.75rem', borderRadius: 8,
+              }}
+              onClick={() => onSelect({ id: m.id, name: m.name })}
+            >
+              <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{m.name}</span>
+              {m.phone && (
+                <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                  {m.phone}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Subscribe modal ──────────────────────────────────────────────────────────
 function SubscribeModal({ campaigns, subscribedIds, defaultCampaignId, onClose, onSave, t }) {
   const [campaignId, setCampaignId] = useState(defaultCampaignId ?? '');
-  const [amount, setAmount]         = useState('');
+  const [amount,     setAmount]     = useState('');
   const [pledgeType, setPledgeType] = useState('annual');
-  const [notes, setNotes]           = useState('');
-  const [saving, setSaving]         = useState(false);
-  const [error, setError]           = useState('');
+  const [notes,      setNotes]      = useState('');
+  const [saving,     setSaving]     = useState(false);
+  const [error,      setError]      = useState('');
 
   // Active campaigns the member isn't already subscribed to
   const available = campaigns.filter(
@@ -89,9 +212,9 @@ function SubscribeModal({ campaigns, subscribedIds, defaultCampaignId, onClose, 
     setError('');
     try {
       await onSave(Number(campaignId), {
-        amount: Number(amount),
+        amount:      Number(amount),
         pledge_type: pledgeType,
-        notes: notes.trim() || undefined,
+        notes:       notes.trim() || undefined,
       });
       onClose();
     } catch (e) {
@@ -106,14 +229,8 @@ function SubscribeModal({ campaigns, subscribedIds, defaultCampaignId, onClose, 
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">{t('pl_subscribe_title')}</h2>
-          <button
-            onClick={onClose}
-            className="btn btn-ghost btn-icon btn-sm"
-            aria-label={t('cancel')}
-          >
-            <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-              <path d="M4 4l10 10M14 4L4 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
+          <button onClick={onClose} className="btn btn-ghost btn-icon btn-sm" aria-label={t('cancel')}>
+            <CloseIcon />
           </button>
         </div>
 
@@ -129,7 +246,7 @@ function SubscribeModal({ campaigns, subscribedIds, defaultCampaignId, onClose, 
             >
               <option value="">{t('pl_select_campaign')}</option>
               {available.map(c => (
-                <option key={c.id} value={c.id}>{c.name} ({c.year})</option>
+                <option key={c.id} value={c.id}>{c.name} ({c.pledge_year})</option>
               ))}
             </select>
             {available.length === 0 && (
@@ -140,9 +257,7 @@ function SubscribeModal({ campaigns, subscribedIds, defaultCampaignId, onClose, 
           <div className="form-group">
             <label className="form-label">{t('pl_amount')} (TZS)</label>
             <input
-              type="number"
-              min="0"
-              step="1000"
+              type="number" min="0" step="1000"
               className="input"
               value={amount}
               onChange={e => setAmount(e.target.value)}
@@ -189,9 +304,9 @@ function SubscribeModal({ campaigns, subscribedIds, defaultCampaignId, onClose, 
 }
 
 // ─── Main tab ─────────────────────────────────────────────────────────────────
-
 export default function PledgesTab({
   selectedMember,
+  onSelectMember,
   initialCampaign,
   campaigns = [],
   role,
@@ -199,24 +314,32 @@ export default function PledgesTab({
   fmtDate,
   pctBar,
   onDrillPayments,
+  addToast,
   lang,
 }) {
   const { t } = useTranslation(lang);
 
-  const [pledges, setPledges]             = useState([]);
-  const [loading, setLoading]             = useState(false);
-  const [error, setError]                 = useState('');
+  const [pledges,       setPledges]       = useState([]);
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState('');
   const [showSubscribe, setShowSubscribe] = useState(false);
   const [actionLoading, setActionLoading] = useState({}); // pledgeId → bool
+
+  // Campaign filter — pre-seeded from drillToPledges, user can change it
+  const [filterCampaign, setFilterCampaign] = useState(initialCampaign?.id ?? '');
+
+  // Sync filter when page changes the initialCampaign (e.g. second drill)
+  useEffect(() => {
+    setFilterCampaign(initialCampaign?.id ?? '');
+  }, [initialCampaign?.id]);
 
   const canManage  = ['pastor', 'elder', 'group_leader'].includes(role);
   const canApprove = ['pastor', 'elder'].includes(role);
 
   const money = (n) => (fmtMoney ? fmtMoney(n) : Number(n).toLocaleString());
-  const date  = (d) => (fmtDate ? fmtDate(d) : d);
+  const date  = (d) => (fmtDate  ? fmtDate(d)  : d);
 
-  // ── Load pledges ────────────────────────────────────────────────────────────
-
+  // ── Load pledges for the selected member ────────────────────────────────────
   const load = useCallback(async () => {
     if (!selectedMember?.id) return;
     setLoading(true);
@@ -234,7 +357,6 @@ export default function PledgesTab({
   useEffect(() => { load(); }, [load]);
 
   // ── Subscribe ───────────────────────────────────────────────────────────────
-
   const handleSubscribe = async (campaignId, data) => {
     await pledgeApi.addMemberPledge(campaignId, {
       member_id:     selectedMember.id,
@@ -246,7 +368,6 @@ export default function PledgesTab({
   };
 
   // ── Approve / Reject ────────────────────────────────────────────────────────
-
   const handleStatusChange = async (pledgeId, status) => {
     setActionLoading(prev => ({ ...prev, [pledgeId]: true }));
     setError('');
@@ -261,7 +382,6 @@ export default function PledgesTab({
   };
 
   // ── Delete ──────────────────────────────────────────────────────────────────
-
   const handleDelete = async (pledgeId) => {
     if (!confirm(t('pl_confirm_remove'))) return;
     setActionLoading(prev => ({ ...prev, [pledgeId]: true }));
@@ -276,48 +396,108 @@ export default function PledgesTab({
     }
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Filter pledges by selected campaign ─────────────────────────────────────
+  const visiblePledges = filterCampaign
+    ? pledges.filter(p => String(p.campaign_id) === String(filterCampaign))
+    : pledges;
 
+  const subscribedIds = pledges.map(p => p.campaign_id).filter(Boolean);
+
+  // ── If no member selected: show picker (or empty state for 'member' role) ───
   if (!selectedMember) {
+    // 'member' role: page.jsx should wire selectedMember = logged-in user.
+    // If it doesn't, show a soft message rather than the picker.
+    if (role === 'member') {
+      return (
+        <div className="empty-state">
+          <svg className="empty-state-icon" viewBox="0 0 40 40" fill="none">
+            <circle cx="20" cy="20" r="18" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M20 13v7M20 24v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <p className="empty-state-body">{t('pl_select_member')}</p>
+        </div>
+      );
+    }
+
+    // For leaders / admins: show the member picker
     return (
-      <div className="empty-state">
-        <svg className="empty-state-icon" viewBox="0 0 40 40" fill="none">
-          <circle cx="20" cy="20" r="18" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M20 13v7M20 24v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        <p className="empty-state-body">{t('pl_select_member')}</p>
+      <div style={{ marginTop: '1.5rem' }}>
+        <MemberPicker
+          campaignId={filterCampaign || null}
+          onSelect={onSelectMember}
+          t={t}
+        />
       </div>
     );
   }
 
-  const subscribedIds = pledges.map(p => p.campaign_id).filter(Boolean);
-
+  // ── Render pledges for selected member ───────────────────────────────────────
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+
+      {/* ── Member context bar ───────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '1rem', flexWrap: 'wrap', marginTop: '1.5rem',
+        padding: '0.75rem 1rem',
+        background: 'var(--surface-card)',
+        borderRadius: 10,
+        border: '1px solid var(--border-subtle)',
+      }}>
         <div>
-          <h4 className="text-lg font-semibold">
-            {t('pl_title')} — {selectedMember.name}
-          </h4>
-          <p className="form-hint">
-            {pledges.length} {pledges.length === 1 ? t('pl_subscription_one') : t('pl_subscription_many')}
+          <p style={{ fontSize: '0.6875rem', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.125rem' }}>
+            {t('pl_viewing_member')}
+          </p>
+          <p className="card-title" style={{ fontSize: '1rem' }}>{selectedMember.name}</p>
+          <p className="form-hint" style={{ marginTop: '0.125rem' }}>
+            {visiblePledges.length}{' '}
+            {visiblePledges.length === 1 ? t('pl_subscription_one') : t('pl_subscription_many')}
+            {filterCampaign && campaigns.find(c => String(c.id) === String(filterCampaign)) && (
+              <> · {campaigns.find(c => String(c.id) === String(filterCampaign)).name}</>
+            )}
           </p>
         </div>
-        {canManage && (
-          <button onClick={() => setShowSubscribe(true)} className="btn btn-primary">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <path d="M6.5 1v11M1 6.5h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-            {t('pl_subscribe_title')}
-          </button>
-        )}
+
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Campaign filter */}
+          {campaigns.length > 0 && (
+            <select
+              className="select"
+              style={{ width: 200 }}
+              value={filterCampaign}
+              onChange={e => setFilterCampaign(e.target.value)}
+            >
+              <option value="">{t('pl_all_campaigns')}</option>
+              {campaigns.map(c => (
+                <option key={c.id} value={c.id}>{c.name} ({c.pledge_year})</option>
+              ))}
+            </select>
+          )}
+
+          {/* Change member (leaders only) */}
+          {canManage && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => onSelectMember(null)}
+            >
+              {t('pl_change_member')}
+            </button>
+          )}
+
+          {/* Subscribe button */}
+          {canManage && (
+            <button onClick={() => setShowSubscribe(true)} className="btn btn-primary btn-sm">
+              <PlusIcon />
+              {t('pl_subscribe_title')}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Error */}
+      {/* ── Error banner ─────────────────────────────────────────────────── */}
       {error && <div className="banner banner-danger">{error}</div>}
 
-      {/* Loading */}
+      {/* ── Loading skeletons ─────────────────────────────────────────────── */}
       {loading && (
         <div className="flex flex-col gap-3">
           {[1, 2, 3].map(i => (
@@ -326,8 +506,8 @@ export default function PledgesTab({
         </div>
       )}
 
-      {/* Empty */}
-      {!loading && pledges.length === 0 && (
+      {/* ── Empty state ───────────────────────────────────────────────────── */}
+      {!loading && visiblePledges.length === 0 && (
         <div className="empty-state">
           <svg className="empty-state-icon" viewBox="0 0 36 36" fill="none">
             <rect x="4" y="8" width="28" height="20" rx="3" stroke="currentColor" strokeWidth="1.5" />
@@ -344,11 +524,13 @@ export default function PledgesTab({
         </div>
       )}
 
-      {/* Pledge cards */}
-      {!loading && pledges.map(pledge => {
-        const paid  = Number(pledge.total_paid ?? 0);
+      {/* ── Pledge cards ──────────────────────────────────────────────────── */}
+      {!loading && visiblePledges.map(pledge => {
+        const paid  = Number(pledge.total_paid     ?? 0);
         const total = Number(pledge.pledged_amount ?? 0);
-        const pct   = pctBar ? pctBar(paid, total) : (total > 0 ? Math.min(100, (paid / total) * 100) : 0);
+        const pct   = pctBar
+          ? pctBar(paid, total)
+          : (total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0);
         const busy       = !!actionLoading[pledge.id];
         const isPending  = pledge.status === 'pending';
         const isRejected = pledge.status === 'rejected';
@@ -374,7 +556,7 @@ export default function PledgesTab({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="card-title">{pledge.campaign_name}</p>
-                <p className="card-subtitle">{pledge.campaign_year}</p>
+                <p className="card-subtitle">{pledge.campaign_year ?? pledge.pledge_year}</p>
               </div>
               <StatusPill status={pledge.status ?? 'active'} t={t} />
             </div>
@@ -418,7 +600,10 @@ export default function PledgesTab({
             </div>
 
             {/* Actions */}
-            <div className="flex flex-wrap items-center gap-2 pt-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <div
+              className="flex flex-wrap items-center gap-2 pt-3"
+              style={{ borderTop: '1px solid var(--border-subtle)' }}
+            >
               {onDrillPayments && (
                 <button onClick={() => onDrillPayments(pledge)} className="btn btn-ghost btn-sm">
                   {t('pl_view_payments')}
@@ -457,12 +642,12 @@ export default function PledgesTab({
         );
       })}
 
-      {/* Subscribe modal */}
+      {/* ── Subscribe modal ───────────────────────────────────────────────── */}
       {showSubscribe && (
         <SubscribeModal
           campaigns={campaigns}
           subscribedIds={subscribedIds}
-          defaultCampaignId={initialCampaign?.id ?? ''}
+          defaultCampaignId={filterCampaign || initialCampaign?.id || ''}
           onClose={() => setShowSubscribe(false)}
           onSave={handleSubscribe}
           t={t}

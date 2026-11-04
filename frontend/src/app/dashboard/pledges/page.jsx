@@ -57,17 +57,6 @@ const TABS = [
   { id: 'report',    label: 'Report',    icon: ChartIcon,  roles: ['pastor','elder','group_leader'] },
 ];
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, accent }) {
-  return (
-    <div className="stat-card">
-      <p className="stat-label">{label}</p>
-      <p className="stat-value" style={accent ? { color: 'var(--text-accent)' } : {}}>{value}</p>
-      {sub && <p className="text-xs text-neutral-500 mt-1">{sub}</p>}
-    </div>
-  );
-}
-
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function Toast({ toasts }) {
   return (
@@ -88,19 +77,25 @@ export default function PledgesPage() {
   const { user } = useAuth();
   const role = user?.role || 'member';
 
+  // Pull lang from user profile; fall back to Swahili (primary language for KKKT Yombo)
+  const lang = user?.lang || user?.language || 'sw';
+
   const [activeTab,   setActiveTab]   = useState('campaigns');
   const [campaigns,   setCampaigns]   = useState([]);
   const [pledgeTypes, setPledgeTypes] = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [toasts,      setToasts]      = useState([]);
 
-  // Cross-tab context: which campaign / pledge is "selected" for drill-down
+  // Cross-tab drill-down context
   const [selectedCampaign, setSelectedCampaign] = useState(null);
+const [selectedMember, setSelectedMember] = useState(
+  role === 'member' ? { id: user?.id, name: user?.full_name ?? user?.name } : null
+);// { id, name }
   const [selectedPledge,   setSelectedPledge]   = useState(null);
 
   // Aggregate summary across all campaigns (for header stats)
   const [summary, setSummary] = useState({
-    totalPledged: 0, totalPaid: 0, fulfilled: 0, members: 0, campaigns: 0,
+    totalPledged: 0, totalPaid: 0, members: 0, campaigns: 0,
   });
 
   const addToast = useCallback((message, type = 'success') => {
@@ -121,14 +116,12 @@ export default function PledgesPage() {
       setCampaigns(c);
       setPledgeTypes(t);
 
-      // Derive header summary
       const totPledged = c.reduce((a, x) => a + Number(x.total_pledged    || 0), 0);
       const totPaid    = c.reduce((a, x) => a + Number(x.total_paid       || 0), 0);
       const members    = c.reduce((a, x) => a + Number(x.subscriber_count || 0), 0);
       setSummary({
         totalPledged: totPledged,
         totalPaid:    totPaid,
-        fulfilled:    0, // comes from report endpoint when needed
         members,
         campaigns:    c.filter(x => x.is_active).length,
       });
@@ -141,16 +134,25 @@ export default function PledgesPage() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  useEffect(() => {
+  if (role === 'member' && user?.id && !selectedMember?.id) {
+    setSelectedMember({ id: user.id, name: user.full_name ?? user.name });
+  }
+}, [role, user?.id]);
+
   // Visible tabs based on role
   const visibleTabs = TABS.filter(t => t.roles.includes(role));
 
-  // Navigate to pledges tab with a campaign pre-selected
-  const drillToPledges = (campaign) => {
-    setSelectedCampaign(campaign);
-    setActiveTab('pledges');
-  };
+  // Navigate to Pledges tab with a campaign pre-selected (from Campaigns row button)
+const drillToPledges = (campaign) => {
+  setSelectedCampaign(campaign);
+  if (role !== 'member') {
+    setSelectedMember(null);
+  }
+  setActiveTab('pledges');
+};
 
-  // Navigate to payments tab with a pledge pre-selected
+  // Navigate to Payments tab with a pledge pre-selected (from Pledges row button)
   const drillToPayments = (pledge) => {
     setSelectedPledge(pledge);
     setActiveTab('payments');
@@ -233,21 +235,27 @@ export default function PledgesPage() {
                 fmtMoney={fmtMoney}
                 fmtDate={fmtDate}
                 pctBar={pctBar}
+                lang={lang}
               />
             )}
+
             {activeTab === 'pledges' && (
-            <PledgesTab
-  campaigns={campaigns}
-  pledgeTypes={pledgeTypes}
-  role={role}
-  initialCampaign={selectedCampaign}   // PledgesTab should use this to pre-filter
-  onDrillPayments={drillToPayments}
-  addToast={addToast}
-  fmtMoney={fmtMoney}
-  fmtDate={fmtDate}
-  pctBar={pctBar}
-/>
+              <PledgesTab
+                campaigns={campaigns}
+                pledgeTypes={pledgeTypes}
+                role={role}
+                initialCampaign={selectedCampaign}
+                selectedMember={selectedMember}
+                onSelectMember={setSelectedMember}
+                onDrillPayments={drillToPayments}
+                addToast={addToast}
+                fmtMoney={fmtMoney}
+                fmtDate={fmtDate}
+                pctBar={pctBar}
+                lang={lang}
+              />
             )}
+
             {activeTab === 'payments' && (
               <PaymentsTab
                 role={role}
@@ -255,8 +263,10 @@ export default function PledgesPage() {
                 addToast={addToast}
                 fmtMoney={fmtMoney}
                 fmtDate={fmtDate}
+                lang={lang}
               />
             )}
+
             {activeTab === 'report' && (
               <ReportTab
                 campaigns={campaigns}
@@ -266,6 +276,7 @@ export default function PledgesPage() {
                 fmtMoney={fmtMoney}
                 fmtDate={fmtDate}
                 pctBar={pctBar}
+                lang={lang}
               />
             )}
           </>
