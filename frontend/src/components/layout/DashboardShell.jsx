@@ -33,6 +33,7 @@ export default function DashboardShell({ children }) {
           'md:ml-[280px]',
           // desktop right offset (right panel appears at xl)
           'xl:mr-[260px]',
+          'overflow-y-auto',
         ].join(' ')}
       >
         {/* Mobile top bar — hidden on desktop */}

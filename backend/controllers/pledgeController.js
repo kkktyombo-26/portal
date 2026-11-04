@@ -79,6 +79,9 @@ exports.getCampaigns = async (req, res, next) => {
                  AND (pc.scope = 'church'
                       OR (pc.scope = 'group' AND pc.group_id = ?))`;
       params.push(groupId);
+    } else if (role === 'member') {
+      // Members see church-wide active campaigns only (so they can self-pledge)
+      sql += ` WHERE pc.is_active = 1 AND pc.scope = 'church'`;
     } else if (!canManage(role)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
@@ -136,6 +139,11 @@ exports.getCampaign = async (req, res, next) => {
         return res.status(403).json({ success: false, message: 'Access denied.' });
       }
       if (campaign.scope === 'member') {
+        return res.status(403).json({ success: false, message: 'Access denied.' });
+      }
+    } else if (role === 'member') {
+      // Members can only view church-wide active campaigns
+      if (!campaign.is_active || campaign.scope !== 'church') {
         return res.status(403).json({ success: false, message: 'Access denied.' });
       }
     } else if (!canManage(role)) {
@@ -404,25 +412,42 @@ exports.getMemberPledges = async (req, res, next) => {
 };
 
 // ── POST /api/pledges/campaigns/:id/members ───────────────────────────────────
-// Subscribe (assign) a member to a campaign with their personal pledge details.
+// Subscribe a member to a campaign with their personal pledge details.
+//
+// WHO CAN CALL THIS:
+//   - pastor / elder / group_leader  → can pledge on behalf of any member in scope
+//   - member                         → can only pledge for themselves (self-pledge)
+//                                      on church-wide active campaigns
+//
+// MEMBER SELF-PLEDGE:
+//   - member_id in the body is ignored; the caller's own id is always used.
+//   - pledge_number and signed_date are optional (admin can fill them later).
+//   - The pledge is created with status = 'pending' so admin can review/approve.
+//
 exports.addMemberPledge = async (req, res, next) => {
   try {
-    const { role, id: adminId, groupId } = req.user;
-    if (!canManage(role)) {
+    const { role, id: callerId, groupId } = req.user;
+
+    const isMember  = role === 'member';
+    const isManager = canManage(role);
+
+    if (!isManager && !isMember) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
     const campaignId = parseInt(req.params.id);
 
     const {
-      member_id,
       annual_amount,
       pledge_number,
       signed_date,
       notes,
     } = req.body;
 
-    if (!member_id) {
+    // For managers, member_id comes from body; for self-pledge it's always the caller.
+    let member_id = isMember ? callerId : req.body.member_id;
+
+    if (!isMember && !member_id) {
       return res.status(400).json({ success: false, message: 'member_id is required.' });
     }
     if (!annual_amount || Number(annual_amount) <= 0) {
@@ -439,11 +464,17 @@ exports.addMemberPledge = async (req, res, next) => {
     }
     const campaign = campaigns[0];
 
-    // group_leader scope guard
+    // ── Member self-pledge scope guard ───────────────────────────────────────
+    // Members may only pledge to church-wide campaigns.
+    if (isMember && campaign.scope !== 'church') {
+      return res.status(403).json({
+        success: false,
+        message: 'Self-pledge is only allowed on church-wide campaigns.',
+      });
+    }
+
+    // ── group_leader scope guard ─────────────────────────────────────────────
     if (role === 'group_leader') {
-      if (campaign.scope === 'church') {
-        // OK — but member must be in their group
-      }
       if (campaign.scope === 'group' && campaign.group_id !== groupId) {
         return res.status(403).json({ success: false, message: 'Access denied.' });
       }
@@ -461,16 +492,19 @@ exports.addMemberPledge = async (req, res, next) => {
     if (dup.length) {
       return res.status(409).json({
         success: false,
-        message: 'This member already has a pledge in this campaign.',
+        message: 'You already have a pledge in this campaign.',
         existing_pledge_id: dup[0].id,
       });
     }
 
+    // Members' self-pledges start as 'pending'; admin-entered pledges are 'active'.
+    const status = isMember ? 'pending' : 'active';
+
     const [result] = await db.execute(`
       INSERT INTO member_pledges
         (campaign_id, member_id, pledge_type_id, pledge_year,
-         pledge_number, annual_amount, signed_date, notes, is_fulfilled)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+         pledge_number, annual_amount, signed_date, notes, is_fulfilled, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
     `, [
       campaignId,
       member_id,
@@ -480,6 +514,7 @@ exports.addMemberPledge = async (req, res, next) => {
       Number(annual_amount),
       signed_date   || null,
       notes         || null,
+      status,
     ]);
 
     const [rows] = await db.execute(
@@ -487,20 +522,42 @@ exports.addMemberPledge = async (req, res, next) => {
       [result.insertId]
     );
 
+    const message = isMember
+      ? 'Pledge submitted and is pending admin review.'
+      : 'Member pledge added.';
+
     res.status(201).json({
       success: true,
-      message: 'Member pledge added.',
-      data:    rows[0] || { id: result.insertId },
+      message,
+      status,
+      data: rows[0] || { id: result.insertId },
     });
   } catch (err) { next(err); }
 };
 
 // ── PUT /api/pledges/member-pledges/:pledgeId ─────────────────────────────────
-// Update a member's pledge details (amount, card number, signed date).
+// Update a member's pledge details.
+//
+// WHO CAN DO WHAT:
+//   - member          → can edit annual_amount / notes on their OWN pledge,
+//                        but ONLY while status = 'pending' (before admin approval).
+//   - group_leader    → can edit in-scope pledges (amount, card, date, notes).
+//   - pastor / elder  → full update including status (approve / reject) and is_fulfilled.
+//
+// STATUS TRANSITIONS (admin-only field):
+//   pending  → active   (admin approves the member's self-pledge)
+//   pending  → rejected (admin rejects it)
+//   active   → pending  (admin reopens for editing — rare)
+//
 exports.updateMemberPledge = async (req, res, next) => {
   try {
     const { role, id: callerId, groupId } = req.user;
-    if (!canManage(role)) {
+
+    const isMember  = role === 'member';
+    const isSenior  = ['pastor', 'elder'].includes(role);
+    const isManager = canManage(role);
+
+    if (!isManager && !isMember) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
@@ -518,20 +575,63 @@ exports.updateMemberPledge = async (req, res, next) => {
     }
     const pledge = pledges[0];
 
-    // group_leader guard
+    // ── Member self-edit guard ───────────────────────────────────────────────
+    if (isMember) {
+      if (pledge.member_id !== callerId) {
+        return res.status(403).json({ success: false, message: 'You can only edit your own pledge.' });
+      }
+      if (pledge.status !== 'pending') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your pledge has already been reviewed and can no longer be edited. Contact an admin.',
+        });
+      }
+    }
+
+    // ── group_leader guard ───────────────────────────────────────────────────
     if (role === 'group_leader') {
       const inGroup = await memberInLeaderGroup(pledge.member_id, groupId);
       if (!inGroup) return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    const { annual_amount, pledge_number, signed_date, is_fulfilled, notes } = req.body;
+    const { annual_amount, pledge_number, signed_date, is_fulfilled, notes, status } = req.body;
+
+    // Validate status transition (senior admins only)
+    const VALID_STATUSES = ['pending', 'active', 'rejected'];
+    if (status !== undefined) {
+      if (!isSenior) {
+        return res.status(403).json({ success: false, message: 'Only pastor or elder can change pledge status.' });
+      }
+      if (!VALID_STATUSES.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: `status must be one of: ${VALID_STATUSES.join(', ')}.`,
+        });
+      }
+    }
 
     const fields = [], params = [];
-    if (annual_amount  !== undefined) { fields.push('annual_amount = ?');  params.push(Number(annual_amount)); }
-    if (pledge_number  !== undefined) { fields.push('pledge_number = ?');  params.push(pledge_number || null); }
-    if (signed_date    !== undefined) { fields.push('signed_date = ?');    params.push(signed_date   || null); }
-    if (is_fulfilled   !== undefined) { fields.push('is_fulfilled = ?');   params.push(is_fulfilled ? 1 : 0); }
-    if (notes          !== undefined) { fields.push('notes = ?');          params.push(notes         || null); }
+
+    // Members can only change amount and notes
+    if (annual_amount !== undefined) {
+      if (Number(annual_amount) <= 0) {
+        return res.status(400).json({ success: false, message: 'annual_amount must be greater than 0.' });
+      }
+      fields.push('annual_amount = ?'); params.push(Number(annual_amount));
+    }
+    if (notes !== undefined) { fields.push('notes = ?'); params.push(notes || null); }
+
+    // Manager-only fields
+    if (!isMember) {
+      if (pledge_number !== undefined) { fields.push('pledge_number = ?'); params.push(pledge_number || null); }
+      if (signed_date   !== undefined) { fields.push('signed_date = ?');   params.push(signed_date   || null); }
+      if (is_fulfilled  !== undefined) { fields.push('is_fulfilled = ?');  params.push(is_fulfilled ? 1 : 0); }
+    }
+
+    // Senior-admin-only fields
+    if (isSenior && status !== undefined) {
+      fields.push('status = ?'); params.push(status);
+    }
 
     if (!fields.length) {
       return res.status(400).json({ success: false, message: 'No updatable fields provided.' });
@@ -544,7 +644,13 @@ exports.updateMemberPledge = async (req, res, next) => {
       'SELECT * FROM v_pledge_summary WHERE pledge_id = ?', [pledgeId]
     );
 
-    res.json({ success: true, message: 'Pledge updated.', data: updated[0] });
+    const message = status === 'active'
+      ? 'Pledge approved.'
+      : status === 'rejected'
+        ? 'Pledge rejected.'
+        : 'Pledge updated.';
+
+    res.json({ success: true, message, data: updated[0] });
   } catch (err) { next(err); }
 };
 
@@ -624,11 +730,24 @@ exports.getPayments = async (req, res, next) => {
 
 // ── POST /api/pledges/member-pledges/:pledgeId/payments ──────────────────────
 // Record a new installment payment.
-// Auto-marks pledge as fulfilled if total_paid >= annual_amount.
+//
+// WHO CAN CALL THIS:
+//   - member   → can submit a payment against their OWN pledge (pledge must be
+//                 'active'). Payment is created with status = 'pending_confirmation'
+//                 so an admin must confirm it. receipt_number is optional for members.
+//   - managers → record confirmed payments on behalf of anyone in scope.
+//                Payment is created with status = 'confirmed' immediately.
+//
+// Auto-marks pledge as fulfilled when confirmed total_paid >= annual_amount.
+//
 exports.addPayment = async (req, res, next) => {
   try {
-    const { role, id: adminId, groupId } = req.user;
-    if (!canManage(role)) {
+    const { role, id: callerId, groupId } = req.user;
+
+    const isMember  = role === 'member';
+    const isManager = canManage(role);
+
+    if (!isManager && !isMember) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
@@ -657,7 +776,7 @@ exports.addPayment = async (req, res, next) => {
       });
     }
 
-    // Fetch pledge to verify it exists and get annual_amount
+    // Fetch pledge to verify it exists
     const [pledgeRows] = await db.execute(
       'SELECT * FROM member_pledges WHERE id = ?', [pledgeId]
     );
@@ -666,17 +785,33 @@ exports.addPayment = async (req, res, next) => {
     }
     const pledge = pledgeRows[0];
 
-    // group_leader scope guard
+    // ── Member self-payment guard ────────────────────────────────────────────
+    if (isMember) {
+      if (pledge.member_id !== callerId) {
+        return res.status(403).json({ success: false, message: 'You can only submit payments for your own pledge.' });
+      }
+      if (pledge.status !== 'active') {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only submit payments on an active (approved) pledge.',
+        });
+      }
+    }
+
+    // ── group_leader scope guard ─────────────────────────────────────────────
     if (role === 'group_leader') {
       const inGroup = await memberInLeaderGroup(pledge.member_id, groupId);
       if (!inGroup) return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
+    // Members' payments need admin confirmation; managers' payments are confirmed immediately.
+    const paymentStatus = isMember ? 'pending_confirmation' : 'confirmed';
+
     // Insert payment
     const [result] = await db.execute(`
       INSERT INTO pledge_payments
-        (pledge_id, amount, payment_date, payment_method, receipt_number, notes, recorded_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        (pledge_id, amount, payment_date, payment_method, receipt_number, notes, recorded_by, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       pledgeId,
       Number(amount),
@@ -684,21 +819,27 @@ exports.addPayment = async (req, res, next) => {
       payment_method,
       receipt_number || null,
       notes          || null,
-      adminId,
+      callerId,
+      paymentStatus,
     ]);
 
-    // Auto-check fulfillment: sum all payments for this pledge
+    // Auto-check fulfillment: only count CONFIRMED payments
     const [[{ total_paid }]] = await db.execute(
-      'SELECT COALESCE(SUM(amount), 0) AS total_paid FROM pledge_payments WHERE pledge_id = ?',
+      `SELECT COALESCE(SUM(amount), 0) AS total_paid
+       FROM pledge_payments
+       WHERE pledge_id = ? AND status = 'confirmed'`,
       [pledgeId]
     );
 
-    const autoFulfilled = pledge.annual_amount > 0 && total_paid >= pledge.annual_amount;
-    if (autoFulfilled && !pledge.is_fulfilled) {
-      await db.execute(
-        'UPDATE member_pledges SET is_fulfilled = 1 WHERE id = ?',
-        [pledgeId]
-      );
+    let autoFulfilled = false;
+    if (!isMember) {
+      autoFulfilled = pledge.annual_amount > 0 && total_paid >= pledge.annual_amount;
+      if (autoFulfilled && !pledge.is_fulfilled) {
+        await db.execute(
+          'UPDATE member_pledges SET is_fulfilled = 1 WHERE id = ?',
+          [pledgeId]
+        );
+      }
     }
 
     // Return updated pledge summary + the new payment row
@@ -712,11 +853,163 @@ exports.addPayment = async (req, res, next) => {
       [result.insertId]
     );
 
+    const message = isMember
+      ? 'Payment submitted and is pending admin confirmation.'
+      : 'Payment recorded.';
+
     res.status(201).json({
-      success:       true,
-      message:       'Payment recorded.',
+      success:        true,
+      message,
+      status:         paymentStatus,
       auto_fulfilled: autoFulfilled,
-      payment:       payment[0],
+      payment:        payment[0],
+      pledge_summary: summary[0],
+    });
+  } catch (err) { next(err); }
+};
+
+// ── PUT /api/pledges/payments/:paymentId ──────────────────────────────────────
+// Admin confirms or updates a pending installment submitted by a member.
+//
+// WHO CAN CALL THIS:
+//   - pastor / elder  → can confirm, reject, or correct any payment field.
+//   - group_leader    → can confirm payments for members in their group.
+//
+// STATUS TRANSITIONS:
+//   pending_confirmation → confirmed  (admin verifies the payment)
+//   pending_confirmation → rejected   (admin rejects — wrong amount, bad method …)
+//   confirmed            → confirmed  (admin corrects a confirmed payment's details)
+//
+exports.updatePayment = async (req, res, next) => {
+  try {
+    const { role, id: callerId, groupId } = req.user;
+    if (!canManage(role)) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const paymentId = parseInt(req.params.paymentId);
+
+    const [existingRows] = await db.execute(
+      `SELECT pp.*, mp.member_id, mp.annual_amount, mp.is_fulfilled, mp.status AS pledge_status
+       FROM pledge_payments pp
+       JOIN member_pledges mp ON mp.id = pp.pledge_id
+       WHERE pp.id = ?`,
+      [paymentId]
+    );
+    if (!existingRows.length) {
+      return res.status(404).json({ success: false, message: 'Payment not found.' });
+    }
+    const existing = existingRows[0];
+
+    // group_leader scope guard
+    if (role === 'group_leader') {
+      const inGroup = await memberInLeaderGroup(existing.member_id, groupId);
+      if (!inGroup) return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const {
+      status,
+      amount,
+      payment_date,
+      payment_method,
+      receipt_number,
+      notes,
+    } = req.body;
+
+    const VALID_PAYMENT_STATUSES = ['confirmed', 'rejected'];
+    if (status !== undefined && !VALID_PAYMENT_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `status must be one of: ${VALID_PAYMENT_STATUSES.join(', ')}.`,
+      });
+    }
+
+    const VALID_METHODS = ['cash', 'bank_transfer', 'mobile_money', 'cheque'];
+    if (payment_method !== undefined && !VALID_METHODS.includes(payment_method)) {
+      return res.status(400).json({
+        success: false,
+        message: `payment_method must be one of: ${VALID_METHODS.join(', ')}.`,
+      });
+    }
+    if (amount !== undefined && Number(amount) <= 0) {
+      return res.status(400).json({ success: false, message: 'amount must be greater than 0.' });
+    }
+
+    const fields = [], params = [];
+    if (status         !== undefined) { fields.push('status = ?');         params.push(status); }
+    if (amount         !== undefined) { fields.push('amount = ?');         params.push(Number(amount)); }
+    if (payment_date   !== undefined) { fields.push('payment_date = ?');   params.push(payment_date); }
+    if (payment_method !== undefined) { fields.push('payment_method = ?'); params.push(payment_method); }
+    if (receipt_number !== undefined) { fields.push('receipt_number = ?'); params.push(receipt_number || null); }
+    if (notes          !== undefined) { fields.push('notes = ?');          params.push(notes || null); }
+    // Track who confirmed/updated the payment
+    fields.push('confirmed_by = ?'); params.push(callerId);
+
+    if (fields.length === 1) { // only confirmed_by was added, nothing real changed
+      return res.status(400).json({ success: false, message: 'No updatable fields provided.' });
+    }
+
+    params.push(paymentId);
+    await db.execute(`UPDATE pledge_payments SET ${fields.join(', ')} WHERE id = ?`, params);
+
+    // Re-check fulfillment after a status change
+    let autoFulfilled = false;
+    if (status === 'confirmed') {
+      const [[{ total_paid }]] = await db.execute(
+        `SELECT COALESCE(SUM(amount), 0) AS total_paid
+         FROM pledge_payments
+         WHERE pledge_id = ? AND status = 'confirmed'`,
+        [existing.pledge_id]
+      );
+      autoFulfilled = existing.annual_amount > 0 && total_paid >= existing.annual_amount;
+      if (autoFulfilled && !existing.is_fulfilled) {
+        await db.execute(
+          'UPDATE member_pledges SET is_fulfilled = 1 WHERE id = ?',
+          [existing.pledge_id]
+        );
+      }
+    }
+
+    // If a confirmed payment is now rejected, un-fulfill the pledge if needed
+    if (status === 'rejected' && existing.is_fulfilled) {
+      const [[{ total_paid }]] = await db.execute(
+        `SELECT COALESCE(SUM(amount), 0) AS total_paid
+         FROM pledge_payments
+         WHERE pledge_id = ? AND status = 'confirmed'`,
+        [existing.pledge_id]
+      );
+      if (total_paid < existing.annual_amount) {
+        await db.execute(
+          'UPDATE member_pledges SET is_fulfilled = 0 WHERE id = ?',
+          [existing.pledge_id]
+        );
+      }
+    }
+
+    const [updatedPayment] = await db.execute(
+      `SELECT pp.*, u.full_name AS recorded_by_name,
+              cu.full_name AS confirmed_by_name
+       FROM pledge_payments pp
+       JOIN users u ON u.id = pp.recorded_by
+       LEFT JOIN users cu ON cu.id = pp.confirmed_by
+       WHERE pp.id = ?`,
+      [paymentId]
+    );
+    const [summary] = await db.execute(
+      'SELECT * FROM v_pledge_summary WHERE pledge_id = ?', [existing.pledge_id]
+    );
+
+    const message = status === 'confirmed'
+      ? 'Payment confirmed.'
+      : status === 'rejected'
+        ? 'Payment rejected.'
+        : 'Payment updated.';
+
+    res.json({
+      success:        true,
+      message,
+      auto_fulfilled: autoFulfilled,
+      payment:        updatedPayment[0],
       pledge_summary: summary[0],
     });
   } catch (err) { next(err); }

@@ -1,180 +1,83 @@
 'use client';
-
 /**
  * PaymentsTab.jsx
  * ───────────────
- * Records installment payments against a member_pledge and lists
- * the full payment history for that pledge.
+ * Tab 3 — Payment instalment confirmation workflow.
  *
- * Route refs
- * ──────────
- *  GET  /api/pledges/member-pledges/:pledgeId/payments  → history
- *  POST /api/pledges/member-pledges/:pledgeId/payments  → record payment
+ * Roles:
+ *   pastor / elder     → record payments, confirm / reject pending_confirmation
+ *   group_leader       → record payments for own group members
+ *   member             → read-only
  *
- * Props
- * ─────
- *  activePledge : pledge row from v_pledge_summary (may be null)
- *  onChangePledge() : open a pledge-selector so the user can pick a different pledge
+ * API refs:
+ *   getAllPayments(params)                           GET /api/pledges/payments
+ *   addPayment(pledgeId, data)                      POST /api/pledges/member-pledges/:id/payments
+ *   updatePayment(paymentId, { status, reason })    PUT  /api/pledges/payments/:id
+ *   deletePayment(paymentId)                        DELETE /api/pledges/payments/:id
+ *
+ * Props (from page.jsx):
+ *   filterPledge   { id, member_name, campaign_name }|null  — drill-in from PledgesTab
+ *   campaigns      Campaign[]
+ *   role           string
+ *   fmtMoney       fn(amount)
+ *   fmtDate        fn(dateStr)
+ *   lang           string
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { pledgeApi } from '../../lib/pledgeApi';
-import { useAuth } from '../../hooks/useAuth';
 
-/* ── helpers ─────────────────────────────────────────────── */
-const fmt = (n) =>
-  n == null ? '—' : new Intl.NumberFormat('sw-TZ').format(Number(n));
+// ─── Status pill ──────────────────────────────────────────────────────────────
 
-const fmtDate = (iso) => {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('sw-TZ', { day: 'numeric', month: 'short', year: 'numeric' });
+const PAYMENT_STATUS_STYLES = {
+  confirmed:            'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  pending_confirmation: 'bg-amber-50  text-amber-700  border border-amber-200',
+  rejected:             'bg-red-50    text-red-700    border border-red-200',
 };
 
-const METHOD_LABELS = {
-  cash:         'Taslimu',
-  mobile_money: 'Simu ya Fedha',
-  bank:         'Benki',
-  cheque:       'Hundi',
+const PAYMENT_STATUS_LABELS = {
+  confirmed:            'Confirmed',
+  pending_confirmation: 'Awaiting confirmation',
+  rejected:             'Rejected',
 };
 
-/* ── Payment form ────────────────────────────────────────── */
-function PaymentForm({ pledge, onSuccess }) {
-  const { user } = useAuth();
-  const isAdmin  = ['pastor', 'elder', 'group_leader'].includes(user?.role);
-
-  const [form, setForm] = useState({
-    amount:           '',
-    payment_date:     new Date().toISOString().slice(0, 10),
-    payment_method:   'cash',
-    reference_number: '',
-    notes:            '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState('');
-  const [ok,     setOk]     = useState(false);
-
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  const balance = Math.max(0, Number(pledge.annual_amount ?? 0) - Number(pledge.total_paid ?? 0));
-
-  const submit = async () => {
-    if (!form.amount || Number(form.amount) <= 0) {
-      setError('Ingiza kiasi halali cha malipo.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    setOk(false);
-    try {
-      await pledgeApi.payments.record(pledge.id, {
-        amount:           Number(form.amount),
-        payment_date:     form.payment_date,
-        payment_method:   form.payment_method,
-        reference_number: form.reference_number || undefined,
-        notes:            form.notes || undefined,
-      });
-      setOk(true);
-      setForm(f => ({ ...f, amount: '', reference_number: '', notes: '' }));
-      onSuccess?.();
-    } catch (e) {
-      setError(e?.response?.data?.message ?? 'Hitilafu imetokea. Jaribu tena.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!isAdmin) return null; // members cannot record payments
-
+function PaymentStatusPill({ status }) {
   return (
-    <div className="border border-stone-200 rounded-xl bg-white divide-y divide-stone-100">
-      <div className="px-4 py-3">
-        <h4 className="text-sm font-semibold text-stone-800">Rekodi Malipo</h4>
-        <p className="text-xs text-stone-400 mt-0.5">
-          Baki ya sasa: <span className="font-medium text-stone-700">{fmt(balance)} TZS</span>
-        </p>
-      </div>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PAYMENT_STATUS_STYLES[status] ?? 'bg-neutral-100 text-neutral-500 border border-neutral-200'}`}>
+      {PAYMENT_STATUS_LABELS[status] ?? status}
+    </span>
+  );
+}
 
-      <div className="px-4 py-4 space-y-3">
-        {error && (
-          <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
-        )}
-        {ok && (
-          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-            ✓ Malipo yamesajiliwa.
-          </p>
-        )}
+// ─── Reject reason modal ──────────────────────────────────────────────────────
 
-        <div className="grid grid-cols-2 gap-3">
-          {/* Amount */}
-          <div className="col-span-2 sm:col-span-1 space-y-1">
-            <label className="text-xs font-medium text-stone-600">Kiasi (TZS) *</label>
-            <input
-              type="number"
-              min="1"
-              placeholder="0"
-              value={form.amount}
-              onChange={e => set('amount', e.target.value)}
-              className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-            />
-          </div>
-
-          {/* Date */}
-          <div className="col-span-2 sm:col-span-1 space-y-1">
-            <label className="text-xs font-medium text-stone-600">Tarehe ya Malipo</label>
-            <input
-              type="date"
-              value={form.payment_date}
-              onChange={e => set('payment_date', e.target.value)}
-              className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-            />
-          </div>
-
-          {/* Method */}
-          <div className="col-span-2 sm:col-span-1 space-y-1">
-            <label className="text-xs font-medium text-stone-600">Njia ya Malipo</label>
-            <select
-              value={form.payment_method}
-              onChange={e => set('payment_method', e.target.value)}
-              className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-            >
-              {Object.entries(METHOD_LABELS).map(([val, label]) => (
-                <option key={val} value={val}>{label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Reference */}
-          <div className="col-span-2 sm:col-span-1 space-y-1">
-            <label className="text-xs font-medium text-stone-600">Kumb. ya Malipo <span className="text-stone-400">(hiari)</span></label>
-            <input
-              type="text"
-              placeholder="e.g. MP-123456"
-              value={form.reference_number}
-              onChange={e => set('reference_number', e.target.value)}
-              className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-            />
-          </div>
-
-          {/* Notes */}
-          <div className="col-span-2 space-y-1">
-            <label className="text-xs font-medium text-stone-600">Maelezo <span className="text-stone-400">(hiari)</span></label>
-            <textarea
-              rows={2}
-              placeholder="Maelezo ya ziada…"
-              value={form.notes}
-              onChange={e => set('notes', e.target.value)}
-              className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
-            />
-          </div>
+function RejectModal({ onConfirm, onCancel }) {
+  const [reason, setReason] = useState('');
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+        <div className="px-6 py-4 border-b border-neutral-100">
+          <h3 className="text-base font-semibold text-neutral-900">Reject Payment</h3>
         </div>
-
-        <div className="flex justify-end">
+        <div className="px-6 py-4 space-y-3">
+          <p className="text-sm text-neutral-600">Provide a reason for rejecting this payment (optional but recommended).</p>
+          <textarea
+            rows={3}
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="e.g. Receipt number does not match…"
+            className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+          />
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-neutral-100">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-900">
+            Cancel
+          </button>
           <button
-            onClick={submit}
-            disabled={saving}
-            className="px-5 py-2 text-sm font-medium bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+            onClick={() => onConfirm(reason.trim())}
+            className="px-5 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
           >
-            {saving ? 'Inasajili…' : 'Sajili Malipo'}
+            Reject Payment
           </button>
         </div>
       </div>
@@ -182,141 +85,467 @@ function PaymentForm({ pledge, onSuccess }) {
   );
 }
 
-/* ── Payment history list ────────────────────────────────── */
-function PaymentHistory({ pledgeId, refreshKey }) {
-  const [payments, setPayments] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState('');
+// ─── Record payment modal ─────────────────────────────────────────────────────
+
+function RecordPaymentModal({ pledge, onClose, onSave }) {
+  const [amount, setAmount]           = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [method, setMethod]           = useState('cash');
+  const [receipt, setReceipt]         = useState('');
+  const [notes, setNotes]             = useState('');
+  const [saving, setSaving]           = useState(false);
+  const [error, setError]             = useState('');
+
+  const handleSave = async () => {
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
+      return setError('Enter a valid amount.');
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({
+        amount: Number(amount),
+        payment_date: paymentDate,
+        payment_method: method,
+        receipt_number: receipt.trim() || undefined,
+        notes: notes.trim() || undefined,
+      });
+      onClose();
+    } catch (e) {
+      setError(e?.response?.data?.message ?? 'Failed to record payment.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
+          <div>
+            <h2 className="text-base font-semibold text-neutral-900">Record Payment</h2>
+            {pledge && (
+              <p className="text-xs text-neutral-500 mt-0.5">
+                {pledge.member_name} · {pledge.campaign_name}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M4 4l10 10M14 4L4 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2.5">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-neutral-500 mb-1">Amount (TZS)</label>
+              <input
+                type="number" min="0" step="1000"
+                value={amount} onChange={e => setAmount(e.target.value)}
+                placeholder="0"
+                className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-500 mb-1">Payment Date</label>
+              <input
+                type="date"
+                value={paymentDate} onChange={e => setPaymentDate(e.target.value)}
+                className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-neutral-500 mb-1">Payment Method</label>
+            <select
+              value={method} onChange={e => setMethod(e.target.value)}
+              className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="mobile_money">Mobile Money</option>
+              <option value="cheque">Cheque</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-neutral-500 mb-1">Receipt / Reference No. (optional)</label>
+            <input
+              type="text"
+              value={receipt} onChange={e => setReceipt(e.target.value)}
+              placeholder="e.g. TXN-20260112"
+              className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-neutral-500 mb-1">Notes (optional)</label>
+            <textarea
+              rows={2}
+              value={notes} onChange={e => setNotes(e.target.value)}
+              className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-neutral-100">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-900">Cancel</button>
+          <button
+            onClick={handleSave} disabled={saving}
+            className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            {saving ? 'Saving…' : 'Record Payment'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main tab ─────────────────────────────────────────────────────────────────
+
+export default function PaymentsTab({
+  filterPledge = null,
+  campaigns = [],
+  role,
+  fmtMoney,
+  fmtDate,
+  lang,
+}) {
+  const [payments, setPayments]             = useState([]);
+  const [loading, setLoading]               = useState(false);
+  const [error, setError]                   = useState('');
+
+  // Filters
+  const [filterCampaign, setFilterCampaign] = useState(filterPledge?.campaign_id ?? '');
+  const [filterStatus, setFilterStatus]     = useState('');
+
+  // Modals
+  const [showRecord, setShowRecord]         = useState(false);
+  const [rejectTarget, setRejectTarget]     = useState(null); // paymentId
+  const [actionLoading, setActionLoading]   = useState({});   // paymentId → bool
+
+  const canManage  = ['pastor', 'elder', 'group_leader'].includes(role);
+  const canConfirm = ['pastor', 'elder'].includes(role);
+
+  // ── Load payments ───────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const r = await pledgeApi.payments.list(pledgeId);
-      setPayments(r.data.payments ?? r.data ?? []);
-    } catch {
-      setError('Imeshindwa kupakia historia ya malipo.');
+      const params = {};
+      if (filterPledge?.id) params.pledge_id    = filterPledge.id;
+      if (filterCampaign)   params.campaign_id  = filterCampaign;
+      if (filterStatus)     params.status       = filterStatus;
+
+      const r = await pledgeApi.getAllPayments(params);
+      // Backend returns { success, data: [] }
+      setPayments(r.data?.data ?? r.data ?? []);
+    } catch (e) {
+      setError(e?.response?.data?.message ?? 'Failed to load payments.');
     } finally {
       setLoading(false);
     }
-  }, [pledgeId]);
+  }, [filterPledge?.id, filterCampaign, filterStatus]);
 
-  useEffect(() => { load(); }, [load, refreshKey]);
+  useEffect(() => { load(); }, [load]);
 
-  if (loading) return (
-    <div className="space-y-2 py-2">
-      {[1, 2].map(i => (
-        <div key={i} className="flex justify-between items-center py-2 animate-pulse">
-          <div className="space-y-1">
-            <div className="h-3 w-24 bg-stone-200 rounded" />
-            <div className="h-2.5 w-36 bg-stone-100 rounded" />
+  // ── Record payment ──────────────────────────────────────────────────────────
+
+  const handleRecord = async (data) => {
+    if (!filterPledge?.id) throw new Error('No pledge selected.');
+    await pledgeApi.addPayment(filterPledge.id, data);
+    await load();
+  };
+
+  // ── Confirm ─────────────────────────────────────────────────────────────────
+
+  const handleConfirm = async (paymentId) => {
+    setActionLoading(prev => ({ ...prev, [paymentId]: true }));
+    try {
+      await pledgeApi.updatePayment(paymentId, { status: 'confirmed' });
+      await load();
+    } catch (e) {
+      alert(e?.response?.data?.message ?? 'Confirmation failed.');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [paymentId]: false }));
+    }
+  };
+
+  // ── Reject ───────────────────────────────────────────────────────────────────
+
+  const handleReject = async (reason) => {
+    const paymentId = rejectTarget;
+    setRejectTarget(null);
+    setActionLoading(prev => ({ ...prev, [paymentId]: true }));
+    try {
+      await pledgeApi.updatePayment(paymentId, {
+        status: 'rejected',
+        rejection_reason: reason || undefined,
+      });
+      await load();
+    } catch (e) {
+      alert(e?.response?.data?.message ?? 'Rejection failed.');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [paymentId]: false }));
+    }
+  };
+
+  // ── Delete ───────────────────────────────────────────────────────────────────
+
+  const handleDelete = async (paymentId) => {
+    if (!confirm('Delete this payment record? This cannot be undone.')) return;
+    setActionLoading(prev => ({ ...prev, [paymentId]: true }));
+    try {
+      await pledgeApi.deletePayment(paymentId);
+      await load();
+    } catch (e) {
+      alert(e?.response?.data?.message ?? 'Delete failed.');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [paymentId]: false }));
+    }
+  };
+
+  // ── Pending count badge ──────────────────────────────────────────────────────
+
+  const pendingCount = payments.filter(p => p.status === 'pending_confirmation').length;
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="p-5 space-y-5">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-neutral-900">
+            Payments
+            {filterPledge && (
+              <span className="ml-2 text-neutral-400 font-normal text-sm">
+                — {filterPledge.member_name} · {filterPledge.campaign_name}
+              </span>
+            )}
+          </h2>
+          {pendingCount > 0 && canConfirm && (
+            <p className="text-xs text-amber-600 mt-0.5">
+              {pendingCount} payment{pendingCount !== 1 ? 's' : ''} awaiting confirmation
+            </p>
+          )}
+        </div>
+        {canManage && filterPledge?.id && (
+          <button
+            onClick={() => setShowRecord(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <path d="M6.5 1v11M1 6.5h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+            Record Payment
+          </button>
+        )}
+      </div>
+
+      {/* Filters */}
+      {!filterPledge && (
+        <div className="flex flex-wrap gap-3">
+          <select
+            value={filterCampaign}
+            onChange={e => setFilterCampaign(e.target.value)}
+            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]"
+          >
+            <option value="">All campaigns</option>
+            {campaigns.map(c => (
+              <option key={c.id} value={c.id}>{c.name} ({c.year})</option>
+            ))}
+          </select>
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All statuses</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="pending_confirmation">Awaiting confirmation</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2.5">{error}</div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-16 bg-neutral-100 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      )}
+
+      {/* Empty */}
+      {!loading && payments.length === 0 && (
+        <div className="text-center py-16 text-neutral-400">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="mx-auto mb-3 opacity-40">
+            <rect x="4" y="8" width="28" height="20" rx="3" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M12 18h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <p className="text-sm">No payments recorded yet.</p>
+        </div>
+      )}
+
+      {/* Payments table (desktop) / cards (mobile) */}
+      {!loading && payments.length > 0 && (
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto rounded-xl border border-neutral-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-neutral-50 border-b border-neutral-200">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Member</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Campaign</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-neutral-500">Amount</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Method</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Receipt</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Status</th>
+                  {canConfirm && <th className="px-4 py-3 text-xs font-medium text-neutral-500">Actions</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {payments.map(p => {
+                  const busy = !!actionLoading[p.id];
+                  const isPending = p.status === 'pending_confirmation';
+                  return (
+                    <tr key={p.id} className={`hover:bg-neutral-50 transition-colors ${busy ? 'opacity-60' : ''}`}>
+                      <td className="px-4 py-3 font-medium text-neutral-900">{p.member_name ?? '—'}</td>
+                      <td className="px-4 py-3 text-neutral-600">{p.campaign_name ?? '—'}</td>
+                      <td className="px-4 py-3 text-right font-mono text-neutral-900">
+                        {fmtMoney ? fmtMoney(p.amount) : Number(p.amount).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-600">{fmtDate ? fmtDate(p.payment_date) : p.payment_date}</td>
+                      <td className="px-4 py-3 text-neutral-600 capitalize">{(p.payment_method ?? '—').replace('_', ' ')}</td>
+                      <td className="px-4 py-3 text-neutral-500 font-mono text-xs">{p.receipt_number ?? '—'}</td>
+                      <td className="px-4 py-3"><PaymentStatusPill status={p.status} /></td>
+                      {canConfirm && (
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {isPending && (
+                              <>
+                                <button
+                                  onClick={() => handleConfirm(p.id)}
+                                  disabled={busy}
+                                  className="text-xs px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                                >
+                                  Confirm
+                                </button>
+                                <button
+                                  onClick={() => setRejectTarget(p.id)}
+                                  disabled={busy}
+                                  className="text-xs px-2.5 py-1 bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100 transition-colors disabled:opacity-50"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                            {canManage && (
+                              <button
+                                onClick={() => handleDelete(p.id)}
+                                disabled={busy}
+                                className="text-xs text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <div className="h-4 w-20 bg-stone-200 rounded" />
-        </div>
-      ))}
-    </div>
-  );
 
-  if (error) return <p className="text-xs text-red-500 py-2">{error}</p>;
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {payments.map(p => {
+              const busy = !!actionLoading[p.id];
+              const isPending = p.status === 'pending_confirmation';
+              return (
+                <div
+                  key={p.id}
+                  className={`bg-white border rounded-xl p-4 space-y-2.5 ${busy ? 'opacity-60' : ''} ${isPending ? 'border-amber-200' : 'border-neutral-200'}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-900">{p.member_name ?? '—'}</p>
+                      <p className="text-xs text-neutral-500">{p.campaign_name ?? '—'}</p>
+                    </div>
+                    <PaymentStatusPill status={p.status} />
+                  </div>
 
-  if (payments.length === 0) return (
-    <p className="text-xs text-stone-400 py-4 text-center">Hakuna malipo yaliyosajiliwa bado.</p>
-  );
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+                    <span>Amount: <strong className="text-neutral-900">{fmtMoney ? fmtMoney(p.amount) : Number(p.amount).toLocaleString()}</strong></span>
+                    <span>Date: <strong className="text-neutral-700">{fmtDate ? fmtDate(p.payment_date) : p.payment_date}</strong></span>
+                    <span>Method: <strong className="text-neutral-700 capitalize">{(p.payment_method ?? '—').replace('_', ' ')}</strong></span>
+                    {p.receipt_number && <span>Ref: <strong className="text-neutral-700 font-mono">{p.receipt_number}</strong></span>}
+                  </div>
 
-  const total = payments.reduce((s, p) => s + Number(p.amount ?? 0), 0);
+                  {p.rejection_reason && (
+                    <p className="text-xs text-red-600 bg-red-50 rounded px-2 py-1">
+                      Reason: {p.rejection_reason}
+                    </p>
+                  )}
 
-  return (
-    <div>
-      <div className="divide-y divide-stone-100">
-        {payments.map(p => (
-          <div key={p.id} className="flex items-center justify-between py-3 gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-stone-800 tabular-nums">{fmt(p.amount)} TZS</p>
-              <p className="text-xs text-stone-400">
-                {fmtDate(p.payment_date)} · {METHOD_LABELS[p.payment_method] ?? p.payment_method}
-                {p.reference_number && ` · ${p.reference_number}`}
-              </p>
-              {p.notes && <p className="text-xs text-stone-400 italic mt-0.5 truncate">{p.notes}</p>}
-            </div>
+                  {(canConfirm && isPending) && (
+                    <div className="flex gap-2 pt-1 border-t border-neutral-100">
+                      <button
+                        onClick={() => handleConfirm(p.id)}
+                        disabled={busy}
+                        className="flex-1 text-xs py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={() => setRejectTarget(p.id)}
+                        disabled={busy}
+                        className="flex-1 text-xs py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
-      <div className="border-t border-stone-200 pt-3 mt-1 flex justify-between text-xs font-semibold text-stone-700">
-        <span>Jumla ya Malipo</span>
-        <span className="tabular-nums">{fmt(total)} TZS</span>
-      </div>
-    </div>
-  );
-}
+        </>
+      )}
 
-/* ── No pledge selected placeholder ─────────────────────── */
-function NoPledgeSelected({ onChangePledge }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 space-y-3 text-center">
-      <div className="w-12 h-12 rounded-full bg-stone-100 flex items-center justify-center">
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#78716C" strokeWidth="1.5">
-          <path d="M3 11h18M3 6h18M3 16h10"/>
-        </svg>
-      </div>
-      <p className="text-sm font-medium text-stone-700">Chagua Ahadi</p>
-      <p className="text-xs text-stone-400 max-w-xs">
-        Nenda kwenye kichupo cha Ahadi, kisha bonyeza "Malipo →" kwenye ahadi unayotaka kulipa.
-      </p>
-      <button
-        onClick={onChangePledge}
-        className="mt-1 text-xs text-amber-600 hover:text-amber-700 font-medium transition-colors"
-      >
-        Nenda kwenye Ahadi ↗
-      </button>
-    </div>
-  );
-}
+      {/* Modals */}
+      {showRecord && (
+        <RecordPaymentModal
+          pledge={filterPledge}
+          onClose={() => setShowRecord(false)}
+          onSave={handleRecord}
+        />
+      )}
 
-/* ── Main export ─────────────────────────────────────────── */
-export default function PaymentsTab({ activePledge, onChangePledge }) {
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  if (!activePledge) {
-    return <NoPledgeSelected onChangePledge={onChangePledge} />;
-  }
-
-  const paid    = Number(activePledge.total_paid    ?? 0);
-  const pledged = Number(activePledge.annual_amount ?? 0);
-  const pct     = pledged > 0 ? Math.min(100, Math.round((paid / pledged) * 100)) : 0;
-
-  return (
-    <div className="space-y-5">
-      {/* context banner */}
-      <div className="border border-amber-200 bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-stone-800 truncate">{activePledge.campaign_name}</p>
-          <p className="text-xs text-stone-500">
-            {activePledge.member_name ?? '—'} · Ahadi {fmt(pledged)} TZS · Imelipwa {pct}%
-          </p>
-        </div>
-        <button
-          onClick={onChangePledge}
-          className="text-xs text-amber-700 hover:text-amber-800 font-medium whitespace-nowrap transition-colors flex-shrink-0"
-        >
-          Badilisha ↗
-        </button>
-      </div>
-
-      {/* form */}
-      <PaymentForm
-        pledge={activePledge}
-        onSuccess={() => setRefreshKey(k => k + 1)}
-      />
-
-      {/* history */}
-      <div className="border border-stone-200 rounded-xl bg-white divide-y divide-stone-100">
-        <div className="px-4 py-3">
-          <h4 className="text-sm font-semibold text-stone-800">Historia ya Malipo</h4>
-        </div>
-        <div className="px-4 py-1">
-          <PaymentHistory pledgeId={activePledge.id} refreshKey={refreshKey} />
-        </div>
-      </div>
+      {rejectTarget && (
+        <RejectModal
+          onConfirm={handleReject}
+          onCancel={() => setRejectTarget(null)}
+        />
+      )}
     </div>
   );
 }

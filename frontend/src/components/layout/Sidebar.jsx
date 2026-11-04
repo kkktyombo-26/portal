@@ -142,17 +142,23 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         { href: '/dashboard/events',        labelEn: 'Schedule',      labelSw: 'Ratiba',    icon: ICONS.schedule     },
       ],
     },
-    {
-      labelEn: 'Finance', labelSw: 'Fedha',
-      items: [
-        canManagePledges(user.role) && {
-          href:    '/dashboard/pledges',
-          labelEn: 'Pledges',
-          labelSw: 'Ahadi',
-          icon:    ICONS.pledges,
-        },
-      ].filter(Boolean),
+  {
+  labelEn: 'Finance', labelSw: 'Fedha',
+  items: [
+    canManagePledges(user.role) && {
+      href:    '/dashboard/pledges',
+      labelEn: 'Pledges',
+      labelSw: 'Ahadi Washarika',
+      icon:    ICONS.pledges,
     },
+    {
+      href:    '/dashboard/my-pledges',
+      labelEn: 'My Pledges',
+      labelSw: 'Ahadi Zangu',
+      icon:    ICONS.pledges,
+    },
+  ].filter(Boolean),
+},
     {
       labelEn: 'IT Desk', labelSw: 'Dawati la IT',
       items: [

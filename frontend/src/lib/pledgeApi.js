@@ -2,97 +2,169 @@
  * pledgeApi.js
  * ─────────────
  * API client for the Pledge Campaign module.
- * Mirrors the pattern in lib/api.js — all methods return Axios promises.
+ * Ref: BSS-KKKT-2026-003
  *
- * Append this export block to your existing lib/api.js, or import from here:
+ * Import from here:
  *   import { pledgeApi } from '@/lib/pledgeApi';
  *
- * Base URL:  /api/pledges  (mounted in app.js via pledgeRoutes.js)
+ * Uses the shared axios instance from lib/api.js — token attachment,
+ * 401 redirect, and error normalisation are all handled there.
+ *
+ * All methods return Axios promises.  The caller is responsible for
+ * .then(r => r.data) and error handling.
+ *
+ * Base URL: http://localhost:4000/api  (from shared api instance)
+ * Pledge routes mounted at: /pledges   (app.use('/api/pledges', pledgeRoutes))
  */
 
-import api from './api'; // re-uses the shared Axios instance with auth interceptors
+import api from './api';
+
+// ─── Campaigns ────────────────────────────────────────────────────────────────
+
+/** GET  /pledges/campaigns  — list all campaigns (filtered by role server-side) */
+const getCampaigns = (params = {}) =>
+  api.get('/pledges/campaigns', { params });
+
+/** GET  /pledges/campaigns/:id  — single campaign with totals */
+const getCampaign = (campaignId) =>
+  api.get(`/pledges/campaigns/${campaignId}`);
+
+/** POST /pledges/campaigns  — create a new campaign (pastor/elder/group_leader) */
+const createCampaign = (data) =>
+  api.post('/pledges/campaigns', data);
+
+/** PUT  /pledges/campaigns/:id  — update campaign details */
+const updateCampaign = (campaignId, data) =>
+  api.put(`/pledges/campaigns/${campaignId}`, data);
+
+/** PATCH /pledges/campaigns/:id/toggle  — toggle active/inactive */
+const toggleCampaign = (campaignId) =>
+  api.patch(`/pledges/campaigns/${campaignId}/toggle`);
+
+/** DELETE /pledges/campaigns/:id  — soft-delete (pastor/elder only) */
+const deleteCampaign = (campaignId) =>
+  api.delete(`/pledges/campaigns/${campaignId}`);
+
+// ─── Member Pledges ───────────────────────────────────────────────────────────
+
+/**
+ * GET /pledges/campaigns/:id/members
+ * List all pledge subscriptions for a campaign (managers only).
+ */
+const getCampaignPledges = (campaignId) =>
+  api.get(`/pledges/campaigns/${campaignId}/members`);
+
+/**
+ * GET /pledges/members/:userId
+ * List all pledge subscriptions for a member (admin & self).
+ */
+const getMemberPledges = (userId) =>
+  api.get(`/pledges/members/${userId}`);
+
+/**
+ * POST /pledges/campaigns/:campaignId/members
+ * Subscribe a member to a campaign.
+ * Body: { member_id?, annual_amount, pledge_number?, signed_date? }
+ * managers → any member_id; members → self only (status: pending)
+ */
+const addMemberPledge = (campaignId, data) =>
+  api.post(`/pledges/campaigns/${campaignId}/members`, data);
+
+/**
+ * PUT /pledges/member-pledges/:pledgeId
+ * Update a member's pledge.
+ * Body: { annual_amount?, pledge_number?, signed_date?, is_fulfilled?, notes?, status? }
+ * pastor|elder → all fields incl. status
+ * group_leader → amount, pledge_number, signed_date, notes
+ * member       → annual_amount, notes (pending only)
+ */
+const updateMemberPledge = (pledgeId, data) =>
+  api.put(`/pledges/member-pledges/${pledgeId}`, data);
+
+/**
+ * DELETE /pledges/member-pledges/:pledgeId
+ * Remove a pledge subscription (pastor/elder only).
+ */
+const deleteMemberPledge = (pledgeId) =>
+  api.delete(`/pledges/member-pledges/${pledgeId}`);
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+/**
+ * GET /pledges/member-pledges/:pledgeId/payments
+ * List payment instalments for one pledge subscription.
+ */
+const getPayments = (pledgeId) =>
+  api.get(`/pledges/member-pledges/${pledgeId}/payments`);
+
+/**
+ * POST /pledges/member-pledges/:pledgeId/payments
+ * Record a new payment instalment.
+ * Body: { amount, payment_date, payment_method?, receipt_number?, notes? }
+ * managers → confirmed immediately; members → pending_confirmation
+ */
+const addPayment = (pledgeId, data) =>
+  api.post(`/pledges/member-pledges/${pledgeId}/payments`, data);
+
+/**
+ * PUT /pledges/payments/:paymentId
+ * Confirm, reject, or correct a payment (managers only).
+ * Body: { status?, amount?, payment_date?, payment_method?, receipt_number?, notes? }
+ */
+const updatePayment = (paymentId, data) =>
+  api.put(`/pledges/payments/${paymentId}`, data);
+
+/**
+ * DELETE /pledges/payments/:paymentId
+ * Void / delete a payment record (pastor/elder only).
+ */
+const deletePayment = (paymentId) =>
+  api.delete(`/pledges/payments/${paymentId}`);
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+
+/**
+ * GET /pledges/report
+ * Aggregated pledge summary (backed by v_pledge_summary).
+ * Params: year, campaign_id, group_id, is_fulfilled, scope
+ * Returns: { success, totals, data: rows[] }
+ */
+const getReport = (params = {}) =>
+  api.get('/pledges/report', { params });
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** GET /pledges/types  — lookup list of pledge types */
+const getTypes = () =>
+  api.get('/pledges/types');
+
+// ─── Named export (matches existing api.js pattern) ───────────────────────────
 
 export const pledgeApi = {
+  // campaigns
+  getCampaigns,
+  getCampaign,
+  createCampaign,
+  updateCampaign,
+  toggleCampaign,
+  deleteCampaign,
 
-  // ── Pledge Types (catalogue) ─────────────────────────────────────────────
-  // GET /api/pledges/types
-  // Returns: [{ id, name_sw, name_en, description, is_active, sort_order }]
-  getTypes: () =>
-    api.get('/pledges/types'),
+  // member pledges
+  getCampaignPledges,
+  getMemberPledges,
+  addMemberPledge,
+  updateMemberPledge,
+  deleteMemberPledge,
 
-  // ── Campaigns ────────────────────────────────────────────────────────────
-  // GET /api/pledges/campaigns
-  // Returns: campaigns with subscriber_count, total_pledged, total_paid
-  getCampaigns: () =>
-    api.get('/pledges/campaigns'),
+  // payments
+  getPayments,
+  addPayment,
+  updatePayment,
+  deletePayment,
 
-  // GET /api/pledges/campaigns/:id
-  getCampaign: (id) =>
-    api.get(`/pledges/campaigns/${id}`),
+  // reports
+  getReport,
 
-  // POST /api/pledges/campaigns
-  // body: { name, pledge_type_id, scope, group_id?, member_id?,
-  //         pledge_year, start_date?, end_date?, target_amount?, description? }
-  createCampaign: (data) =>
-    api.post('/pledges/campaigns', data),
-
-  // PUT /api/pledges/campaigns/:id
-  // body: { name?, description?, start_date?, end_date?, target_amount?, is_active? }
-  updateCampaign: (id, data) =>
-    api.put(`/pledges/campaigns/${id}`, data),
-
-  // DELETE /api/pledges/campaigns/:id  (soft-delete: is_active = 0)
-  deleteCampaign: (id) =>
-    api.delete(`/pledges/campaigns/${id}`),
-
-  // ── Member Pledges ────────────────────────────────────────────────────────
-  // GET /api/pledges/campaigns/:id/members
-  // Returns: all pledges in a campaign (from v_pledge_summary)
-  getCampaignPledges: (campaignId) =>
-    api.get(`/pledges/campaigns/${campaignId}/members`),
-
-  // GET /api/pledges/members/:userId
-  // Returns: all pledges across campaigns for one member
-  getMemberPledges: (userId) =>
-    api.get(`/pledges/members/${userId}`),
-
-  // POST /api/pledges/campaigns/:id/members
-  // body: { member_id, annual_amount, pledge_number?, signed_date?, notes? }
-  addMemberPledge: (campaignId, data) =>
-    api.post(`/pledges/campaigns/${campaignId}/members`, data),
-
-  // PUT /api/pledges/member-pledges/:pledgeId
-  // body: { annual_amount?, pledge_number?, signed_date?, is_fulfilled?, notes? }
-  updateMemberPledge: (pledgeId, data) =>
-    api.put(`/pledges/member-pledges/${pledgeId}`, data),
-
-  // DELETE /api/pledges/member-pledges/:pledgeId  (hard-delete + cascade payments)
-  deleteMemberPledge: (pledgeId) =>
-    api.delete(`/pledges/member-pledges/${pledgeId}`),
-
-  // ── Payments (installments) ───────────────────────────────────────────────
-  // GET /api/pledges/member-pledges/:pledgeId/payments
-  getPayments: (pledgeId) =>
-    api.get(`/pledges/member-pledges/${pledgeId}/payments`),
-
-  // POST /api/pledges/member-pledges/:pledgeId/payments
-  // body: { amount, payment_date, payment_method?, receipt_number?, notes? }
-  addPayment: (pledgeId, data) =>
-    api.post(`/pledges/member-pledges/${pledgeId}/payments`, data),
-
-  // DELETE /api/pledges/payments/:paymentId  (auto un-fulfills if needed)
-  deletePayment: (paymentId) =>
-    api.delete(`/pledges/payments/${paymentId}`),
-
-  // ── Reporting ─────────────────────────────────────────────────────────────
-  // GET /api/pledges/report
-  // params: { year?, campaign_id?, group_id?, is_fulfilled?, scope? }
-  getReport: (params = {}) => {
-    const qs = new URLSearchParams(
-      Object.fromEntries(
-        Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null)
-      )
-    ).toString();
-    return api.get(`/pledges/report${qs ? `?${qs}` : ''}`);
-  },
+  // helpers
+  getTypes,
 };

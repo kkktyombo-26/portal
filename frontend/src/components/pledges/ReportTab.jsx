@@ -1,406 +1,351 @@
 'use client';
-
 /**
  * ReportTab.jsx
  * ─────────────
- * Filterable summary report that reads from GET /api/pledges/report
- * (backed by v_pledge_summary view).
+ * Tab 4 — Filterable summary report from v_pledge_summary.
  *
- * Filters available (mirrors backend query params):
- *   year        → integer
- *   campaign_id → integer
- *   group_id    → integer  (pastor/elder only)
- *   is_fulfilled → 0 | 1
- *   scope       → church | group | member
+ * API ref:
+ *   getReport(params)  GET /api/pledges/report
+ *   Returns:  { success: true, totals: {...}, data: Row[] }
  *
- * Aggregates displayed per-row:
- *   annual_amount, total_paid, balance, fulfilment %, is_fulfilled
+ * Props (from page.jsx):
+ *   role       string
+ *   fmtMoney   fn(amount)
+ *   fmtDate    fn(dateStr)
+ *   lang       string
  *
- * Group leaders see only their group's data (backend enforces this too).
+ * Note: this component fetches its own campaigns and groups to populate
+ * the filter dropdowns — no prop-drilling needed.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { pledgeApi } from '../../lib/pledgeApi';
-import { useAuth } from '../../hooks/useAuth';
+import { groupApi } from '../../lib/api';
 
-/* ── helpers ─────────────────────────────────────────────── */
-const fmt = (n) =>
-  n == null ? '—' : new Intl.NumberFormat('sw-TZ').format(Number(n));
+// ─── Summary card ─────────────────────────────────────────────────────────────
 
-const pct = (paid, pledged) => {
-  const p = Number(pledged);
-  return p > 0 ? Math.round((Number(paid) / p) * 100) : 0;
-};
-
-const SCOPE_LABELS = { church: 'Kanisa', group: 'Kikundi', member: 'Mwanachama' };
-const currentYear  = new Date().getFullYear();
-const YEARS        = Array.from({ length: 5 }, (_, i) => currentYear - i);
-
-/* ── mini bar chip ───────────────────────────────────────── */
-function MiniBar({ paid, pledged }) {
-  const p = pct(paid, pledged);
+function SummaryCard({ label, value, sub }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-16 h-1.5 bg-stone-100 rounded-full overflow-hidden flex-shrink-0">
-        <div className="h-full bg-amber-500 rounded-full" style={{ width: `${p}%` }} />
-      </div>
-      <span className="text-xs tabular-nums text-stone-500">{p}%</span>
+    <div className="bg-white border border-neutral-200 rounded-xl px-5 py-4">
+      <p className="text-xs text-neutral-500">{label}</p>
+      <p className="text-2xl font-semibold text-neutral-900 mt-1">{value}</p>
+      {sub && <p className="text-xs text-neutral-400 mt-0.5">{sub}</p>}
     </div>
   );
 }
 
-/* ── totals footer row ───────────────────────────────────── */
-function TotalsRow({ rows }) {
-  const totalPledged   = rows.reduce((s, r) => s + Number(r.annual_amount ?? 0), 0);
-  const totalPaid      = rows.reduce((s, r) => s + Number(r.total_paid    ?? 0), 0);
-  const totalBalance   = rows.reduce((s, r) => s + Math.max(0, Number(r.annual_amount ?? 0) - Number(r.total_paid ?? 0)), 0);
-  const fulfilledCount = rows.filter(r => r.is_fulfilled).length;
+// ─── Progress bar ─────────────────────────────────────────────────────────────
 
+function Bar({ pct }) {
+  const c = pct >= 100 ? 'bg-emerald-500' : pct >= 50 ? 'bg-blue-500' : 'bg-amber-400';
   return (
-    <tr className="bg-stone-50 border-t-2 border-stone-300 font-semibold text-xs text-stone-700">
-      <td className="px-4 py-3" colSpan={2}>
-        Jumla ({rows.length} ahadi · {fulfilledCount} zimetimizwa)
-      </td>
-      <td className="px-4 py-3 text-right tabular-nums">{fmt(totalPledged)}</td>
-      <td className="px-4 py-3 text-right tabular-nums text-amber-600">{fmt(totalPaid)}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{fmt(totalBalance)}</td>
-      <td className="px-4 py-3">
-        <MiniBar paid={totalPaid} pledged={totalPledged} />
-      </td>
-      <td />
-    </tr>
-  );
-}
-
-/* ── filter bar ──────────────────────────────────────────── */
-function FilterBar({ filters, setFilters, campaigns, groups, isAdmin }) {
-  const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {/* Year */}
-      <select
-        value={filters.year}
-        onChange={e => set('year', e.target.value)}
-        className="border border-stone-200 rounded-lg px-3 py-1.5 text-xs bg-white text-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
-      >
-        <option value="">Mwaka wote</option>
-        {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-      </select>
-
-      {/* Campaign */}
-      <select
-        value={filters.campaign_id}
-        onChange={e => set('campaign_id', e.target.value)}
-        className="border border-stone-200 rounded-lg px-3 py-1.5 text-xs bg-white text-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
-      >
-        <option value="">Kampeni zote</option>
-        {campaigns.map(c => (
-          <option key={c.id} value={c.id}>{c.name} ({c.year})</option>
-        ))}
-      </select>
-
-      {/* Group (admin only) */}
-      {isAdmin && groups.length > 0 && (
-        <select
-          value={filters.group_id}
-          onChange={e => set('group_id', e.target.value)}
-          className="border border-stone-200 rounded-lg px-3 py-1.5 text-xs bg-white text-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
-        >
-          <option value="">Vikundi vyote</option>
-          {groups.map(g => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </select>
-      )}
-
-      {/* Scope */}
-      <select
-        value={filters.scope}
-        onChange={e => set('scope', e.target.value)}
-        className="border border-stone-200 rounded-lg px-3 py-1.5 text-xs bg-white text-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
-      >
-        <option value="">Aina zote</option>
-        {Object.entries(SCOPE_LABELS).map(([v, l]) => (
-          <option key={v} value={v}>{l}</option>
-        ))}
-      </select>
-
-      {/* Fulfillment */}
-      <select
-        value={filters.is_fulfilled}
-        onChange={e => set('is_fulfilled', e.target.value)}
-        className="border border-stone-200 rounded-lg px-3 py-1.5 text-xs bg-white text-stone-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
-      >
-        <option value="">Hali zote</option>
-        <option value="1">Zimetimizwa</option>
-        <option value="0">Zinaendelea</option>
-      </select>
+    <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
+      <div className={`h-1.5 rounded-full ${c}`} style={{ width: `${Math.min(100, pct)}%` }} />
     </div>
   );
 }
 
-/* ── mobile card (< md) ──────────────────────────────────── */
-function MobileCard({ row }) {
-  const paid    = Number(row.total_paid    ?? 0);
-  const pledged = Number(row.annual_amount ?? 0);
-  const balance = Math.max(0, pledged - paid);
+// ─── Main tab ─────────────────────────────────────────────────────────────────
 
-  return (
-    <div className="border border-stone-200 rounded-xl bg-white px-4 py-3 space-y-2">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold text-stone-800 leading-snug">{row.member_name ?? '—'}</p>
-          <p className="text-xs text-stone-400">{row.campaign_name} · {SCOPE_LABELS[row.scope] ?? row.scope}</p>
-        </div>
-        {row.is_fulfilled ? (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex-shrink-0">✓</span>
-        ) : (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex-shrink-0">Inaendelea</span>
-        )}
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-xs text-stone-600">
-        <div><p className="text-stone-400">Ahadi</p><p className="font-medium tabular-nums">{fmt(pledged)}</p></div>
-        <div><p className="text-stone-400">Imelipwa</p><p className="font-medium tabular-nums text-amber-600">{fmt(paid)}</p></div>
-        <div><p className="text-stone-400">Baki</p><p className="font-medium tabular-nums">{fmt(balance)}</p></div>
-      </div>
-      <MiniBar paid={paid} pledged={pledged} />
-    </div>
-  );
-}
-
-/* ── Main export ─────────────────────────────────────────── */
-export default function ReportTab() {
-  const { user } = useAuth();
-  const isAdmin  = ['pastor', 'elder'].includes(user?.role);
-
-  const [rows,      setRows]      = useState([]);
+export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
   const [campaigns, setCampaigns] = useState([]);
-  const [groups,    setGroups]    = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState('');
+  const [groups, setGroups]       = useState([]);
 
-  const [filters, setFilters] = useState({
-    year:         String(currentYear),
-    campaign_id:  '',
-    group_id:     '',
-    scope:        '',
-    is_fulfilled: '',
-  });
+  // Filters
+  const [year, setYear]               = useState(new Date().getFullYear());
+  const [campaignId, setCampaignId]   = useState('');
+  const [groupId, setGroupId]         = useState('');
+  const [status, setStatus]           = useState('');
 
-  /* load filter options once */
+  // Results
+  const [rows, setRows]               = useState([]);
+  const [totals, setTotals]           = useState(null);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+
+  const canViewGroups = ['pastor', 'elder', 'group_leader'].includes(role);
+
+  // ── Bootstrap dropdowns ───────────────────────────────────────────────────
+
   useEffect(() => {
-    // FIX: was pledgeApi.campaigns.list() — pledgeApi is a flat object
-    pledgeApi.getCampaigns()
-      .then(r => {
-        const raw = r.data?.campaigns ?? r.data?.data ?? r.data ?? [];
-        setCampaigns(Array.isArray(raw) ? raw : []);
-      })
-      .catch(() => {});
+    pledgeApi.getCampaigns().then(r => {
+      setCampaigns(r.data?.data ?? r.data ?? []);
+    }).catch(() => {});
 
-    // NOTE: no getGroups method exists in pledgeApi yet.
-    // Add pledgeApi.getGroups = () => api.get('/groups') when the endpoint
-    // is ready, then uncomment the block below.
-    //
-    // if (isAdmin) {
-    //   pledgeApi.getGroups()
-    //     .then(r => setGroups(r.data.groups ?? r.data ?? []))
-    //     .catch(() => {});
-    // }
-  }, [isAdmin]);
+    if (canViewGroups) {
+      groupApi.getGroups?.()?.then(r => {
+        setGroups(r.data?.data ?? r.data ?? []);
+      }).catch(() => {});
+    }
+  }, [canViewGroups]);
+
+  // ── Fetch report ──────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
-    const params = Object.fromEntries(
-      Object.entries(filters).filter(([, v]) => v !== '')
-    );
     try {
-      // FIX: was pledgeApi.reports.summary(params)
+      const params = {};
+      if (year)       params.year        = year;
+      if (campaignId) params.campaign_id = campaignId;
+      if (groupId)    params.group_id    = groupId;
+      if (status)     params.status      = status;
+
       const r = await pledgeApi.getReport(params);
-      const raw = r.data?.pledges ?? r.data?.data ?? r.data ?? [];
-      setRows(Array.isArray(raw) ? raw : []);
-    } catch {
-      setError('Imeshindwa kupakia ripoti. Jaribu tena.');
+      // Backend: { success, totals: {...}, data: Row[] }
+      const payload = r.data ?? {};
+      setTotals(payload.totals ?? null);
+      setRows(payload.data ?? []);
+    } catch (e) {
+      setError(e?.response?.data?.message ?? 'Failed to load report.');
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [year, campaignId, groupId, status]);
 
+  // Run on mount + whenever filters change
   useEffect(() => { load(); }, [load]);
 
-  /* ── CSV export ── */
+  // ── Derived totals (fallback if backend doesn't send them) ────────────────
+
+  const totalPledged = totals?.total_pledged ?? rows.reduce((s, r) => s + Number(r.pledged_amount ?? 0), 0);
+  const totalPaid    = totals?.total_paid    ?? rows.reduce((s, r) => s + Number(r.total_paid ?? 0), 0);
+  const totalBalance = totals?.total_balance ?? (totalPledged - totalPaid);
+  const overallPct   = totalPledged > 0 ? Math.round((totalPaid / totalPledged) * 100) : 0;
+
+  // ── Year options ──────────────────────────────────────────────────────────
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
+
+  // ── Export CSV helper ─────────────────────────────────────────────────────
+
   const exportCsv = () => {
-    const header = ['Jina', 'Kampeni', 'Mwaka', 'Aina', 'Ahadi (TZS)', 'Imelipwa (TZS)', 'Baki (TZS)', 'Asilimia', 'Hali'];
-    const csvRows = rows.map(r => {
-      const pledged = Number(r.annual_amount ?? 0);
-      const paid    = Number(r.total_paid    ?? 0);
-      return [
-        r.member_name ?? '',
-        r.campaign_name ?? '',
-        r.campaign_year ?? '',
-        SCOPE_LABELS[r.scope] ?? r.scope ?? '',
-        pledged,
-        paid,
-        Math.max(0, pledged - paid),
-        pct(paid, pledged),
-        r.is_fulfilled ? 'Imetimizwa' : 'Inaendelea',
-      ];
-    });
-    const csv = [header, ...csvRows].map(row => row.join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    if (!rows.length) return;
+    const headers = ['Member', 'Campaign', 'Group', 'Pledge Type', 'Pledged', 'Paid', 'Balance', 'Status'];
+    const csvRows = rows.map(r => [
+      r.member_name ?? '',
+      r.campaign_name ?? '',
+      r.group_name ?? '',
+      r.pledge_type ?? '',
+      r.pledged_amount ?? 0,
+      r.total_paid ?? 0,
+      (Number(r.pledged_amount ?? 0) - Number(r.total_paid ?? 0)).toFixed(0),
+      r.status ?? '',
+    ]);
+    const csv = [headers, ...csvRows].map(row => row.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `ahadi-ripoti-${filters.year || 'zote'}.csv`;
+    a.download = `pledge-report-${year}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
-    <div className="space-y-4">
-      {/* header */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-base font-semibold text-stone-800">Ripoti ya Ahadi</h2>
-          <p className="text-xs text-stone-500 mt-0.5">
-            {loading ? '…' : `Matokeo ${rows.length}`}
-          </p>
-        </div>
-        <button
-          onClick={exportCsv}
-          disabled={rows.length === 0 || loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-stone-200 hover:border-stone-300 text-stone-700 rounded-lg transition-colors disabled:opacity-40"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M6 1v7M3.5 5.5L6 8l2.5-2.5M2 10h8"/>
-          </svg>
-          Hamisha CSV
-        </button>
+    <div className="p-5 space-y-5">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-base font-semibold text-neutral-900">Pledge Report</h2>
+        {rows.length > 0 && (
+          <button
+            onClick={exportCsv}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm border border-neutral-200 text-neutral-600 rounded-lg hover:bg-neutral-50 transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <path d="M6.5 1v8M3.5 6.5l3 3 3-3M2 11h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Export CSV
+          </button>
+        )}
       </div>
 
-      {/* filters */}
-      <FilterBar
-        filters={filters}
-        setFilters={setFilters}
-        campaigns={campaigns}
-        groups={groups}
-        isAdmin={isAdmin}
-      />
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3">
+        {/* Year */}
+        <select
+          value={year}
+          onChange={e => setYear(Number(e.target.value))}
+          className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
 
+        {/* Campaign */}
+        <select
+          value={campaignId}
+          onChange={e => setCampaignId(e.target.value)}
+          className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]"
+        >
+          <option value="">All campaigns</option>
+          {campaigns.map(c => (
+            <option key={c.id} value={c.id}>{c.name} ({c.year})</option>
+          ))}
+        </select>
+
+        {/* Group */}
+        {canViewGroups && groups.length > 0 && (
+          <select
+            value={groupId}
+            onChange={e => setGroupId(e.target.value)}
+            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px]"
+          >
+            <option value="">All groups</option>
+            {groups.map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+        )}
+
+        {/* Status */}
+        <select
+          value={status}
+          onChange={e => setStatus(e.target.value)}
+          className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+
+      {/* Error */}
       {error && (
-        <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2.5">{error}</div>
       )}
 
-      {/* ── desktop table ── */}
-      {loading ? (
-        <div className="hidden md:block border border-stone-200 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-stone-50 border-b border-stone-200">
-              <tr>
-                {['Jina', 'Kampeni', 'Ahadi (TZS)', 'Imelipwa (TZS)', 'Baki (TZS)', 'Maendeleo', 'Hali'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-stone-500">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {[1, 2, 3, 4].map(i => (
-                <tr key={i} className="animate-pulse">
-                  <td className="px-4 py-3"><div className="h-3 w-32 bg-stone-200 rounded" /></td>
-                  <td className="px-4 py-3"><div className="h-3 w-28 bg-stone-100 rounded" /></td>
-                  <td className="px-4 py-3"><div className="h-3 w-20 bg-stone-100 rounded" /></td>
-                  <td className="px-4 py-3"><div className="h-3 w-20 bg-stone-100 rounded" /></td>
-                  <td className="px-4 py-3"><div className="h-3 w-20 bg-stone-100 rounded" /></td>
-                  <td className="px-4 py-3"><div className="h-2 w-16 bg-stone-100 rounded-full" /></td>
-                  <td className="px-4 py-3"><div className="h-5 w-16 bg-stone-100 rounded-full" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Summary cards */}
+      {!loading && (rows.length > 0 || totals) && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <SummaryCard
+            label="Total Pledged"
+            value={fmtMoney ? fmtMoney(totalPledged) : totalPledged.toLocaleString()}
+            sub={`${rows.length} pledges`}
+          />
+          <SummaryCard
+            label="Total Paid"
+            value={fmtMoney ? fmtMoney(totalPaid) : totalPaid.toLocaleString()}
+            sub={`${overallPct}% fulfilled`}
+          />
+          <SummaryCard
+            label="Outstanding"
+            value={fmtMoney ? fmtMoney(totalBalance) : totalBalance.toLocaleString()}
+            sub={`${100 - overallPct}% remaining`}
+          />
+          <SummaryCard
+            label="Overall Progress"
+            value={`${overallPct}%`}
+            sub={totals?.active_campaigns ? `${totals.active_campaigns} active campaigns` : undefined}
+          />
         </div>
-      ) : rows.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center space-y-2">
-          <p className="text-sm font-medium text-stone-700">Hakuna matokeo</p>
-          <p className="text-xs text-stone-400">Badilisha vichungi ili kuona data nyingine.</p>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="h-20 bg-neutral-100 rounded-xl animate-pulse" />
+            ))}
+          </div>
+          <div className="h-64 bg-neutral-100 rounded-xl animate-pulse mt-4" />
         </div>
-      ) : (
+      )}
+
+      {/* Empty */}
+      {!loading && rows.length === 0 && (
+        <div className="text-center py-16 text-neutral-400">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="mx-auto mb-3 opacity-40">
+            <rect x="4" y="4" width="28" height="28" rx="4" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M12 22l5-6 4 4 4-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <p className="text-sm">No data for the selected filters.</p>
+        </div>
+      )}
+
+      {/* Data table */}
+      {!loading && rows.length > 0 && (
         <>
-          {/* desktop table */}
-          <div className="hidden md:block border border-stone-200 rounded-xl overflow-hidden">
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto rounded-xl border border-neutral-200">
             <table className="w-full text-sm">
-              <thead className="bg-stone-50 border-b border-stone-200">
-                <tr>
-                  {['Jina', 'Kampeni', 'Ahadi (TZS)', 'Imelipwa (TZS)', 'Baki (TZS)', 'Maendeleo', 'Hali'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-stone-500">{h}</th>
-                  ))}
+              <thead>
+                <tr className="bg-neutral-50 border-b border-neutral-200">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Member</th>
+                  {canViewGroups && <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Group</th>}
+                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Campaign</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Type</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-neutral-500">Pledged</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-neutral-500">Paid</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-neutral-500">Balance</th>
+                  <th className="px-4 py-3 text-xs font-medium text-neutral-500">Progress</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-100 bg-white">
-                {rows.map((r, idx) => {
-                  const paid    = Number(r.total_paid    ?? 0);
-                  const pledged = Number(r.annual_amount ?? 0);
-                  const balance = Math.max(0, pledged - paid);
+              <tbody className="divide-y divide-neutral-100">
+                {rows.map((row, idx) => {
+                  const pledged = Number(row.pledged_amount ?? 0);
+                  const paid    = Number(row.total_paid ?? 0);
+                  const balance = pledged - paid;
+                  const pct     = pledged > 0 ? Math.round((paid / pledged) * 100) : 0;
+
                   return (
-                    <tr key={r.id ?? idx} className="hover:bg-stone-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-stone-800 leading-tight">{r.member_name ?? '—'}</p>
-                        <p className="text-xs text-stone-400">{SCOPE_LABELS[r.scope] ?? r.scope}</p>
+                    <tr key={row.pledge_id ?? idx} className="hover:bg-neutral-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-neutral-900">{row.member_name ?? '—'}</td>
+                      {canViewGroups && <td className="px-4 py-3 text-neutral-600">{row.group_name ?? '—'}</td>}
+                      <td className="px-4 py-3 text-neutral-600">{row.campaign_name ?? '—'}</td>
+                      <td className="px-4 py-3 text-neutral-500 capitalize">{(row.pledge_type ?? '—').replace('_', ' ')}</td>
+                      <td className="px-4 py-3 text-right font-mono text-neutral-900">
+                        {fmtMoney ? fmtMoney(pledged) : pledged.toLocaleString()}
                       </td>
-                      <td className="px-4 py-3 text-stone-600">
-                        <p className="text-xs">{r.campaign_name ?? '—'}</p>
-                        <p className="text-xs text-stone-400">{r.campaign_year}</p>
+                      <td className="px-4 py-3 text-right font-mono text-emerald-700">
+                        {fmtMoney ? fmtMoney(paid) : paid.toLocaleString()}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-stone-700">{fmt(pledged)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-amber-600 font-medium">{fmt(paid)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-stone-600">{fmt(balance)}</td>
-                      <td className="px-4 py-3">
-                        <MiniBar paid={paid} pledged={pledged} />
+                      <td className="px-4 py-3 text-right font-mono text-neutral-500">
+                        {fmtMoney ? fmtMoney(balance) : balance.toLocaleString()}
                       </td>
-                      <td className="px-4 py-3">
-                        {r.is_fulfilled ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✓ Imetimizwa</span>
-                        ) : (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Inaendelea</span>
-                        )}
+                      <td className="px-4 py-3 w-40">
+                        <div className="space-y-1">
+                          <Bar pct={pct} />
+                          <p className="text-xs text-neutral-400 text-right">{pct}%</p>
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
-              <tfoot>
-                <TotalsRow rows={rows} />
-              </tfoot>
             </table>
           </div>
 
-          {/* mobile cards */}
+          {/* Mobile cards */}
           <div className="md:hidden space-y-3">
-            {rows.map((r, idx) => <MobileCard key={r.id ?? idx} row={r} />)}
+            {rows.map((row, idx) => {
+              const pledged = Number(row.pledged_amount ?? 0);
+              const paid    = Number(row.total_paid ?? 0);
+              const balance = pledged - paid;
+              const pct     = pledged > 0 ? Math.round((paid / pledged) * 100) : 0;
 
-            {/* mobile totals */}
-            <div className="border border-stone-300 rounded-xl bg-stone-50 px-4 py-3">
-              <p className="text-xs font-semibold text-stone-700 mb-2">
-                Jumla — {rows.length} ahadi
-              </p>
-              <div className="grid grid-cols-3 gap-2 text-xs text-stone-600">
-                <div>
-                  <p className="text-stone-400">Ahadi</p>
-                  <p className="font-medium tabular-nums">
-                    {fmt(rows.reduce((s, r) => s + Number(r.annual_amount ?? 0), 0))}
-                  </p>
+              return (
+                <div key={row.pledge_id ?? idx} className="bg-white border border-neutral-200 rounded-xl p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-neutral-900">{row.member_name ?? '—'}</p>
+                    <p className="text-xs text-neutral-500">{row.campaign_name ?? '—'}{row.group_name ? ` · ${row.group_name}` : ''}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+                    <span>Pledged: <strong className="text-neutral-900">{fmtMoney ? fmtMoney(pledged) : pledged.toLocaleString()}</strong></span>
+                    <span>Paid: <strong className="text-emerald-700">{fmtMoney ? fmtMoney(paid) : paid.toLocaleString()}</strong></span>
+                    <span>Balance: <strong className="text-neutral-700">{fmtMoney ? fmtMoney(balance) : balance.toLocaleString()}</strong></span>
+                  </div>
+                  <div className="space-y-1">
+                    <Bar pct={pct} />
+                    <p className="text-xs text-neutral-400">{pct}% fulfilled</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-stone-400">Imelipwa</p>
-                  <p className="font-medium tabular-nums text-amber-600">
-                    {fmt(rows.reduce((s, r) => s + Number(r.total_paid ?? 0), 0))}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-stone-400">Imetimizwa</p>
-                  <p className="font-medium tabular-nums">{rows.filter(r => r.is_fulfilled).length}</p>
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </>
       )}
