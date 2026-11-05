@@ -662,16 +662,14 @@ export default function MembersPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-// In MembersPage — fetchMembers
-const fetchMembers = useCallback(async () => {
-  try {
-    setLoading(true);
-    const res = await userApi.getMembers();
-    // getMembers returns { success, members, meta } not { success, data }
-    setMembers(res.data.members ?? res.data.data ?? []);
-  } catch (_) {}
-  finally { setLoading(false); }
-}, []);
+  const fetchMembers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await userApi.getAll();
+      setMembers(res.data.data);
+    } catch (_) {}
+    finally { setLoading(false); }
+  }, []);
 
   useEffect(() => { fetchMembers(); }, [fetchMembers]);
 
@@ -744,9 +742,11 @@ const fetchMembers = useCallback(async () => {
     const matchJumuiya    = !jumuiyaFilter    || m.jumuiya === jumuiyaFilter;
     const matchGender     = !genderFilter     || m.gender  === genderFilter;
     const matchOccupation = !occupationFilter || m.occupation === occupationFilter;
-   const matchMinistry   = !ministryFilter   ||
-  (m.ministries || []).some(mn => String(mn.id ?? mn.ministry_id) === String(ministryFilter));
+    const matchMinistry   = !ministryFilter   ||
+      (m.ministries || []).some(mn => String(mn.ministry_id) === String(ministryFilter));
 
+
+      
     return matchSearch && matchStatus && matchJumuiya && matchGender && matchOccupation && matchMinistry;
   });
 
