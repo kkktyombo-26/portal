@@ -644,7 +644,7 @@ function StatCard({ label, value, accent }) {
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
 export default function MyPledgesPage() {
-  const { user, lang } = useAuth();
+const { user, lang } = useAuth();
   const { t } = useTranslation(lang);
 
   const [myPledges, setMyPledges] = useState([]);

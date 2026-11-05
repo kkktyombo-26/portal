@@ -388,21 +388,13 @@ py_reject:                      'Reject',
 py_delete:                      'Delete',
 py_rejection_reason:            'Reason:',
 
+pledges_my: 'My Pledges',
+pledges_available: 'Available',
 
-// ── Page (page.jsx) ──────────────────────────────────────────
-pg_eyebrow:           'Uwakili wa Fedha',
-pg_title:             'AHADI, JENGO, UWAKILI NA MICHANGO',
-pg_subtitle:          'Fuatilia ahadi, malipo ya awamu, na utekelezaji wa kampeni kwa mkutano wa Yombo.',
-pg_stat_campaigns:    'Kampeni Zinazoendelea',
-pg_stat_members:      'Jumla ya Washarika',
-pg_stat_pledged:      'Jumla Iliyoahidiwa',
-pg_stat_collected:    'Jumla Iliyokusanywa',
-pg_stat_rate:         'Kiwango cha Ukusanyaji',
-pg_tab_campaigns:     'Kampeni',
-pg_tab_pledges:       'Ahadi',
-pg_tab_payments:      'Malipo',
-pg_tab_report:        'Ripoti',
-pg_err_load:          'Imeshindwa kupakia data ya ahadi.',
+pledges_view_payments: 'View payments',
+
+
+
   },
 
   sw: {
@@ -417,6 +409,7 @@ pg_err_load:          'Imeshindwa kupakia data ya ahadi.',
 
 // Swahili
 tab_upload: "Pakia",
+pledges_view_payments: 'Angalia malipo',
 
     // ── Auth ─────────────────────────────────────────────────────
     login:          'Ingia',
@@ -643,6 +636,9 @@ tab_upload: "Pakia",
     pl_type_short_one_time:   'Mara moja',
     pl_notes:                 'Maelezo (si lazima)',
     pl_notes_placeholder:     'Maelezo yoyote kuhusu ahadi hii…',
+
+    pledges_my: 'Ahadi Zangu',
+pledges_available: 'Zinazopatikana',
  
     pl_err_select_campaign:   'Chagua kampeni.',
     pl_err_invalid_amount:    'Weka kiasi sahihi cha ahadi.',
@@ -731,6 +727,21 @@ rp_col_pledged:      'Iliyoahidiwa',
 rp_col_paid:         'Imelipwa',
 rp_col_balance:      'Salio',
 rp_col_progress:     'Maendeleo',
+
+// ── Page (page.jsx) ──────────────────────────────────────────
+pg_eyebrow:           'Uwakili wa Fedha',
+pg_title:             'AHADI, JENGO, UWAKILI NA MICHANGO',
+pg_subtitle:          'Fuatilia ahadi, malipo ya awamu, na utekelezaji wa kampeni kwa mkutano wa Yombo.',
+pg_stat_campaigns:    'Kampeni Zinazoendelea',
+pg_stat_members:      'Jumla ya Washarika',
+pg_stat_pledged:      'Jumla Iliyoahidiwa',
+pg_stat_collected:    'Jumla Iliyokusanywa',
+pg_stat_rate:         'Kiwango cha Ukusanyaji',
+pg_tab_campaigns:     'Kampeni',
+pg_tab_pledges:       'Ahadi',
+pg_tab_payments:      'Malipo',
+pg_tab_report:        'Ripoti',
+pg_err_load:          'Imeshindwa kupakia data ya ahadi.',
 
 pl_pick_campaign_first:   'Chagua kampeni kwanza',
 pl_pick_campaign_hint:    'Chagua kampeni hapo juu ili uone washirika wake.',

@@ -74,11 +74,10 @@ function Toast({ toasts }) {
 // PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function PledgesPage() {
-  const { user } = useAuth();
+  const { user,lang } = useAuth();
   const role = user?.role || 'member';
 
-  // Pull lang from user profile; fall back to Swahili (primary language for KKKT Yombo)
-  const lang = user?.lang || user?.language || 'sw';
+
   const { t } = useTranslation(lang);  
 
   console.log('DEBUG lang:', lang, '| user:', user);
