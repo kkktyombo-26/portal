@@ -139,11 +139,11 @@ function PaymentDrawer({ pledge, onClose, t, lang }) {
 
   useEffect(() => {
     pledgeApi
-      .getPayments(pledge.id)
+      .getPayments(pledge.pledge_id)
       .then((r) => setPayments(r.data?.data ?? r.data ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [pledge.id]);
+  }, [pledge.pledge_id]);
 
   const statusDot = (status) => {
     if (status === 'confirmed') return 'bg-green-600';
@@ -431,8 +431,8 @@ function SubscribeModal({ campaigns, existingCampaignIds, onClose, onSave, t }) 
 
 function PledgeCard({ pledge, onViewPayments, onDelete, t, lang }) {
   const paid = Number(pledge.total_paid ?? 0);
-  const total = Number(pledge.pledged_amount ?? 0);
-  const balance = total - paid;
+  const total = Number(pledge.annual_amount ?? 0);
+ const balance = Number(pledge.balance_due ?? 0);
   const pct = total > 0 ? (paid / total) * 100 : 0;
 
   const pledgeTypeLabels = {
@@ -443,22 +443,22 @@ function PledgeCard({ pledge, onViewPayments, onDelete, t, lang }) {
   };
 
   const borderCls =
-    pledge.status === 'pending'
+    pledge.pledge_status === 'pending'
       ? 'border-amber-300'
-      : pledge.status === 'rejected'
+      : pledge.pledge_status === 'rejected'
       ? 'border-red-300'
       : 'border-neutral-200';
 
   return (
     <div className={`bg-white border ${borderCls} rounded-2xl overflow-hidden shadow-sm`}>
       {/* Amber accent top bar — only for active pledges */}
-      {pledge.status === 'active' && (
+      {pledge.pledge_status === 'active' && (
         <div className="h-0.5 w-full" style={{ background: 'linear-gradient(90deg, #B45309 0%, #FCD34D 50%, #B45309 100%)' }} />
       )}
-      {pledge.status === 'pending' && (
+      {pledge.pledge_status === 'pending' && (
         <div className="h-0.5 w-full bg-amber-400" />
       )}
-      {pledge.status === 'rejected' && (
+      {pledge.pledge_status === 'rejected' && (
         <div className="h-0.5 w-full bg-red-400" />
       )}
 
@@ -522,7 +522,7 @@ function PledgeCard({ pledge, onViewPayments, onDelete, t, lang }) {
               : 'This pledge was not approved. Contact church leadership for more information.'}
           </div>
         )}
-        {pledge.status === 'pending' && (
+        {pledge.pledge_status === 'pending' && (
           <div className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
             {t('pledges_pending_notice') !== 'pledges_pending_notice'
               ? t('pledges_pending_notice')
@@ -554,9 +554,9 @@ function PledgeCard({ pledge, onViewPayments, onDelete, t, lang }) {
               : 'View payments'}{' '}
             →
           </button>
-          {pledge.status === 'pending' && (
+          {pledge.pledge_status === 'pending' && (
             <button
-              onClick={() => onDelete(pledge.id)}
+              onClick={() => onDelete(pledge.pledge_id)}
               className="text-xs text-red-400 hover:text-red-600 ml-auto transition-colors"
             >
               {t('pledges_withdraw') !== 'pledges_withdraw'
@@ -717,7 +717,7 @@ export default function MyPledgesPage() {
     (c) => !existingCampaignIds.includes(c.id)
   );
 
-  const totalPledged = myPledges.reduce((s, p) => s + Number(p.pledged_amount ?? 0), 0);
+  const totalPledged = myPledges.reduce((s, p) => s + Number(p.annual_amount ?? 0), 0);
   const totalPaid = myPledges.reduce((s, p) => s + Number(p.total_paid ?? 0), 0);
   const activePledgesCount = myPledges.filter((p) => p.status === 'active').length;
 
@@ -772,7 +772,7 @@ export default function MyPledgesPage() {
           {t('pledges_title') !== 'pledges_title'
             ? t('pledges_title')
             : lang === 'sw'
-            ? 'Ahadi Zangu'
+            ? 'Sadaka na Ahadi Zangu'
             : 'My Pledges'}
         </h1>
         <p
@@ -927,7 +927,7 @@ export default function MyPledgesPage() {
               <div className="space-y-4">
                 {myPledges.map((pledge) => (
                   <PledgeCard
-                    key={pledge.id}
+                    key={pledge.pledge_id}
                     pledge={pledge}
                     onViewPayments={setDrawerPledge}
                     onDelete={handleDelete}
