@@ -846,204 +846,225 @@ exports.me = async (req, res, next) => {
 // GET /api/auth/members          — pastor / elder only
 //
 // Query params (all optional, combinable):
-//   sortBy      — field to sort by: full_name | jumuiya | gender |
-//                 marital_status | occupation | created_at | member_since
-//                 (default: full_name)
-//   order       — asc | desc  (default: asc)
-//   jumuiya     — filter by exact jumuiya name
-//   ministry    — filter by ministry ID
-//   gender      — Male | Female
+//   sortBy        — full_name | jumuiya | gender | marital_status |
+//                   occupation | created_at | member_since | date_of_birth
+//                   (default: full_name)
+//   order         — asc | desc  (default: asc)
+//   jumuiya       — filter by exact jumuiya name
+//   ministry      — filter by ministry ID (active memberships only)
+//   gender        — Male | Female
 //   marital_status
 //   member_status — hai | amehamia | amefariki
-//   group_id    — filter by group
-//   search      — partial match on full_name, phone, ahadi_number,
-//                 namba_ya_usharika
-//   page        — page number (default: 1)
-//   limit       — rows per page, max 200 (default: 50)
+//   group_id      — filter by group
+//   search        — partial match on full_name, phone, ahadi_number,
+//                   namba_ya_usharika, email, occupation, jumuiya
+//   page          — page number (default: 1)
+//   limit         — rows per page, max 500 (default: 100)
 // ═══════════════════════════════════════════════════════════
 exports.getMembers = async (req, res, next) => {
   try {
-    // ── Allowed sort columns (whitelist to prevent SQL injection) ──
+    // ── Allowed sort columns (whitelist — prevents SQL injection) ──
     const SORTABLE = new Set([
       'full_name', 'jumuiya', 'gender', 'marital_status',
       'occupation', 'created_at', 'member_since', 'date_of_birth',
     ]);
 
-    // ── Parse & sanitise query params ──────────────────────────
-    const sortBy        = SORTABLE.has(req.query.sortBy) ? req.query.sortBy : 'full_name';
-    const order         = req.query.order === 'desc' ? 'DESC' : 'ASC';
-    const page          = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit         = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
-    const offset        = (page - 1) * limit;
+    // ── Parse & sanitise query params ──────────────────────────────
+    const sortBy   = SORTABLE.has(req.query.sortBy) ? req.query.sortBy : 'full_name';
+    const order    = req.query.order === 'desc' ? 'DESC' : 'ASC';
+    const page     = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit    = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
+    const offset   = (page - 1) * limit;
 
-    const filterJumuiya       = req.query.jumuiya        || null;
-    const filterMinistry      = parseInt(req.query.ministry) || null;
-    const filterGender        = req.query.gender         || null;
-    const filterMarital       = req.query.marital_status || null;
-    const filterMemberStatus  = req.query.member_status  || null;
-    const filterGroupId       = parseInt(req.query.group_id) || null;
-    const search              = req.query.search         || null;
+    const filterJumuiya      = req.query.jumuiya        || null;
+    const filterMinistry     = parseInt(req.query.ministry) || null;
+    const filterGender       = req.query.gender         || null;
+    const filterMarital      = req.query.marital_status || null;
+    const filterMemberStatus = req.query.member_status  || null;
+    const filterGroupId      = parseInt(req.query.group_id) || null;
+    const search             = req.query.search         || null;
 
-    // ── Build WHERE clauses dynamically ────────────────────────
-    const conditions = [`u.role = 'member'`, `u.is_active = 1`];
-    const params     = [];
+    // ── Build WHERE conditions ──────────────────────────────────────
+    // Note: ministry filtering is handled via INNER JOIN (see below),
+    // not a WHERE condition, so it is NOT added to conditions[].
+    const conditions  = [];
+    const whereParams = [];
 
     if (filterJumuiya) {
       conditions.push('u.jumuiya = ?');
-      params.push(filterJumuiya);
+      whereParams.push(filterJumuiya);
     }
     if (filterGender) {
       conditions.push('u.gender = ?');
-      params.push(filterGender);
+      whereParams.push(filterGender);
     }
     if (filterMarital) {
       conditions.push('u.marital_status = ?');
-      params.push(filterMarital);
+      whereParams.push(filterMarital);
     }
     if (filterMemberStatus) {
       conditions.push('u.member_status = ?');
-      params.push(filterMemberStatus);
+      whereParams.push(filterMemberStatus);
     }
     if (filterGroupId) {
       conditions.push('u.group_id = ?');
-      params.push(filterGroupId);
+      whereParams.push(filterGroupId);
     }
     if (search) {
       conditions.push(`(
         u.full_name           LIKE ? OR
         u.phone               LIKE ? OR
         u.ahadi_number        LIKE ? OR
-        u.namba_ya_usharika   LIKE ?
+        u.namba_ya_usharika   LIKE ? OR
+        u.email               LIKE ? OR
+        u.occupation          LIKE ? OR
+        u.jumuiya             LIKE ?
       )`);
       const like = `%${search}%`;
-      params.push(like, like, like, like);
+      whereParams.push(like, like, like, like, like, like, like);
     }
 
-    // Ministry filter requires a JOIN — handle separately
-    const ministryJoin = filterMinistry
-      ? `INNER JOIN member_ministries mm ON mm.member_id = u.id AND mm.ministry_id = ?`
+    const whereClause = conditions.length
+      ? `WHERE ${conditions.join(' AND ')}`
       : '';
-    if (filterMinistry) params.unshift(filterMinistry); // must be first param (before WHERE params)
 
-    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    // ── Ministry INNER JOIN (param comes BEFORE whereParams) ────────
+    // Using a JOIN rather than a subquery so COUNT(DISTINCT) works
+    // correctly and the query remains sargable.
+    const ministryJoin = filterMinistry
+      ? `INNER JOIN member_ministries mm_filter
+           ON  mm_filter.member_id  = u.id
+           AND mm_filter.ministry_id = ?
+           AND mm_filter.status      = 'active'`
+      : '';
 
-    // ── Count total rows (for pagination meta) ─────────────────
-    const countParams = filterMinistry ? [filterMinistry, ...params.slice(1)] : [...params];
-    // rebuild cleanly
-    const countConditionParams = [];
-    if (filterMinistry)      countConditionParams.push(filterMinistry);
-    if (filterJumuiya)       countConditionParams.push(filterJumuiya);
-    if (filterGender)        countConditionParams.push(filterGender);
-    if (filterMarital)       countConditionParams.push(filterMarital);
-    if (filterMemberStatus)  countConditionParams.push(filterMemberStatus);
-    if (filterGroupId)       countConditionParams.push(filterGroupId);
-    if (search) {
-      const like = `%${search}%`;
-      countConditionParams.push(like, like, like, like);
-    }
+    // Final param arrays — ministry param must come before WHERE params
+    const allParams = [
+      ...(filterMinistry ? [filterMinistry] : []),
+      ...whereParams,
+    ];
 
+    // ── COUNT (for pagination meta) ─────────────────────────────────
     const [[{ total }]] = await db.execute(
       `SELECT COUNT(DISTINCT u.id) AS total
-       FROM users u
+       FROM   users u
        ${ministryJoin}
        ${whereClause}`,
-      countConditionParams
+      allParams
     );
 
-    // ── Fetch page of members ───────────────────────────────────
-    const dataParams = [...countConditionParams, limit, offset];
-
+    // ── Fetch page ──────────────────────────────────────────────────
     const [members] = await db.execute(
       `SELECT
          u.id,
          u.full_name,
+         u.email,
          u.phone,
          u.ahadi_number,
          u.namba_ya_usharika,
-         u.email,
+         u.role,
          u.gender,
          u.date_of_birth,
+         u.place_of_birth,
          u.member_status,
          u.marital_status,
+         u.marriage_type,
+         u.occupation,
+         u.profession,
+         u.education,
+         u.workplace,
          u.jumuiya,
          u.block_no,
          u.area_name,
-         u.occupation,
+         u.slp,
          u.profile_photo_url,
+         u.willing_to_volunteer,
          u.member_since,
+         u.baptism_date,
+         u.confirmation_date,
+         u.takes_communion,
+         u.is_active,
+         u.last_login,
          u.created_at,
          g.name AS group_name,
 
-         -- Aggregate ministries as a JSON array
+         -- Ministries as a JSON array — { id, name, category }
+         -- status = 'active' guard ensures we don't return former memberships
          (
            SELECT JSON_ARRAYAGG(
-             JSON_OBJECT('id', m.id, 'name', m.name)
+             JSON_OBJECT(
+               'id',       m.id,
+               'name',     m.name_sw,
+               'name_en',  m.name_en,
+               'category', m.category
+             )
            )
-           FROM member_ministries mm2
-           INNER JOIN ministries m ON m.id = mm2.ministry_id
-           WHERE mm2.member_id = u.id
+           FROM   member_ministries mm2
+           INNER  JOIN ministries m ON m.id = mm2.ministry_id
+           WHERE  mm2.member_id = u.id
+             AND  mm2.status    = 'active'
          ) AS ministries,
 
-         -- Dependant count
+         -- Dependants count (avoids loading full dependant rows in list view)
          (
-           SELECT COUNT(*) FROM member_dependants md
-           WHERE md.member_id = u.id
+           SELECT COUNT(*)
+           FROM   member_dependants md
+           WHERE  md.member_id = u.id
          ) AS dependants_count
 
-       FROM users u
-       LEFT JOIN \`groups\` g ON g.id = u.group_id
+       FROM  users u
+       LEFT  JOIN \`groups\` g ON g.id = u.group_id
        ${ministryJoin}
        ${whereClause}
-       GROUP BY u.id
-       ORDER BY u.${sortBy} ${order}
-       LIMIT ? OFFSET ?`,
-      dataParams
+       GROUP  BY u.id
+       ORDER  BY u.${sortBy} ${order}
+       LIMIT  ? OFFSET ?`,
+      [...allParams, limit, offset]
     );
 
-    // ── Parse JSON_ARRAYAGG strings (MySQL returns them as strings) ──
+    // ── Parse JSON_ARRAYAGG (MySQL returns it as a string) ──────────
     const parsed = members.map(m => ({
       ...m,
       ministries: m.ministries
-        ? (typeof m.ministries === 'string' ? JSON.parse(m.ministries) : m.ministries)
+        ? (typeof m.ministries === 'string'
+            ? JSON.parse(m.ministries)
+            : m.ministries)
         : [],
     }));
 
-    // ── Distinct jumuiya list (useful for filter dropdowns) ─────
-    const [jumuiyaList] = await db.execute(
+    // ── Distinct jumuiya list (for filter dropdowns) ────────────────
+    const [jumuiyaRows] = await db.execute(
       `SELECT DISTINCT jumuiya
-       FROM users
-       WHERE role = 'member' AND is_active = 1 AND jumuiya IS NOT NULL
-       ORDER BY jumuiya ASC`
+       FROM   users
+       WHERE  jumuiya IS NOT NULL
+       ORDER  BY jumuiya ASC`
     );
 
-    // ── Response ────────────────────────────────────────────────
+    // ── Response ────────────────────────────────────────────────────
     return res.json({
       success: true,
       meta: {
         total,
         page,
         limit,
-        pages:   Math.ceil(total / limit),
+        pages:  Math.ceil(total / limit),
         sortBy,
         order,
         filters: {
-          jumuiya:       filterJumuiya,
-          ministry:      filterMinistry,
-          gender:        filterGender,
+          jumuiya:        filterJumuiya,
+          ministry:       filterMinistry,
+          gender:         filterGender,
           marital_status: filterMarital,
-          member_status: filterMemberStatus,
-          group_id:      filterGroupId,
+          member_status:  filterMemberStatus,
+          group_id:       filterGroupId,
           search,
         },
       },
-      jumuiya_options: jumuiyaList.map(r => r.jumuiya),
+      jumuiya_options: jumuiyaRows.map(r => r.jumuiya),
       members: parsed,
     });
   } catch (err) { next(err); }
 };
-
-
-
 
 
 

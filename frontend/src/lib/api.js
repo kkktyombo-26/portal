@@ -71,6 +71,9 @@ export const userApi = {
   update:   (id, d)  => api.put(`/users/${id}`, d),
   delete:   (id)     => api.delete(`/users/${id}`),
   getStats: ()       => api.get('/users/stats'),
+   getMembers: (params) => api.get('/auth/members', { 
+    params: { limit: 500, ...params } 
+  }),
   changePassword: (userId, data) =>
     api.put(`/users/${userId}/password`, data),
 };
