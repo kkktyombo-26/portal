@@ -47,6 +47,15 @@ async function main() {
     // ── 1. Personal details ──────────────────────────────────
     console.log('── 1. Personal details');
 
+    await run('ahadi_number column', `
+  ALTER TABLE users
+    ADD COLUMN ahadi_number VARCHAR(20) NULL AFTER namba_ya_usharika
+`);
+
+await run('idx_ahadi_number index', `
+  ALTER TABLE users ADD UNIQUE INDEX idx_ahadi_number (ahadi_number)
+`);
+
     await run('gender column', `
       ALTER TABLE users
         ADD COLUMN gender ENUM('Male','Female') NULL AFTER phone

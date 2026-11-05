@@ -476,50 +476,16 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
     for (let i = 0; i < users.length; i++) {
       const row = i + 1;
       const {
-        full_name,
-        email,
-        phone,
-        role              = 'member',
+        full_name,          // JINA LA MSHARIKA
+        phone,              // NAMBA YA SIMU
+        ahadi_number,       // AHADI NUMBER
+        gender,             // GANDER
+        marital_status,     // MARITAL STATUS
+        occupation,         // KAZI/UJUZI
+        jumuiya,            // JUMUIYA
+        role     = 'member',
         group_id,
-        namba_ya_usharika,
         password: suppliedPassword,
-        gender,
-        date_of_birth,
-        place_of_birth,
-        member_since,
-        member_status,
-        willing_to_volunteer,
-        profile_photo_url,
-        cv_url,
-        marital_status,
-        marriage_type,
-        marriage_date,
-        marriage_place,
-        spouse_name,
-        spouse_phone,
-        cohabiting_partner_name,
-        occupation,
-        workplace,
-        education,
-        profession,
-        street,
-        district,
-        region,
-        postal_code,
-        area_name,
-        block_no,
-        jumuiya,
-        slp,
-        previous_church,
-        neighbour_member_name,
-        neighbour_member_phone,
-        elder_name,
-        elder_phone,
-        baptism_date,
-        confirmation_date,
-        takes_communion,
-        // Bulk doesn't support dependants/ministries per row — too complex for CSV.
-        // Use admin-create for single members needing these.
       } = users[i];
 
       // ── Validation ────────────────────────────────────────
@@ -527,24 +493,40 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         results.push({ row, status: 'skipped', reason: 'Missing full_name.' });
         continue;
       }
-      if (!email && !phone) {
-        results.push({ row, status: 'skipped', name: full_name, reason: 'Email or phone is required.' });
+      if (!phone && !ahadi_number) {
+        results.push({
+          row,
+          status: 'skipped',
+          name: full_name,
+          reason: 'Phone or ahadi_number is required.',
+        });
         continue;
       }
 
       try {
         // ── Duplicate guards ──────────────────────────────
-        if (email) {
-          const [dup] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
-          if (dup.length > 0) {
-            results.push({ row, status: 'skipped', name: full_name, reason: `Email "${email}" already exists.` });
+        if (phone) {
+          const [dupPhone] = await db.execute(
+            'SELECT id FROM users WHERE phone = ?', [phone]
+          );
+          if (dupPhone.length > 0) {
+            results.push({
+              row, status: 'skipped', name: full_name,
+              reason: `Phone "${phone}" already exists.`,
+            });
             continue;
           }
         }
-        if (phone) {
-          const [dupPhone] = await db.execute('SELECT id FROM users WHERE phone = ?', [phone]);
-          if (dupPhone.length > 0) {
-            results.push({ row, status: 'skipped', name: full_name, reason: `Phone "${phone}" already exists.` });
+
+        if (ahadi_number) {
+          const [dupAhadi] = await db.execute(
+            'SELECT id FROM users WHERE ahadi_number = ?', [ahadi_number]
+          );
+          if (dupAhadi.length > 0) {
+            results.push({
+              row, status: 'skipped', name: full_name,
+              reason: `Ahadi number "${ahadi_number}" already exists.`,
+            });
             continue;
           }
         }
@@ -554,120 +536,40 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         const rawPassword = suppliedPassword || generateTempPassword();
         const hashed      = await bcrypt.hash(rawPassword, 12);
 
-        // ── INSERT ─────────────────────────────────────────
+        // ── INSERT ────────────────────────────────────────
         const [result] = await db.execute(
           `INSERT INTO users (
-            full_name, email, password, role, group_id,
-            phone, namba_ya_usharika, profile_photo_url, cv_url,
-
-            gender, date_of_birth, place_of_birth,
-            member_since, member_status, willing_to_volunteer,
-
-            marital_status, marriage_type, marriage_date, marriage_place,
-            spouse_name, spouse_phone, cohabiting_partner_name,
-
-            occupation, workplace, education, profession,
-
-            street, district, region, postal_code,
-            area_name, block_no, jumuiya, slp,
-            previous_church, neighbour_member_name, neighbour_member_phone,
-            elder_name, elder_phone,
-
-            baptism_date, confirmation_date, takes_communion,
-
+            full_name, phone, ahadi_number,
+            gender, marital_status, occupation, jumuiya,
+            role, group_id, password,
             is_active, is_verified
           ) VALUES (
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?,
-
             ?, ?, ?,
-            ?, ?, ?,
-
             ?, ?, ?, ?,
             ?, ?, ?,
-
-            ?, ?, ?, ?,
-
-            ?, ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?,
-            ?, ?,
-
-            ?, ?, ?,
-
             1, 1
           )`,
           [
             String(full_name).trim(),
-            email                    || null,
-            hashed,
+            phone         || null,
+            ahadi_number  || null,
+            gender        || null,
+            marital_status|| null,
+            occupation    || null,
+            jumuiya       || null,
             role,
-            group_id                 || null,
-
-            phone                    || null,
-            namba_ya_usharika        || null,
-            profile_photo_url        || null,
-            cv_url                   || null,
-
-            gender                   || null,
-            date_of_birth            || null,
-            place_of_birth           || null,
-            member_since             || null,
-            member_status            || null,
-            toBit(willing_to_volunteer),
-
-            marital_status           || null,
-            marriage_type            || null,
-            marriage_date            || null,
-            marriage_place           || null,
-            spouse_name              || null,
-            spouse_phone             || null,
-            cohabiting_partner_name  || null,
-
-            occupation               || null,
-            workplace                || null,
-            education                || null,
-            profession               || null,
-
-            street                   || null,
-            district                 || null,
-            region                   || null,
-            postal_code              || null,
-            area_name                || null,
-            block_no                 || null,
-            jumuiya                  || null,
-            slp                      || null,
-            previous_church          || null,
-            neighbour_member_name    || null,
-            neighbour_member_phone   || null,
-            elder_name               || null,
-            elder_phone              || null,
-
-            baptism_date             || null,
-            confirmation_date        || null,
-            toBit(takes_communion),
+            group_id      || null,
+            hashed,
           ]
         );
-
-        const newUserId = result.insertId;
-
-        if (email) {
-          sendWelcomeEmail(email, {
-            memberName:        String(full_name).trim(),
-            role,
-            temporaryPassword: isGenerated ? rawPassword : null,
-            addedBy:           req.user.name,
-          }).catch(err =>
-            console.error(`⚠️  Welcome email failed for ${email}:`, err.message)
-          );
-        }
 
         results.push({
           row,
           status:            'created',
           name:              String(full_name).trim(),
-          email:             email || null,
-          userId:            newUserId,
+          phone:             phone        || null,
+          ahadi_number:      ahadi_number || null,
+          userId:            result.insertId,
           temporaryPassword: isGenerated ? rawPassword : undefined,
         });
 
@@ -685,7 +587,12 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
       broadcast('members_bulk_added_by_admin', {
         count:   created.length,
         addedBy: req.user.name,
-        members: created.map(r => ({ id: r.userId, full_name: r.name, email: r.email })),
+        members: created.map(r => ({
+          id:           r.userId,
+          full_name:    r.name,
+          phone:        r.phone,
+          ahadi_number: r.ahadi_number,
+        })),
       });
     }
 
