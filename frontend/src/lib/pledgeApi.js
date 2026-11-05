@@ -132,6 +132,10 @@ const deletePayment = (paymentId) =>
 const getReport = (params = {}) =>
   api.get('/pledges/report', { params });
 
+
+const getCampaignMembers = (campaignId) =>
+  api.get(`/pledges/campaigns/${campaignId}/members`);
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** GET /pledges/types  — lookup list of pledge types */
@@ -148,6 +152,7 @@ export const pledgeApi = {
   updateCampaign,
   toggleCampaign,
   deleteCampaign,
+    getCampaignMembers,
 
   // member pledges
   getCampaignPledges,

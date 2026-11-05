@@ -142,7 +142,7 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
   useEffect(() => { load(); }, [load]);
 
   // ── Derived totals ────────────────────────────────────────────────────────
-  const totalPledged = totals?.total_pledged ?? rows.reduce((s, r) => s + Number(r.pledged_amount ?? 0), 0);
+const totalPledged = totals?.total_pledged ?? rows.reduce((s, r) => s + Number(r.annual_amount ?? 0), 0);
   const totalPaid    = totals?.total_paid    ?? rows.reduce((s, r) => s + Number(r.total_paid    ?? 0), 0);
   const totalBalance = totals?.total_balance ?? (totalPledged - totalPaid);
   const overallPct   = totalPledged > 0 ? Math.round((totalPaid / totalPledged) * 100) : 0;
@@ -159,16 +159,16 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
       t('rp_col_type'), t('rp_col_pledged'), t('rp_col_paid'),
       t('rp_col_balance'), 'Status',
     ];
-    const csvRows = rows.map(r => [
-      r.member_name    ?? '',
-      r.campaign_name  ?? '',
-      r.group_name     ?? '',
-      r.pledge_type    ?? '',
-      r.pledged_amount ?? 0,
-      r.total_paid     ?? 0,
-      (Number(r.pledged_amount ?? 0) - Number(r.total_paid ?? 0)).toFixed(0),
-      r.status         ?? '',
-    ]);
+ const csvRows = rows.map(r => [
+  r.member_name      ?? '',
+  r.campaign_name    ?? '',
+  r.campaign_scope   ?? '',     // ← use scope instead of group_name
+  r.pledge_type_name ?? '',     // ← was pledge_type
+  r.annual_amount    ?? 0,      // ← was pledged_amount
+  r.total_paid       ?? 0,
+  Number(r.balance_due ?? 0).toFixed(0),  // ← view already calculates this!
+  r.pledge_status    ?? '',     // ← was status
+]);
     const csv  = [headers, ...csvRows].map(row => row.map(v => `"${v}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
@@ -337,9 +337,9 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
               </thead>
               <tbody>
                 {rows.map((row, idx) => {
-                  const pledged = Number(row.pledged_amount ?? 0);
+                  const pledged = Number(row.annual_amount ?? 0);
                   const paid    = Number(row.total_paid    ?? 0);
-                  const balance = pledged - paid;
+                 const balance = Number(row.balance_due  ?? 0); 
                   const pct     = pledged > 0 ? Math.round((paid / pledged) * 100) : 0;
 
                   return (
@@ -357,14 +357,14 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
                       </td>
                       {canViewGroups && (
                         <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                          {row.group_name ?? '—'}
+                         {row.campaign_scope ? ` · ${row.campaign_scope}` : ''}
                         </td>
                       )}
                       <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {row.campaign_name ?? '—'}
                       </td>
                       <td style={{ padding: '0.75rem 1rem', color: 'var(--text-tertiary)', textTransform: 'capitalize' }}>
-                        {(row.pledge_type ?? '—').replace('_', ' ')}
+                        {row.pledge_type_name ?? '—'} 
                       </td>
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>
                         {money(pledged)}
@@ -391,7 +391,7 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
           {/* ── Mobile cards ──────────────────────────────────────────────── */}
           <div className="md:hidden flex flex-col gap-3">
             {rows.map((row, idx) => {
-              const pledged = Number(row.pledged_amount ?? 0);
+              const pledged = Number(row.annual_amount ?? 0);
               const paid    = Number(row.total_paid    ?? 0);
               const balance = pledged - paid;
               const pct     = pledged > 0 ? Math.round((paid / pledged) * 100) : 0;
@@ -402,7 +402,7 @@ export default function ReportTab({ role, fmtMoney, fmtDate, lang }) {
                     <p className="card-title" style={{ fontSize: '0.875rem' }}>{row.member_name ?? '—'}</p>
                     <p className="card-subtitle">
                       {row.campaign_name ?? '—'}
-                      {row.group_name ? ` · ${row.group_name}` : ''}
+                     {row.campaign_scope ?? '—'}   
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>

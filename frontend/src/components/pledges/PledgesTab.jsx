@@ -92,6 +92,7 @@ function ProgressBar({ pct }) {
  * For the 'member' role we skip the picker entirely — the page wires
  * selectedMember to the logged-in user before rendering this tab.
  */
+
 function MemberPicker({ campaignId, onSelect, t }) {
   const [query,   setQuery]   = useState('');
   const [members, setMembers] = useState([]);
@@ -99,28 +100,51 @@ function MemberPicker({ campaignId, onSelect, t }) {
   const [error,   setError]   = useState('');
 
   useEffect(() => {
+    // No campaign selected → can't fetch members (no /members endpoint exists)
+    if (!campaignId) return;
+
     let cancelled = false;
-    const fetch = async () => {
+    const loadMembers = async () => {       // ← renamed from 'fetch' (was shadowing global)
       setLoading(true);
       setError('');
       try {
-        // If a campaign is active, we can scope the member list to its subscribers;
-        // otherwise fall back to the full members list.
-        const res = campaignId
-          ? await pledgeApi.getCampaignMembers(campaignId)
-          : await pledgeApi.getMembers();
-        if (!cancelled) {
-          setMembers(res.data?.data ?? res.data ?? []);
-        }
+        const res = await pledgeApi.getCampaignMembers(campaignId);
+        const pledges = res.data?.data ?? res.data ?? [];
+
+        // Extract unique members from pledge records returned by getCampaignPledges
+        const seen = new Set();
+        const list = pledges
+          .filter(p => p.member_id && !seen.has(p.member_id) && seen.add(p.member_id))
+          .map(p => ({
+            id:    p.member_id,
+            name:  p.member_name,
+            phone: p.member_phone ?? '',
+          }));
+
+        if (!cancelled) setMembers(list);
       } catch (e) {
         if (!cancelled) setError(e?.response?.data?.message ?? t('pl_err_load_members'));
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
-    fetch();
+    loadMembers();
     return () => { cancelled = true; };
   }, [campaignId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // No campaign selected: prompt to pick one first
+  if (!campaignId) {
+    return (
+      <div className="empty-state">
+        <svg className="empty-state-icon" viewBox="0 0 36 36" fill="none">
+          <rect x="4" y="8" width="28" height="20" rx="3" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M12 18h12M12 23h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+        <p className="empty-state-title">{t('pl_pick_campaign_first')}</p>
+        <p className="empty-state-body">{t('pl_pick_campaign_hint')}</p>
+      </div>
+    );
+  }
 
   const filtered = members.filter(m =>
     !query.trim() ||
@@ -131,8 +155,6 @@ function MemberPicker({ campaignId, onSelect, t }) {
   return (
     <div style={{ maxWidth: 480 }}>
       <p className="card-title" style={{ marginBottom: '0.75rem' }}>{t('pl_pick_member')}</p>
-
-      {/* Search box */}
       <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
         <span style={{
           position: 'absolute', left: '0.75rem', top: '50%',
@@ -188,6 +210,7 @@ function MemberPicker({ campaignId, onSelect, t }) {
     </div>
   );
 }
+
 
 // ─── Subscribe modal ──────────────────────────────────────────────────────────
 function SubscribeModal({ campaigns, subscribedIds, defaultCampaignId, onClose, onSave, t }) {
@@ -526,14 +549,14 @@ export default function PledgesTab({
 
       {/* ── Pledge cards ──────────────────────────────────────────────────── */}
       {!loading && visiblePledges.map(pledge => {
-        const paid  = Number(pledge.total_paid     ?? 0);
-        const total = Number(pledge.pledged_amount ?? 0);
+       const paid  = Number(pledge.total_paid     ?? 0);
+const total = Number(pledge.annual_amount ?? 0);
         const pct   = pctBar
           ? pctBar(paid, total)
           : (total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0);
-        const busy       = !!actionLoading[pledge.id];
-        const isPending  = pledge.status === 'pending';
-        const isRejected = pledge.status === 'rejected';
+        const busy       = !!actionLoading[pledge.pledge_id];
+        const isPending  = pledge.pledge_status === 'pending';
+        const isRejected = pledge.pledge_status === 'rejected';
 
         const borderColor = isPending
           ? 'var(--warning)'
@@ -543,7 +566,7 @@ export default function PledgesTab({
 
         return (
           <div
-            key={pledge.id}
+            key={pledge.pledge_id}
             className="card card-body flex flex-col gap-4"
             style={{
               borderColor,
@@ -558,7 +581,7 @@ export default function PledgesTab({
                 <p className="card-title">{pledge.campaign_name}</p>
                 <p className="card-subtitle">{pledge.campaign_year ?? pledge.pledge_year}</p>
               </div>
-              <StatusPill status={pledge.status ?? 'active'} t={t} />
+              <StatusPill status={pledge.pledge_status ?? 'active'} t={t} />
             </div>
 
             {/* Amounts + progress */}
@@ -613,13 +636,13 @@ export default function PledgesTab({
               {canApprove && isPending && (
                 <div className="flex items-center gap-2 ml-auto">
                   <button
-                    onClick={() => handleStatusChange(pledge.id, 'active')}
+                    onClick={() => handleStatusChange(pledge.pledge_id, 'active')}
                     className="btn btn-primary btn-sm"
                   >
                     {t('pl_approve')}
                   </button>
                   <button
-                    onClick={() => handleStatusChange(pledge.id, 'rejected')}
+                    onClick={() => handleStatusChange(pledge.pledge_id, 'rejected')}
                     className="btn btn-secondary btn-sm"
                     style={{ color: 'var(--danger)' }}
                   >
@@ -630,7 +653,7 @@ export default function PledgesTab({
 
               {canManage && !isPending && (
                 <button
-                  onClick={() => handleDelete(pledge.id)}
+                  onClick={() => handleDelete(pledge.pledge_id)}
                   className="btn btn-ghost btn-sm ml-auto"
                   style={{ color: 'var(--danger)' }}
                 >

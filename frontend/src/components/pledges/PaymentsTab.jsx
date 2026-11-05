@@ -4,80 +4,148 @@
  * ───────────────
  * Tab 3 — Payment instalment confirmation workflow.
  *
- * Roles:
- *   pastor / elder     → record payments, confirm / reject pending_confirmation
- *   group_leader       → record payments for own group members
- *   member             → read-only
+ * Styling: uses the KKKT DMP Yombo design system (globals.css component
+ * layer + tailwind.config.js tokens). No raw blue/emerald/red/neutral
+ * utilities — those colours don't exist in the custom palette.
  *
- * API refs:
- *   getAllPayments(params)                           GET /api/pledges/payments
+ * Bilingual: all visible strings go through t() (en / sw).
+ * Add the py_* keys below to src/lib/i18n.js.
+ *
+ * API refs (all exist in pledgeApi.js):
+ *   getPayments(pledgeId)                           GET  /api/pledges/member-pledges/:id/payments
  *   addPayment(pledgeId, data)                      POST /api/pledges/member-pledges/:id/payments
- *   updatePayment(paymentId, { status, reason })    PUT  /api/pledges/payments/:id
+ *   updatePayment(paymentId, { status })            PUT  /api/pledges/payments/:id
  *   deletePayment(paymentId)                        DELETE /api/pledges/payments/:id
  *
  * Props (from page.jsx):
- *   filterPledge   { id, member_name, campaign_name }|null  — drill-in from PledgesTab
- *   campaigns      Campaign[]
+ *   initialPledge  { pledge_id, member_name, campaign_name } | null  — drill-in from PledgesTab
  *   role           string
  *   fmtMoney       fn(amount)
  *   fmtDate        fn(dateStr)
- *   lang           string
+ *   addToast       fn(msg, type)
+ *   lang           'en' | 'sw'
+ *
+ * Translation keys needed (py_*):
+ * ─────────────────────────────────────────────────────────────
+ *  py_title                Payments / Malipo
+ *  py_no_pledge_selected   Select a pledge to view payments / Chagua ahadi kuona malipo
+ *  py_no_pledge_hint       Go to Pledges tab and click "View Payments" / Nenda kwenye kichupo cha Ahadi na bonyeza "Angalia malipo"
+ *  py_pending_badge        {n} payment(s) awaiting confirmation / malipo {n} yanasubiri uthibitisho
+ *  py_record_btn           Record Payment / Rekodi Malipo
+ *  py_no_payments          No payments recorded yet. / Hakuna malipo yaliyorekodiwa bado.
+ *  py_err_load             Failed to load payments. / Imeshindwa kupakia malipo.
+ *  py_err_confirm          Confirmation failed. / Uthibitisho umeshindwa.
+ *  py_err_reject           Rejection failed. / Kukataa kumeshindwa.
+ *  py_err_delete           Delete failed. / Kufuta kumeshindwa.
+ *  py_confirm_delete       Delete this payment record? This cannot be undone. / Futa rekodi hii ya malipo? Haitaweza kurudishwa.
+ *  -- Table headers --
+ *  py_col_member           Member / Mshirika
+ *  py_col_campaign         Campaign / Kampeni
+ *  py_col_amount           Amount / Kiasi
+ *  py_col_date             Date / Tarehe
+ *  py_col_method           Method / Njia
+ *  py_col_receipt          Receipt / Risiti
+ *  py_col_status           Status / Hali
+ *  py_col_actions          Actions / Vitendo
+ *  -- Payment status labels --
+ *  py_status_confirmed              Confirmed / Imethibitishwa
+ *  py_status_pending_confirmation   Awaiting confirmation / Inasubiri uthibitisho
+ *  py_status_rejected               Rejected / Imekataliwa
+ *  -- Record modal --
+ *  py_record_title         Record Payment / Rekodi Malipo
+ *  py_amount               Amount (TZS) / Kiasi (TZS)
+ *  py_amount_placeholder   0
+ *  py_payment_date         Payment Date / Tarehe ya Malipo
+ *  py_method               Payment Method / Njia ya Malipo
+ *  py_method_cash          Cash / Taslimu
+ *  py_method_bank          Bank Transfer / Uhamisho wa Benki
+ *  py_method_mobile        Mobile Money / Pesa za Simu
+ *  py_method_cheque        Cheque / Hundi
+ *  py_receipt              Receipt / Reference No. (optional) / Namba ya Risiti (hiari)
+ *  py_receipt_placeholder  e.g. TXN-20260112
+ *  py_notes                Notes (optional) / Maelezo (hiari)
+ *  py_saving               Saving… / Inahifadhi…
+ *  py_save                 Record Payment / Hifadhi Malipo
+ *  py_err_invalid_amount   Enter a valid amount. / Ingiza kiasi sahihi.
+ *  py_err_save             Failed to record payment. / Imeshindwa kuhifadhi malipo.
+ *  -- Reject modal --
+ *  py_reject_title         Reject Payment / Kataa Malipo
+ *  py_reject_body          Provide a reason for rejecting this payment (optional). / Toa sababu ya kukataa malipo haya (hiari).
+ *  py_reject_placeholder   e.g. Receipt number does not match… / mfano: Namba ya risiti haifanani…
+ *  py_reject_btn           Reject Payment / Kataa Malipo
+ *  -- Action buttons --
+ *  py_confirm              Confirm / Thibitisha
+ *  py_reject               Reject / Kataa
+ *  py_delete               Delete / Futa
+ *  py_rejection_reason     Reason: / Sababu:
+ * ─────────────────────────────────────────────────────────────
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { pledgeApi } from '../../lib/pledgeApi';
+import { useTranslation } from '../../lib/i18n';
 
-// ─── Status pill ──────────────────────────────────────────────────────────────
+// ─── Icons ────────────────────────────────────────────────────────────────────
+const PlusIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+    <path d="M6.5 1v11M1 6.5h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </svg>
+);
+const CloseIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+    <path d="M4 4l10 10M14 4L4 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
 
-const PAYMENT_STATUS_STYLES = {
-  confirmed:            'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  pending_confirmation: 'bg-amber-50  text-amber-700  border border-amber-200',
-  rejected:             'bg-red-50    text-red-700    border border-red-200',
+// ─── Payment status pill ──────────────────────────────────────────────────────
+// Maps to design-system badge classes only — no raw colour utilities.
+const PAYMENT_STATUS_BADGE = {
+  confirmed:            'badge-success',
+  pending_confirmation: 'badge-warning',
+  rejected:             'badge-danger',
 };
 
-const PAYMENT_STATUS_LABELS = {
-  confirmed:            'Confirmed',
-  pending_confirmation: 'Awaiting confirmation',
-  rejected:             'Rejected',
-};
-
-function PaymentStatusPill({ status }) {
+function PaymentStatusPill({ status, t }) {
+  const known = ['confirmed', 'pending_confirmation', 'rejected'].includes(status);
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PAYMENT_STATUS_STYLES[status] ?? 'bg-neutral-100 text-neutral-500 border border-neutral-200'}`}>
-      {PAYMENT_STATUS_LABELS[status] ?? status}
+    <span className={`badge ${PAYMENT_STATUS_BADGE[status] ?? 'badge-neutral'}`}>
+      {known ? t(`py_status_${status}`) : status}
     </span>
   );
 }
 
 // ─── Reject reason modal ──────────────────────────────────────────────────────
-
-function RejectModal({ onConfirm, onCancel }) {
+function RejectModal({ onConfirm, onCancel, t }) {
   const [reason, setReason] = useState('');
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
-        <div className="px-6 py-4 border-b border-neutral-100">
-          <h3 className="text-base font-semibold text-neutral-900">Reject Payment</h3>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div className="modal" style={{ maxWidth: 400 }}>
+        <div className="modal-header">
+          <h3 className="modal-title">{t('py_reject_title')}</h3>
+          <button className="btn btn-ghost btn-icon btn-sm" onClick={onCancel} aria-label={t('cancel')}>
+            <CloseIcon />
+          </button>
         </div>
-        <div className="px-6 py-4 space-y-3">
-          <p className="text-sm text-neutral-600">Provide a reason for rejecting this payment (optional but recommended).</p>
+        <div className="modal-body flex flex-col gap-3">
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            {t('py_reject_body')}
+          </p>
           <textarea
             rows={3}
+            className="textarea"
             value={reason}
             onChange={e => setReason(e.target.value)}
-            placeholder="e.g. Receipt number does not match…"
-            className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+            placeholder={t('py_reject_placeholder')}
           />
         </div>
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-neutral-100">
-          <button onClick={onCancel} className="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-900">
-            Cancel
-          </button>
+        <div className="modal-footer">
+          <button onClick={onCancel} className="btn btn-ghost">{t('cancel')}</button>
           <button
             onClick={() => onConfirm(reason.trim())}
-            className="px-5 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            className="btn btn-secondary"
+            style={{ color: 'var(--danger)' }}
           >
-            Reject Payment
+            {t('py_reject_btn')}
           </button>
         </div>
       </div>
@@ -86,121 +154,118 @@ function RejectModal({ onConfirm, onCancel }) {
 }
 
 // ─── Record payment modal ─────────────────────────────────────────────────────
-
-function RecordPaymentModal({ pledge, onClose, onSave }) {
-  const [amount, setAmount]           = useState('');
+function RecordPaymentModal({ pledge, onClose, onSave, t }) {
+  const [amount,      setAmount]      = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
-  const [method, setMethod]           = useState('cash');
-  const [receipt, setReceipt]         = useState('');
-  const [notes, setNotes]             = useState('');
-  const [saving, setSaving]           = useState(false);
-  const [error, setError]             = useState('');
+  const [method,      setMethod]      = useState('cash');
+  const [receipt,     setReceipt]     = useState('');
+  const [notes,       setNotes]       = useState('');
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState('');
 
   const handleSave = async () => {
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
-      return setError('Enter a valid amount.');
+      return setError(t('py_err_invalid_amount'));
     setSaving(true);
     setError('');
     try {
       await onSave({
-        amount: Number(amount),
-        payment_date: paymentDate,
+        amount:         Number(amount),
+        payment_date:   paymentDate,
         payment_method: method,
         receipt_number: receipt.trim() || undefined,
-        notes: notes.trim() || undefined,
+        notes:          notes.trim()   || undefined,
       });
       onClose();
     } catch (e) {
-      setError(e?.response?.data?.message ?? 'Failed to record payment.');
+      setError(e?.response?.data?.message ?? t('py_err_save'));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 480 }}>
+        <div className="modal-header">
           <div>
-            <h2 className="text-base font-semibold text-neutral-900">Record Payment</h2>
+            <h2 className="modal-title">{t('py_record_title')}</h2>
             {pledge && (
-              <p className="text-xs text-neutral-500 mt-0.5">
+              <p className="card-subtitle" style={{ marginTop: '0.125rem' }}>
                 {pledge.member_name} · {pledge.campaign_name}
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M4 4l10 10M14 4L4 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
+          <button onClick={onClose} className="btn btn-ghost btn-icon btn-sm" aria-label={t('cancel')}>
+            <CloseIcon />
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2.5">{error}</div>
-          )}
+        <div className="modal-body flex flex-col gap-4">
+          {error && <div className="banner banner-danger">{error}</div>}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-neutral-500 mb-1">Amount (TZS)</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div className="form-group">
+              <label className="form-label">{t('py_amount')}</label>
               <input
                 type="number" min="0" step="1000"
-                value={amount} onChange={e => setAmount(e.target.value)}
-                placeholder="0"
-                className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder={t('py_amount_placeholder')}
               />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-neutral-500 mb-1">Payment Date</label>
+            <div className="form-group">
+              <label className="form-label">{t('py_payment_date')}</label>
               <input
                 type="date"
-                value={paymentDate} onChange={e => setPaymentDate(e.target.value)}
-                className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input"
+                value={paymentDate}
+                onChange={e => setPaymentDate(e.target.value)}
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">Payment Method</label>
+          <div className="form-group">
+            <label className="form-label">{t('py_method')}</label>
             <select
-              value={method} onChange={e => setMethod(e.target.value)}
-              className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="select"
+              value={method}
+              onChange={e => setMethod(e.target.value)}
             >
-              <option value="cash">Cash</option>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="mobile_money">Mobile Money</option>
-              <option value="cheque">Cheque</option>
+              <option value="cash">{t('py_method_cash')}</option>
+              <option value="bank_transfer">{t('py_method_bank')}</option>
+              <option value="mobile_money">{t('py_method_mobile')}</option>
+              <option value="cheque">{t('py_method_cheque')}</option>
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">Receipt / Reference No. (optional)</label>
+          <div className="form-group">
+            <label className="form-label">{t('py_receipt')}</label>
             <input
               type="text"
-              value={receipt} onChange={e => setReceipt(e.target.value)}
-              placeholder="e.g. TXN-20260112"
-              className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="input"
+              value={receipt}
+              onChange={e => setReceipt(e.target.value)}
+              placeholder={t('py_receipt_placeholder')}
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">Notes (optional)</label>
+          <div className="form-group">
+            <label className="form-label">{t('py_notes')}</label>
             <textarea
               rows={2}
-              value={notes} onChange={e => setNotes(e.target.value)}
-              className="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="textarea"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
             />
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-neutral-100">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-900">Cancel</button>
-          <button
-            onClick={handleSave} disabled={saving}
-            className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {saving ? 'Saving…' : 'Record Payment'}
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">{t('cancel')}</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary">
+            {saving ? t('py_saving') : t('py_save')}
           </button>
         </div>
       </div>
@@ -209,78 +274,69 @@ function RecordPaymentModal({ pledge, onClose, onSave }) {
 }
 
 // ─── Main tab ─────────────────────────────────────────────────────────────────
-
 export default function PaymentsTab({
-  filterPledge = null,
-  campaigns = [],
+  initialPledge = null,   // { pledge_id, member_name, campaign_name } from PledgesTab drill
   role,
   fmtMoney,
   fmtDate,
+  addToast,
   lang,
 }) {
-  const [payments, setPayments]             = useState([]);
-  const [loading, setLoading]               = useState(false);
-  const [error, setError]                   = useState('');
+  const { t } = useTranslation(lang);
 
-  // Filters
-  const [filterCampaign, setFilterCampaign] = useState(filterPledge?.campaign_id ?? '');
-  const [filterStatus, setFilterStatus]     = useState('');
-
-  // Modals
-  const [showRecord, setShowRecord]         = useState(false);
-  const [rejectTarget, setRejectTarget]     = useState(null); // paymentId
-  const [actionLoading, setActionLoading]   = useState({});   // paymentId → bool
+  const [payments,      setPayments]      = useState([]);
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState('');
+  const [showRecord,    setShowRecord]    = useState(false);
+  const [rejectTarget,  setRejectTarget]  = useState(null); // paymentId
+  const [actionLoading, setActionLoading] = useState({});   // paymentId → bool
 
   const canManage  = ['pastor', 'elder', 'group_leader'].includes(role);
   const canConfirm = ['pastor', 'elder'].includes(role);
 
-  // ── Load payments ───────────────────────────────────────────────────────────
+  const money = (n) => (fmtMoney ? fmtMoney(n) : Number(n).toLocaleString());
+  const date  = (d) => (fmtDate  ? fmtDate(d)  : d);
 
+  // ── Load payments for the selected pledge ───────────────────────────────────
+  // Uses pledgeApi.getPayments(pledgeId) → GET /pledges/member-pledges/:id/payments
+  // Note: initialPledge.pledge_id is the PK from v_pledge_summary (not .id)
   const load = useCallback(async () => {
+    if (!initialPledge?.pledge_id) return;
     setLoading(true);
     setError('');
     try {
-      const params = {};
-      if (filterPledge?.id) params.pledge_id    = filterPledge.id;
-      if (filterCampaign)   params.campaign_id  = filterCampaign;
-      if (filterStatus)     params.status       = filterStatus;
-
-      const r = await pledgeApi.getAllPayments(params);
-      // Backend returns { success, data: [] }
+      const r = await pledgeApi.getPayments(initialPledge.pledge_id);
       setPayments(r.data?.data ?? r.data ?? []);
     } catch (e) {
-      setError(e?.response?.data?.message ?? 'Failed to load payments.');
+      setError(e?.response?.data?.message ?? t('py_err_load'));
     } finally {
       setLoading(false);
     }
-  }, [filterPledge?.id, filterCampaign, filterStatus]);
+  }, [initialPledge?.pledge_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
 
   // ── Record payment ──────────────────────────────────────────────────────────
-
   const handleRecord = async (data) => {
-    if (!filterPledge?.id) throw new Error('No pledge selected.');
-    await pledgeApi.addPayment(filterPledge.id, data);
+    await pledgeApi.addPayment(initialPledge.pledge_id, data);
     await load();
+    addToast?.(t('py_record_btn'), 'success');
   };
 
   // ── Confirm ─────────────────────────────────────────────────────────────────
-
   const handleConfirm = async (paymentId) => {
     setActionLoading(prev => ({ ...prev, [paymentId]: true }));
     try {
       await pledgeApi.updatePayment(paymentId, { status: 'confirmed' });
       await load();
     } catch (e) {
-      alert(e?.response?.data?.message ?? 'Confirmation failed.');
+      setError(e?.response?.data?.message ?? t('py_err_confirm'));
     } finally {
       setActionLoading(prev => ({ ...prev, [paymentId]: false }));
     }
   };
 
-  // ── Reject ───────────────────────────────────────────────────────────────────
-
+  // ── Reject ──────────────────────────────────────────────────────────────────
   const handleReject = async (reason) => {
     const paymentId = rejectTarget;
     setRejectTarget(null);
@@ -288,181 +344,207 @@ export default function PaymentsTab({
     try {
       await pledgeApi.updatePayment(paymentId, {
         status: 'rejected',
-        rejection_reason: reason || undefined,
+        notes:  reason || undefined,
       });
       await load();
     } catch (e) {
-      alert(e?.response?.data?.message ?? 'Rejection failed.');
+      setError(e?.response?.data?.message ?? t('py_err_reject'));
     } finally {
       setActionLoading(prev => ({ ...prev, [paymentId]: false }));
     }
   };
 
-  // ── Delete ───────────────────────────────────────────────────────────────────
-
+  // ── Delete ──────────────────────────────────────────────────────────────────
   const handleDelete = async (paymentId) => {
-    if (!confirm('Delete this payment record? This cannot be undone.')) return;
+    if (!confirm(t('py_confirm_delete'))) return;
     setActionLoading(prev => ({ ...prev, [paymentId]: true }));
     try {
       await pledgeApi.deletePayment(paymentId);
       await load();
     } catch (e) {
-      alert(e?.response?.data?.message ?? 'Delete failed.');
+      setError(e?.response?.data?.message ?? t('py_err_delete'));
     } finally {
       setActionLoading(prev => ({ ...prev, [paymentId]: false }));
     }
   };
 
-  // ── Pending count badge ──────────────────────────────────────────────────────
-
   const pendingCount = payments.filter(p => p.status === 'pending_confirmation').length;
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── No pledge selected ──────────────────────────────────────────────────────
+  if (!initialPledge?.pledge_id) {
+    return (
+      <div className="empty-state" style={{ marginTop: '1.5rem' }}>
+        <svg className="empty-state-icon" viewBox="0 0 36 36" fill="none">
+          <rect x="4" y="8" width="28" height="20" rx="3" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M12 18h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+        <p className="empty-state-title">{t('py_no_pledge_selected')}</p>
+        <p className="empty-state-body">{t('py_no_pledge_hint')}</p>
+      </div>
+    );
+  }
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="p-5 space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex flex-col gap-5" style={{ marginTop: '1.5rem' }}>
+
+      {/* ── Header ───────────────────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start',
+        justifyContent: 'space-between', gap: '1rem',
+        padding: '0.75rem 1rem',
+        background: 'var(--surface-card)',
+        borderRadius: 10,
+        border: '1px solid var(--border-subtle)',
+      }}>
         <div>
-          <h2 className="text-base font-semibold text-neutral-900">
-            Payments
-            {filterPledge && (
-              <span className="ml-2 text-neutral-400 font-normal text-sm">
-                — {filterPledge.member_name} · {filterPledge.campaign_name}
-              </span>
-            )}
-          </h2>
+          <p style={{ fontSize: '0.6875rem', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.125rem' }}>
+            {t('py_title')}
+          </p>
+          <p className="card-title" style={{ fontSize: '1rem' }}>
+            {initialPledge.member_name}
+          </p>
+          <p className="card-subtitle">{initialPledge.campaign_name}</p>
           {pendingCount > 0 && canConfirm && (
-            <p className="text-xs text-amber-600 mt-0.5">
-              {pendingCount} payment{pendingCount !== 1 ? 's' : ''} awaiting confirmation
+            <p className="badge badge-warning" style={{ marginTop: '0.5rem', display: 'inline-flex' }}>
+              {t('py_pending_badge').replace('{n}', pendingCount)}
             </p>
           )}
         </div>
-        {canManage && filterPledge?.id && (
-          <button
-            onClick={() => setShowRecord(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <path d="M6.5 1v11M1 6.5h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-            Record Payment
+
+        {canManage && (
+          <button onClick={() => setShowRecord(true)} className="btn btn-primary btn-sm">
+            <PlusIcon />
+            {t('py_record_btn')}
           </button>
         )}
       </div>
 
-      {/* Filters */}
-      {!filterPledge && (
-        <div className="flex flex-wrap gap-3">
-          <select
-            value={filterCampaign}
-            onChange={e => setFilterCampaign(e.target.value)}
-            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px]"
-          >
-            <option value="">All campaigns</option>
-            {campaigns.map(c => (
-              <option key={c.id} value={c.id}>{c.name} ({c.year})</option>
-            ))}
-          </select>
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All statuses</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="pending_confirmation">Awaiting confirmation</option>
-            <option value="rejected">Rejected</option>
-          </select>
-        </div>
-      )}
+      {/* ── Error ────────────────────────────────────────────────────────── */}
+      {error && <div className="banner banner-danger">{error}</div>}
 
-      {/* Error */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2.5">{error}</div>
-      )}
-
-      {/* Loading skeleton */}
+      {/* ── Loading skeletons ─────────────────────────────────────────────── */}
       {loading && (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-16 bg-neutral-100 rounded-xl animate-pulse" />
+            <div key={i} className="skeleton" style={{ height: 64, borderRadius: 10 }} />
           ))}
         </div>
       )}
 
-      {/* Empty */}
+      {/* ── Empty state ───────────────────────────────────────────────────── */}
       {!loading && payments.length === 0 && (
-        <div className="text-center py-16 text-neutral-400">
-          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="mx-auto mb-3 opacity-40">
+        <div className="empty-state">
+          <svg className="empty-state-icon" viewBox="0 0 36 36" fill="none">
             <rect x="4" y="8" width="28" height="20" rx="3" stroke="currentColor" strokeWidth="1.5"/>
             <path d="M12 18h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-          <p className="text-sm">No payments recorded yet.</p>
+          <p className="empty-state-body">{t('py_no_payments')}</p>
+          {canManage && (
+            <div className="empty-state-actions">
+              <button onClick={() => setShowRecord(true)} className="btn btn-secondary">
+                {t('py_record_btn')}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Payments table (desktop) / cards (mobile) */}
+      {/* ── Desktop table ─────────────────────────────────────────────────── */}
       {!loading && payments.length > 0 && (
         <>
-          {/* Desktop table */}
-          <div className="hidden md:block overflow-x-auto rounded-xl border border-neutral-200">
-            <table className="w-full text-sm">
+          <div className="hidden md:block" style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
               <thead>
-                <tr className="bg-neutral-50 border-b border-neutral-200">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Member</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Campaign</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-neutral-500">Amount</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Date</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Method</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Receipt</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500">Status</th>
-                  {canConfirm && <th className="px-4 py-3 text-xs font-medium text-neutral-500">Actions</th>}
+                <tr style={{ background: 'var(--surface-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+                  {[
+                    t('py_col_amount'),
+                    t('py_col_date'),
+                    t('py_col_method'),
+                    t('py_col_receipt'),
+                    t('py_col_status'),
+                    canConfirm ? t('py_col_actions') : null,
+                  ].filter(Boolean).map((label, i) => (
+                    <th
+                      key={label}
+                      style={{
+                        padding: '0.625rem 1rem',
+                        textAlign: i === 0 ? 'right' : 'left',
+                        fontSize: '0.6875rem', fontWeight: 600,
+                        letterSpacing: '0.06em', textTransform: 'uppercase',
+                        color: 'var(--text-tertiary)', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody>
                 {payments.map(p => {
-                  const busy = !!actionLoading[p.id];
+                  const busy      = !!actionLoading[p.id];
                   const isPending = p.status === 'pending_confirmation';
                   return (
-                    <tr key={p.id} className={`hover:bg-neutral-50 transition-colors ${busy ? 'opacity-60' : ''}`}>
-                      <td className="px-4 py-3 font-medium text-neutral-900">{p.member_name ?? '—'}</td>
-                      <td className="px-4 py-3 text-neutral-600">{p.campaign_name ?? '—'}</td>
-                      <td className="px-4 py-3 text-right font-mono text-neutral-900">
-                        {fmtMoney ? fmtMoney(p.amount) : Number(p.amount).toLocaleString()}
+                    <tr
+                      key={p.id}
+                      style={{
+                        borderBottom: '1px solid var(--border-subtle)',
+                        opacity: busy ? 0.6 : 1,
+                        pointerEvents: busy ? 'none' : undefined,
+                        transition: 'background var(--dur-base), opacity var(--dur-base)',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-subtle)'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}
+                    >
+                      {/* Amount */}
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                        {money(p.amount)}
                       </td>
-                      <td className="px-4 py-3 text-neutral-600">{fmtDate ? fmtDate(p.payment_date) : p.payment_date}</td>
-                      <td className="px-4 py-3 text-neutral-600 capitalize">{(p.payment_method ?? '—').replace('_', ' ')}</td>
-                      <td className="px-4 py-3 text-neutral-500 font-mono text-xs">{p.receipt_number ?? '—'}</td>
-                      <td className="px-4 py-3"><PaymentStatusPill status={p.status} /></td>
+                      {/* Date */}
+                      <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                        {date(p.payment_date)}
+                      </td>
+                      {/* Method */}
+                      <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
+                        {(p.payment_method ?? '—').replace('_', ' ')}
+                      </td>
+                      {/* Receipt */}
+                      <td style={{ padding: '0.75rem 1rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {p.receipt_number ?? '—'}
+                      </td>
+                      {/* Status */}
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <PaymentStatusPill status={p.status} t={t} />
+                      </td>
+                      {/* Actions */}
                       {canConfirm && (
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             {isPending && (
                               <>
                                 <button
                                   onClick={() => handleConfirm(p.id)}
-                                  disabled={busy}
-                                  className="text-xs px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                                  className="btn btn-primary btn-sm"
+                                  style={{ fontSize: '0.75rem' }}
                                 >
-                                  Confirm
+                                  {t('py_confirm')}
                                 </button>
                                 <button
                                   onClick={() => setRejectTarget(p.id)}
-                                  disabled={busy}
-                                  className="text-xs px-2.5 py-1 bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100 transition-colors disabled:opacity-50"
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ fontSize: '0.75rem', color: 'var(--danger)' }}
                                 >
-                                  Reject
+                                  {t('py_reject')}
                                 </button>
                               </>
                             )}
                             {canManage && (
                               <button
                                 onClick={() => handleDelete(p.id)}
-                                disabled={busy}
-                                className="text-xs text-neutral-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '0.75rem', color: 'var(--danger)' }}
                               >
-                                Delete
+                                {t('py_delete')}
                               </button>
                             )}
                           </div>
@@ -475,52 +557,90 @@ export default function PaymentsTab({
             </table>
           </div>
 
-          {/* Mobile cards */}
-          <div className="md:hidden space-y-3">
+          {/* ── Mobile cards ──────────────────────────────────────────────── */}
+          <div className="md:hidden flex flex-col gap-3">
             {payments.map(p => {
-              const busy = !!actionLoading[p.id];
+              const busy      = !!actionLoading[p.id];
               const isPending = p.status === 'pending_confirmation';
               return (
                 <div
                   key={p.id}
-                  className={`bg-white border rounded-xl p-4 space-y-2.5 ${busy ? 'opacity-60' : ''} ${isPending ? 'border-amber-200' : 'border-neutral-200'}`}
+                  className="card card-body flex flex-col gap-3"
+                  style={{
+                    borderColor: isPending ? 'var(--warning)' : undefined,
+                    opacity: busy ? 0.6 : 1,
+                    pointerEvents: busy ? 'none' : undefined,
+                    transition: 'opacity var(--dur-base) var(--ease-out)',
+                  }}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-neutral-900">{p.member_name ?? '—'}</p>
-                      <p className="text-xs text-neutral-500">{p.campaign_name ?? '—'}</p>
-                    </div>
-                    <PaymentStatusPill status={p.status} />
+                  {/* Amount + status */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <p className="card-title" style={{ fontSize: '1.0625rem' }}>
+                      {money(p.amount)}
+                    </p>
+                    <PaymentStatusPill status={p.status} t={t} />
                   </div>
 
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
-                    <span>Amount: <strong className="text-neutral-900">{fmtMoney ? fmtMoney(p.amount) : Number(p.amount).toLocaleString()}</strong></span>
-                    <span>Date: <strong className="text-neutral-700">{fmtDate ? fmtDate(p.payment_date) : p.payment_date}</strong></span>
-                    <span>Method: <strong className="text-neutral-700 capitalize">{(p.payment_method ?? '—').replace('_', ' ')}</strong></span>
-                    {p.receipt_number && <span>Ref: <strong className="text-neutral-700 font-mono">{p.receipt_number}</strong></span>}
+                  {/* Meta row */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    <span>
+                      {t('py_col_date')}:{' '}
+                      <strong style={{ color: 'var(--text-primary)' }}>{date(p.payment_date)}</strong>
+                    </span>
+                    <span>
+                      {t('py_col_method')}:{' '}
+                      <strong style={{ color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                        {(p.payment_method ?? '—').replace('_', ' ')}
+                      </strong>
+                    </span>
+                    {p.receipt_number && (
+                      <span>
+                        {t('py_col_receipt')}:{' '}
+                        <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+                          {p.receipt_number}
+                        </strong>
+                      </span>
+                    )}
                   </div>
 
-                  {p.rejection_reason && (
-                    <p className="text-xs text-red-600 bg-red-50 rounded px-2 py-1">
-                      Reason: {p.rejection_reason}
+                  {/* Rejection reason */}
+                  {p.notes && p.status === 'rejected' && (
+                    <p className="banner banner-danger" style={{ fontSize: '0.75rem', padding: '0.375rem 0.625rem' }}>
+                      {t('py_rejection_reason')} {p.notes}
                     </p>
                   )}
 
-                  {(canConfirm && isPending) && (
-                    <div className="flex gap-2 pt-1 border-t border-neutral-100">
+                  {/* Confirm / Reject actions */}
+                  {canConfirm && isPending && (
+                    <div
+                      style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}
+                    >
                       <button
                         onClick={() => handleConfirm(p.id)}
-                        disabled={busy}
-                        className="flex-1 text-xs py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
+                        className="btn btn-primary btn-sm"
+                        style={{ flex: 1 }}
                       >
-                        Confirm
+                        {t('py_confirm')}
                       </button>
                       <button
                         onClick={() => setRejectTarget(p.id)}
-                        disabled={busy}
-                        className="flex-1 text-xs py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                        className="btn btn-secondary btn-sm"
+                        style={{ flex: 1, color: 'var(--danger)' }}
                       >
-                        Reject
+                        {t('py_reject')}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Delete (always visible for managers on non-pending) */}
+                  {canManage && !isPending && (
+                    <div style={{ paddingTop: '0.25rem', borderTop: '1px solid var(--border-subtle)' }}>
+                      <button
+                        onClick={() => handleDelete(p.id)}
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: 'var(--danger)' }}
+                      >
+                        {t('py_delete')}
                       </button>
                     </div>
                   )}
@@ -531,12 +651,13 @@ export default function PaymentsTab({
         </>
       )}
 
-      {/* Modals */}
+      {/* ── Modals ───────────────────────────────────────────────────────── */}
       {showRecord && (
         <RecordPaymentModal
-          pledge={filterPledge}
+          pledge={initialPledge}
           onClose={() => setShowRecord(false)}
           onSave={handleRecord}
+          t={t}
         />
       )}
 
@@ -544,6 +665,7 @@ export default function PaymentsTab({
         <RejectModal
           onConfirm={handleReject}
           onCancel={() => setRejectTarget(null)}
+          t={t}
         />
       )}
     </div>
