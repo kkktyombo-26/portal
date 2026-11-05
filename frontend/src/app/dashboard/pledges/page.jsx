@@ -26,6 +26,7 @@ import CampaignsTab from '../../../components/pledges/CampaignsTab';
 import PledgesTab   from '../../../components/pledges/PledgesTab';
 import PaymentsTab  from '../../../components/pledges/PaymentsTab';
 import ReportTab    from '../../../components/pledges/ReportTab';
+import { useTranslation } from '../../../lib/i18n';
 
 // ── Icon helpers ──────────────────────────────────────────────────────────────
 const HandIcon = () => (
@@ -50,25 +51,24 @@ const ChartIcon = () => (
   </svg>
 );
 
-const TABS = [
-  { id: 'campaigns', label: 'Campaigns', icon: HandIcon,   roles: ['pastor','elder','group_leader'] },
-  { id: 'pledges',   label: 'Pledges',   icon: UsersIcon,  roles: ['pastor','elder','group_leader','member'] },
-  { id: 'payments',  label: 'Payments',  icon: WalletIcon, roles: ['pastor','elder','group_leader','member'] },
-  { id: 'report',    label: 'Report',    icon: ChartIcon,  roles: ['pastor','elder','group_leader'] },
-];
+
+
+
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function Toast({ toasts }) {
   return (
     <div className="toast-area">
-      {toasts.map(t => (
-        <div key={t.id} className={`toast ${t.type}`}>
-          <span className="flex-1 text-sm">{t.message}</span>
-        </div>
-      ))}
+    {toasts.map(toast => (           // ← renamed
+  <div key={toast.id} className={`toast ${toast.type}`}>
+    <span className="flex-1 text-sm">{toast.message}</span>
+  </div>
+))}
     </div>
   );
 }
+
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PAGE
@@ -79,6 +79,9 @@ export default function PledgesPage() {
 
   // Pull lang from user profile; fall back to Swahili (primary language for KKKT Yombo)
   const lang = user?.lang || user?.language || 'sw';
+  const { t } = useTranslation(lang);  
+
+  console.log('DEBUG lang:', lang, '| user:', user);
 
   const [activeTab,   setActiveTab]   = useState('campaigns');
   const [campaigns,   setCampaigns]   = useState([]);
@@ -98,39 +101,40 @@ const [selectedMember, setSelectedMember] = useState(
     totalPledged: 0, totalPaid: 0, members: 0, campaigns: 0,
   });
 
-  const addToast = useCallback((message, type = 'success') => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
-  }, []);
+const addToast = useCallback((message, type = 'success') => {
+  const id = Date.now();
+  setToasts(prev => [...prev, { id, message, type }]);
+  setTimeout(() => setToasts(prev => prev.filter(toast => toast.id !== id)), 4000);
+}, []);
 
-  const loadAll = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [cRes, tRes] = await Promise.all([
-        pledgeApi.getCampaigns(),
-        pledgeApi.getTypes(),
-      ]);
-      const c = cRes.data.data || [];
-      const t = tRes.data.data || [];
-      setCampaigns(c);
-      setPledgeTypes(t);
+// 2. loadAll — with setLoading(true) restored
+const loadAll = useCallback(async () => {
+  try {
+    setLoading(true);
+    const [cRes, tRes] = await Promise.all([
+      pledgeApi.getCampaigns(),
+      pledgeApi.getTypes(),
+    ]);
+    const c     = cRes.data.data || [];
+    const types = tRes.data.data || [];
+    setCampaigns(c);
+    setPledgeTypes(types);
 
-      const totPledged = c.reduce((a, x) => a + Number(x.total_pledged    || 0), 0);
-      const totPaid    = c.reduce((a, x) => a + Number(x.total_paid       || 0), 0);
-      const members    = c.reduce((a, x) => a + Number(x.subscriber_count || 0), 0);
-      setSummary({
-        totalPledged: totPledged,
-        totalPaid:    totPaid,
-        members,
-        campaigns:    c.filter(x => x.is_active).length,
-      });
-    } catch (err) {
-      addToast(err.message || 'Failed to load pledge data', 'danger');
-    } finally {
-      setLoading(false);
-    }
-  }, [addToast]);
+    const totPledged = c.reduce((a, x) => a + Number(x.total_pledged    || 0), 0);
+    const totPaid    = c.reduce((a, x) => a + Number(x.total_paid       || 0), 0);
+    const members    = c.reduce((a, x) => a + Number(x.subscriber_count || 0), 0);
+    setSummary({
+      totalPledged: totPledged,
+      totalPaid:    totPaid,
+      members,
+      campaigns:    c.filter(x => x.is_active).length,
+    });
+  } catch (err) {
+    addToast(err.message || t('pg_err_load'), 'danger');
+  } finally {
+    setLoading(false);
+  }
+}, [addToast]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -140,8 +144,15 @@ const [selectedMember, setSelectedMember] = useState(
   }
 }, [role, user?.id]);
 
+const TABS = [
+  { id: 'campaigns', label: t('pg_tab_campaigns'), icon: HandIcon,   roles: ['pastor','elder','group_leader'] },
+  { id: 'pledges',   label: t('pg_tab_pledges'),   icon: UsersIcon,  roles: ['pastor','elder','group_leader','member'] },
+  { id: 'payments',  label: t('pg_tab_payments'),  icon: WalletIcon, roles: ['pastor','elder','group_leader','member'] },
+  { id: 'report',    label: t('pg_tab_report'),    icon: ChartIcon,  roles: ['pastor','elder','group_leader'] },
+];
+
   // Visible tabs based on role
-  const visibleTabs = TABS.filter(t => t.roles.includes(role));
+  const visibleTabs = TABS.filter(tab => tab.roles.includes(role));
 
   // Navigate to Pledges tab with a campaign pre-selected (from Campaigns row button)
 const drillToPledges = (campaign) => {
@@ -167,21 +178,19 @@ const drillToPledges = (campaign) => {
 
       {/* ── Page header ──────────────────────────────────────────────────── */}
       <div className="page-header">
-        <p className="page-header-eyebrow">Uwakili wa Fedha</p>
-        <h1 className="page-header-title">AHADI, JENGO, UWAKILI NA MICHANGO</h1>
-        <p className="page-header-subtitle">
-          Track ahadi commitments, installment payments, and campaign fulfilment across Yombo congregation.
-        </p>
+
+<h1 className="page-header-title">{t('pg_title')}</h1>
+
 
         {/* Stat strip — right inside the dark header */}
         {!loading && (
           <div className="flex flex-wrap gap-6 mt-5" style={{ position: 'relative' }}>
             {[
-              { label: 'Active Campaigns', val: summary.campaigns },
-              { label: 'Total Members',    val: summary.members.toLocaleString() },
-              { label: 'Total Pledged',    val: `TShs ${fmtMoney(summary.totalPledged)}` },
-              { label: 'Total Collected',  val: `TShs ${fmtMoney(summary.totalPaid)}` },
-              { label: 'Collection Rate',  val: `${pct}%` },
+           { label: t('pg_stat_campaigns'), val: summary.campaigns },
+{ label: t('pg_stat_members'),   val: summary.members.toLocaleString() },
+{ label: t('pg_stat_pledged'),   val: `TShs ${fmtMoney(summary.totalPledged)}` },
+{ label: t('pg_stat_collected'), val: `TShs ${fmtMoney(summary.totalPaid)}` },
+{ label: t('pg_stat_rate'),      val: `${pct}%` },
             ].map(s => (
               <div key={s.label}>
                 <p style={{ fontSize: '0.6875rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.45)', marginBottom: '0.2rem' }}>
@@ -200,16 +209,16 @@ const drillToPledges = (campaign) => {
       <div style={{ background: 'var(--surface-card)', borderBottom: '1px solid var(--border-subtle)', position: 'sticky', top: 0, zIndex: 20 }}>
         <div className="page-body" style={{ padding: '0 2.5rem' }}>
           <div className="tabs">
-            {visibleTabs.map(t => (
-              <button
-                key={t.id}
-                className={`tab ${activeTab === t.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(t.id)}
-              >
-                <t.icon />
-                {t.label}
-              </button>
-            ))}
+         {visibleTabs.map(tab => (          // ← renamed from t to tab
+  <button
+    key={tab.id}
+    className={`tab ${activeTab === tab.id ? 'active' : ''}`}
+    onClick={() => setActiveTab(tab.id)}
+  >
+    <tab.icon />
+    {tab.label}
+  </button>
+))}
           </div>
         </div>
       </div>

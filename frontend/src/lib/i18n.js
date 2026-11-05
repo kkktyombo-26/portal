@@ -387,6 +387,22 @@ py_confirm:                     'Confirm',
 py_reject:                      'Reject',
 py_delete:                      'Delete',
 py_rejection_reason:            'Reason:',
+
+
+// ── Page (page.jsx) ──────────────────────────────────────────
+pg_eyebrow:           'Uwakili wa Fedha',
+pg_title:             'AHADI, JENGO, UWAKILI NA MICHANGO',
+pg_subtitle:          'Fuatilia ahadi, malipo ya awamu, na utekelezaji wa kampeni kwa mkutano wa Yombo.',
+pg_stat_campaigns:    'Kampeni Zinazoendelea',
+pg_stat_members:      'Jumla ya Washarika',
+pg_stat_pledged:      'Jumla Iliyoahidiwa',
+pg_stat_collected:    'Jumla Iliyokusanywa',
+pg_stat_rate:         'Kiwango cha Ukusanyaji',
+pg_tab_campaigns:     'Kampeni',
+pg_tab_pledges:       'Ahadi',
+pg_tab_payments:      'Malipo',
+pg_tab_report:        'Ripoti',
+pg_err_load:          'Imeshindwa kupakia data ya ahadi.',
   },
 
   sw: {
@@ -773,6 +789,21 @@ py_confirm:                     'Thibitisha',
 py_reject:                      'Kataa',
 py_delete:                      'Futa',
 py_rejection_reason:            'Sababu:',
+
+// ── Page (page.jsx) ──────────────────────────────────────────
+pg_eyebrow:           'Uwakili wa Fedha',
+pg_title:             'AHADI, JENGO, UWAKILI NA MICHANGO',
+pg_subtitle:          'Fuatilia ahadi, malipo ya awamu, na utekelezaji wa kampeni kwa mkutano wa Yombo.',
+pg_stat_campaigns:    'Kampeni Zinazoendelea',
+pg_stat_members:      'Jumla ya Washarika',
+pg_stat_pledged:      'Jumla Iliyoahidiwa',
+pg_stat_collected:    'Jumla Iliyokusanywa',
+pg_stat_rate:         'Kiwango cha Ukusanyaji',
+pg_tab_campaigns:     'Kampeni',
+pg_tab_pledges:       'Ahadi',
+pg_tab_payments:      'Malipo',
+pg_tab_report:        'Ripoti',
+pg_err_load:          'Imeshindwa kupakia data ya ahadi.',
 
   },
 };
