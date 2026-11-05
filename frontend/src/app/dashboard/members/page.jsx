@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { useTranslation } from '../../../lib/i18n';
-import { userApi, dependantApi } from '../../../lib/api';
+import { userApi, dependantApi, ministryApi } from '../../../lib/api';
 import PageHeader from '../../../components/ui/PageHeader';
 import Modal from '../../../components/ui/Modal';
 import Toast from '../../../components/ui/Toast';
@@ -10,29 +10,7 @@ import { JUMUIYA_LIST } from '../../../lib/constants';
 import RoleBadge from '../../../components/ui/RoleBadge';
 import AdminAddMemberModal from '../../../components/members/AdminMemberModal';
 
-// ─── Inline style tokens ──────────────────────────────────────────────────────
-const tokens = {
-  navy:       '#1B3A6B',
-  navyLight:  '#2A4F8F',
-  navyDark:   '#122748',
-  navyMuted:  '#EEF3FB',
-  gold:       '#C8A84B',
-  goldLight:  '#F5EDD0',
-  surface:    '#F5F4F0',
-  canvas:     '#FFFFFF',
-  ink:        '#1C1917',
-  inkMuted:   '#78716C',
-  inkFaint:   '#A8A29E',
-  hairline:   '#E7E5E0',
-  border:     '#D6D3CE',
-  success:    '#166534',
-  successBg:  '#F0FDF4',
-  danger:     '#B45309',
-  dangerBg:   '#FEF3C7',
-  error:      '#B91C1C',
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 const PROFILE_TABS = [
   { id: 'overview',     label: 'Overview',     icon: '◉' },
   { id: 'personal',     label: 'Personal',     icon: '👤' },
@@ -65,9 +43,9 @@ const MARRIAGE_TYPE_OPTIONS = [
 const ROLE_OPTIONS = ['member', 'group_leader', 'elder', 'pastor'];
 
 function statusColor(status) {
-  if (status === 'amefariki') return { bg: '#FEF2F2', text: '#B91C1C', dot: '#EF4444' };
-  if (status === 'amehamia')  return { bg: '#FFFBEB', text: '#92400E', dot: '#F59E0B' };
-  return                              { bg: '#F0FDF4', text: '#166534', dot: '#22C55E' };
+  if (status === 'amefariki') return 'danger';
+  if (status === 'amehamia')  return 'warning';
+  return 'success';
 }
 
 function statusLabel(status) {
@@ -84,23 +62,10 @@ function PhotoLightbox({ member, onClose }) {
   }, [onClose]);
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-        zIndex: 2000, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', padding: 24,
-      }}
-    >
-      <button
-        onClick={onClose}
-        style={{
-          position: 'absolute', top: 20, right: 24,
-          background: 'rgba(255,255,255,0.1)', border: 'none',
-          borderRadius: '50%', width: 36, height: 36,
-          cursor: 'pointer', color: '#fff', fontSize: 18,
-        }}
-      >✕</button>
+    <div onClick={onClose} className="modal-overlay" style={{ flexDirection: 'column' }}>
+      <button onClick={onClose} className="btn btn-ghost-inverse btn-icon" style={{ position: 'absolute', top: 20, right: 24 }}>
+        ✕
+      </button>
       <img
         src={member.profile_photo_url}
         alt={member.full_name}
@@ -112,44 +77,29 @@ function PhotoLightbox({ member, onClose }) {
         }}
         onError={(e) => { e.currentTarget.style.display = 'none'; }}
       />
-      <div style={{ marginTop: 18, textAlign: 'center' }}>
-        <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#fff' }}>{member.full_name}</p>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>{member.email}</p>
+      <div className="text-center" style={{ marginTop: 18 }}>
+        <p className="text-sm font-semibold text-white" style={{ margin: 0 }}>{member.full_name}</p>
+        <p className="text-xs" style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.5)' }}>{member.email}</p>
       </div>
     </div>
   );
 }
 
 // ─── Field helpers ────────────────────────────────────────────────────────────
-function FieldInput({ label, value, onChange, type = 'text', placeholder, required }) {
+function FieldInput({ label, value, onChange, type = 'text', placeholder, required, listId }) {
   return (
-    <div>
-      <label style={{
-        display: 'block', fontSize: 11, fontWeight: 600,
-        color: tokens.inkMuted, letterSpacing: '0.05em',
-        textTransform: 'uppercase', marginBottom: 5,
-      }}>{label}{required && <span style={{ color: tokens.error }}> *</span>}</label>
+    <div className="form-group">
+      <label className="form-label">
+        {label}{required && <span style={{ color: 'var(--danger)' }}> *</span>}
+      </label>
       <input
         type={type}
         value={value || ''}
         onChange={onChange}
         placeholder={placeholder}
         required={required}
-        style={{
-          width: '100%', padding: '8px 12px', borderRadius: 8,
-          border: `1.5px solid ${tokens.border}`, background: tokens.canvas,
-          fontSize: 13, color: tokens.ink, outline: 'none',
-          transition: 'border-color 0.15s, box-shadow 0.15s',
-          boxSizing: 'border-box',
-        }}
-        onFocus={(e) => {
-          e.target.style.borderColor = tokens.navy;
-          e.target.style.boxShadow = '0 0 0 3px rgba(27,58,107,0.1)';
-        }}
-        onBlur={(e) => {
-          e.target.style.borderColor = tokens.border;
-          e.target.style.boxShadow = 'none';
-        }}
+        list={listId}
+        className="input"
       />
     </div>
   );
@@ -157,31 +107,9 @@ function FieldInput({ label, value, onChange, type = 'text', placeholder, requir
 
 function FieldSelect({ label, value, onChange, options, placeholder }) {
   return (
-    <div>
-      <label style={{
-        display: 'block', fontSize: 11, fontWeight: 600,
-        color: tokens.inkMuted, letterSpacing: '0.05em',
-        textTransform: 'uppercase', marginBottom: 5,
-      }}>{label}</label>
-      <select
-        value={value || ''}
-        onChange={onChange}
-        style={{
-          width: '100%', padding: '8px 12px', borderRadius: 8,
-          border: `1.5px solid ${tokens.border}`, background: tokens.canvas,
-          fontSize: 13, color: value ? tokens.ink : tokens.inkFaint,
-          outline: 'none', cursor: 'pointer', boxSizing: 'border-box',
-          transition: 'border-color 0.15s',
-        }}
-        onFocus={(e) => {
-          e.target.style.borderColor = tokens.navy;
-          e.target.style.boxShadow = '0 0 0 3px rgba(27,58,107,0.1)';
-        }}
-        onBlur={(e) => {
-          e.target.style.borderColor = tokens.border;
-          e.target.style.boxShadow = 'none';
-        }}
-      >
+    <div className="form-group">
+      <label className="form-label">{label}</label>
+      <select value={value || ''} onChange={onChange} className="select">
         {placeholder && <option value="">{placeholder}</option>}
         {options.map((o) =>
           typeof o === 'string'
@@ -195,14 +123,9 @@ function FieldSelect({ label, value, onChange, options, placeholder }) {
 
 function FieldCheckbox({ label, checked, onChange }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-      <input
-        type="checkbox"
-        checked={!!checked}
-        onChange={onChange}
-        style={{ width: 16, height: 16, accentColor: tokens.navy, cursor: 'pointer' }}
-      />
-      <span style={{ fontSize: 13, color: tokens.ink }}>{label}</span>
+    <label className="field-row" style={{ cursor: 'pointer' }}>
+      <input type="checkbox" checked={!!checked} onChange={onChange} className="checkbox" />
+      <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{label}</span>
     </label>
   );
 }
@@ -216,28 +139,21 @@ function Grid2({ children }) {
 }
 
 function SectionDivider({ title }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 14px' }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: tokens.navy, letterSpacing: '0.08em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-        {title}
-      </span>
-      <div style={{ flex: 1, height: 1, background: tokens.navyMuted }} />
-    </div>
-  );
+  return <div className="divider-label" style={{ margin: '20px 0 14px' }}>{title}</div>;
 }
 
 function InfoRow({ label, value }) {
   if (!value) return null;
   return (
-    <div style={{ display: 'flex', gap: 8, padding: '8px 0', borderBottom: `1px solid ${tokens.hairline}` }}>
-      <span style={{ fontSize: 12, color: tokens.inkMuted, minWidth: 140, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 13, color: tokens.ink, fontWeight: 500 }}>{value}</span>
+    <div className="flex gap-2 py-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+      <span className="text-xs" style={{ color: 'var(--text-tertiary)', minWidth: 140, flexShrink: 0 }}>{label}</span>
+      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{value}</span>
     </div>
   );
 }
 
 // ─── Dependants Mini-Manager ──────────────────────────────────────────────────
-function DependantsTab({ memberId, lang }) {
+function DependantsTab({ memberId }) {
   const [deps, setDeps]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding]   = useState(false);
@@ -275,43 +191,39 @@ function DependantsTab({ memberId, lang }) {
   };
 
   if (loading) return (
-    <div style={{ textAlign: 'center', padding: 32, color: tokens.inkMuted }}>Loading…</div>
+    <div className="empty-state">
+      <div className="skeleton" style={{ width: 120, height: 16, borderRadius: 8 }} />
+    </div>
   );
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <span style={{ fontSize: 13, color: tokens.inkMuted }}>{deps.length} dependant{deps.length !== 1 ? 's' : ''} recorded</span>
-        <button
-          onClick={() => setAdding(true)}
-          style={{
-            padding: '6px 14px', borderRadius: 7, background: tokens.navy,
-            color: '#fff', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          }}
-        >+ Add</button>
+      <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+        <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+          {deps.length} dependant{deps.length !== 1 ? 's' : ''} recorded
+        </span>
+        <button onClick={() => setAdding(true)} className="btn btn-primary btn-sm">+ Add</button>
       </div>
 
       {deps.length === 0 && !adding && (
-        <div style={{
-          textAlign: 'center', padding: '28px 16px',
-          background: tokens.surface, borderRadius: 10,
-          border: `1.5px dashed ${tokens.border}`,
-          color: tokens.inkMuted, fontSize: 13,
-        }}>
-          No dependants recorded yet
+        <div className="empty-state" style={{ border: '1.5px dashed var(--border-default)', borderRadius: 10 }}>
+          <span className="empty-state-icon">👨‍👩‍👧</span>
+          <p className="empty-state-body">No dependants recorded yet</p>
         </div>
       )}
 
       {deps.map((d) => (
-        <div key={d.id} style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '10px 14px', background: tokens.surface,
-          borderRadius: 8, marginBottom: 8,
-          border: `1px solid ${tokens.hairline}`,
-        }}>
+        <div
+          key={d.id}
+          className="flex items-center justify-between"
+          style={{
+            padding: '10px 14px', background: 'var(--surface-page)',
+            borderRadius: 8, marginBottom: 8, border: '1px solid var(--border-subtle)',
+          }}
+        >
           <div>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: tokens.ink }}>{d.full_name}</p>
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: tokens.inkMuted }}>
+            <p className="text-sm font-semibold" style={{ margin: 0, color: 'var(--text-primary)' }}>{d.full_name}</p>
+            <p className="text-xs" style={{ margin: '2px 0 0', color: 'var(--text-tertiary)' }}>
               {d.relationship && `${d.relationship}`}
               {d.relationship && d.date_of_birth && ' · '}
               {d.date_of_birth && `Born ${d.date_of_birth}`}
@@ -319,61 +231,35 @@ function DependantsTab({ memberId, lang }) {
           </div>
           <button
             onClick={() => handleRemove(d.id)}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: tokens.inkFaint, fontSize: 16, padding: '2px 6px',
-            }}
+            className="btn btn-ghost btn-sm btn-icon"
+            style={{ color: 'var(--text-disabled)', fontSize: 16 }}
           >×</button>
         </div>
       ))}
 
       {adding && (
-        <div style={{
-          marginTop: 8, padding: 16, background: tokens.navyMuted,
-          borderRadius: 10, border: `1.5px solid ${tokens.navy}22`,
-        }}>
-          <p style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: tokens.navy, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            New Dependant
-          </p>
+        <div
+          style={{
+            marginTop: 8, padding: 16,
+            background: 'color-mix(in srgb, var(--navy) 6%, white)',
+            borderRadius: 10,
+            border: '1.5px solid color-mix(in srgb, var(--navy) 15%, transparent)',
+          }}
+        >
+          <p className="form-label" style={{ marginBottom: 12 }}>New Dependant</p>
           <Grid2>
-            <FieldInput
-              label="Full Name"
-              value={newDep.full_name}
-              onChange={(e) => setNewDep(p => ({ ...p, full_name: e.target.value }))}
-              required
-            />
-            <FieldInput
-              label="Relationship"
-              value={newDep.relationship}
-              placeholder="e.g. Mtoto, Ndugu"
-              onChange={(e) => setNewDep(p => ({ ...p, relationship: e.target.value }))}
-            />
+            <FieldInput label="Full Name" value={newDep.full_name} onChange={(e) => setNewDep(p => ({ ...p, full_name: e.target.value }))} required />
+            <FieldInput label="Relationship" value={newDep.relationship} placeholder="e.g. Mtoto, Ndugu" onChange={(e) => setNewDep(p => ({ ...p, relationship: e.target.value }))} />
           </Grid2>
           <div style={{ marginTop: 10 }}>
-            <FieldInput
-              label="Date of Birth"
-              type="date"
-              value={newDep.date_of_birth}
-              onChange={(e) => setNewDep(p => ({ ...p, date_of_birth: e.target.value }))}
-            />
+            <FieldInput label="Date of Birth" type="date" value={newDep.date_of_birth} onChange={(e) => setNewDep(p => ({ ...p, date_of_birth: e.target.value }))} />
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => setAdding(false)}
-              style={{
-                padding: '7px 14px', borderRadius: 7, background: tokens.canvas,
-                border: `1.5px solid ${tokens.border}`, fontSize: 12,
-                fontWeight: 600, color: tokens.ink, cursor: 'pointer',
-              }}
-            >Cancel</button>
+          <div className="flex gap-2 justify-end" style={{ marginTop: 14 }}>
+            <button onClick={() => setAdding(false)} className="btn btn-secondary btn-sm">Cancel</button>
             <button
               onClick={handleAdd}
               disabled={saving || !newDep.full_name.trim()}
-              style={{
-                padding: '7px 14px', borderRadius: 7, background: tokens.navy,
-                color: '#fff', border: 'none', fontSize: 12, fontWeight: 600,
-                cursor: 'pointer', opacity: saving ? 0.6 : 1,
-              }}
+              className="btn btn-primary btn-sm"
             >{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
@@ -384,12 +270,12 @@ function DependantsTab({ memberId, lang }) {
 
 // ─── Profile Edit Modal (Multi-tab) ──────────────────────────────────────────
 function ProfileModal({ member, user, lang, onClose, onSaved }) {
-  const [tab, setTab]     = useState('overview');
-  const [form, setForm]   = useState({ ...member });
+  const [tab, setTab]       = useState('overview');
+  const [form, setForm]     = useState({ ...member });
   const [saving, setSaving] = useState(false);
-  const [toast, setToast]  = useState(null);
+  const [toast, setToast]   = useState(null);
 
-  const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
+  const set      = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
   const setCheck = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.checked ? 1 : 0 }));
 
   const showToast = (msg, type = 'success') => {
@@ -402,34 +288,34 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
     try {
       setSaving(true);
       await userApi.update(form.id, {
-        full_name: form.full_name,
-        phone: form.phone,
-        role: form.role,
-        gender: form.gender,
-        date_of_birth: form.date_of_birth,
-        place_of_birth: form.place_of_birth,
-        member_status: form.member_status,
-        marital_status: form.marital_status,
-        marriage_type: form.marriage_type,
-        marriage_date: form.marriage_date,
-        marriage_place: form.marriage_place,
-        spouse_name: form.spouse_name,
-        spouse_phone: form.spouse_phone,
-        cohabiting_partner_name: form.cohabiting_partner_name,
-        occupation: form.occupation,
-        workplace: form.workplace,
-        education: form.education,
-        profession: form.profession,
-        willing_to_volunteer: form.willing_to_volunteer,
-        jumuiya: form.jumuiya,
-        block_no: form.block_no,
-        area_name: form.area_name,
-        slp: form.slp,
-        neighbour_member_name: form.neighbour_member_name,
-        neighbour_member_phone: form.neighbour_member_phone,
-        elder_name: form.elder_name,
-        elder_phone: form.elder_phone,
-        previous_church: form.previous_church,
+        full_name:                form.full_name,
+        phone:                    form.phone,
+        role:                     form.role,
+        gender:                   form.gender,
+        date_of_birth:            form.date_of_birth,
+        place_of_birth:           form.place_of_birth,
+        member_status:            form.member_status,
+        marital_status:           form.marital_status,
+        marriage_type:            form.marriage_type,
+        marriage_date:            form.marriage_date,
+        marriage_place:           form.marriage_place,
+        spouse_name:              form.spouse_name,
+        spouse_phone:             form.spouse_phone,
+        cohabiting_partner_name:  form.cohabiting_partner_name,
+        occupation:               form.occupation,
+        workplace:                form.workplace,
+        education:                form.education,
+        profession:               form.profession,
+        willing_to_volunteer:     form.willing_to_volunteer,
+        jumuiya:                  form.jumuiya,
+        block_no:                 form.block_no,
+        area_name:                form.area_name,
+        slp:                      form.slp,
+        neighbour_member_name:    form.neighbour_member_name,
+        neighbour_member_phone:   form.neighbour_member_phone,
+        elder_name:               form.elder_name,
+        elder_phone:              form.elder_phone,
+        previous_church:          form.previous_church,
       });
       showToast('Profile saved');
       onSaved();
@@ -443,33 +329,17 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
   const sc = statusColor(form.member_status);
 
   return (
-    <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1500,
-        background: 'rgba(17,24,39,0.55)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: '100%', maxWidth: 760,
-          maxHeight: '92vh', background: tokens.canvas,
-          borderRadius: 16, boxShadow: '0 24px 64px rgba(17,24,39,0.18)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        }}
-      >
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} className="modal-overlay">
+      <div onClick={(e) => e.stopPropagation()} className="modal" style={{ maxWidth: 760, maxHeight: '92vh' }}>
+
         {/* Modal Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '18px 24px', borderBottom: `1px solid ${tokens.hairline}`,
-          background: `linear-gradient(135deg, ${tokens.navyDark} 0%, ${tokens.navy} 100%)`,
-          flexShrink: 0,
+          padding: '18px 24px',
+          background: 'linear-gradient(135deg, var(--navy-dark) 0%, var(--navy) 100%)',
+          borderBottom: '1px solid var(--border-subtle)', flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div className="flex items-center gap-3">
             {form.profile_photo_url ? (
               <img
                 src={form.profile_photo_url}
@@ -478,62 +348,28 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (
-              <div style={{
-                width: 46, height: 46, borderRadius: '50%',
-                background: 'rgba(255,255,255,0.12)',
-                border: '2px solid rgba(255,255,255,0.2)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, fontWeight: 700, color: '#fff',
-              }}>
+              <div className="avatar avatar-md" style={{ width: 46, height: 46, fontSize: 18, background: 'rgba(255,255,255,0.12)', border: '2px solid rgba(255,255,255,0.2)', color: '#fff' }}>
                 {form.full_name?.[0]?.toUpperCase()}
               </div>
             )}
             <div>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>{form.full_name}</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{form.email}</span>
-                <span style={{
-                  fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
-                  background: sc.bg, color: sc.text,
-                  border: `1px solid ${sc.dot}33`,
-                }}>
-                  <span style={{ marginRight: 4, fontSize: 8 }}>●</span>
+              <p className="text-sm font-bold text-white" style={{ margin: 0 }}>{form.full_name}</p>
+              <div className="flex items-center gap-2" style={{ marginTop: 3 }}>
+                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>{form.email}</span>
+                <span className={`badge badge-${sc}`}>
+                  <span className={`status-dot ${sc}`} />
                   {statusLabel(form.member_status || 'hai')}
                 </span>
               </div>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255,255,255,0.1)', border: 'none',
-              borderRadius: 8, width: 34, height: 34,
-              cursor: 'pointer', color: '#fff', fontSize: 16,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >×</button>
+          <button onClick={onClose} className="btn btn-ghost-inverse btn-icon btn-sm">×</button>
         </div>
 
         {/* Tab Bar */}
-        <div style={{
-          display: 'flex', gap: 0, padding: '0 24px',
-          background: tokens.surface, borderBottom: `1px solid ${tokens.hairline}`,
-          flexShrink: 0, overflowX: 'auto',
-        }}>
+        <div className="tabs-pill" style={{ padding: '0 24px', background: 'var(--surface-page)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
           {PROFILE_TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                padding: '11px 14px', background: 'none', border: 'none',
-                borderBottom: tab === t.id ? `2px solid ${tokens.navy}` : '2px solid transparent',
-                fontSize: 12, fontWeight: tab === t.id ? 700 : 500,
-                color: tab === t.id ? tokens.navy : tokens.inkMuted,
-                cursor: 'pointer', whiteSpace: 'nowrap',
-                transition: 'all 0.12s',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
+            <button key={t.id} onClick={() => setTab(t.id)} className={`tab-pill ${tab === t.id ? 'active' : ''}`}>
               <span style={{ fontSize: 13 }}>{t.icon}</span>
               {t.label}
             </button>
@@ -556,29 +392,13 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
               {user?.role === 'pastor' && (
                 <>
                   <SectionDivider title="System Role" />
-                  <FieldSelect
-                    label="Role"
-                    value={form.role}
-                    onChange={set('role')}
-                    options={ROLE_OPTIONS}
-                  />
+                  <FieldSelect label="Role" value={form.role} onChange={set('role')} options={ROLE_OPTIONS} />
                 </>
               )}
               <SectionDivider title="Member Status" />
               <Grid2>
-                <FieldSelect
-                  label="Status"
-                  value={form.member_status}
-                  onChange={set('member_status')}
-                  options={MEMBER_STATUS_OPTIONS}
-                />
-                <FieldSelect
-                  label="Gender"
-                  value={form.gender}
-                  onChange={set('gender')}
-                  options={GENDER_OPTIONS}
-                  placeholder="Select gender"
-                />
+                <FieldSelect label="Status" value={form.member_status} onChange={set('member_status')} options={MEMBER_STATUS_OPTIONS} />
+                <FieldSelect label="Gender" value={form.gender} onChange={set('gender')} options={GENDER_OPTIONS} placeholder="Select gender" />
               </Grid2>
               {form.group_name && (
                 <>
@@ -605,40 +425,21 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
             <div>
               <SectionDivider title="Marital Status" />
               <Grid2>
-                <FieldSelect
-                  label="Marital Status"
-                  value={form.marital_status}
-                  onChange={set('marital_status')}
-                  options={MARITAL_OPTIONS}
-                  placeholder="Select status"
-                />
-                <FieldSelect
-                  label="Marriage Type"
-                  value={form.marriage_type}
-                  onChange={set('marriage_type')}
-                  options={MARRIAGE_TYPE_OPTIONS}
-                  placeholder="Select type"
-                />
+                <FieldSelect label="Marital Status" value={form.marital_status} onChange={set('marital_status')} options={MARITAL_OPTIONS} placeholder="Select status" />
+                <FieldSelect label="Marriage Type" value={form.marriage_type} onChange={set('marriage_type')} options={MARRIAGE_TYPE_OPTIONS} placeholder="Select type" />
               </Grid2>
-
               <SectionDivider title="Marriage Details" />
               <Grid2>
                 <FieldInput label="Marriage Date" type="date" value={form.marriage_date} onChange={set('marriage_date')} />
                 <FieldInput label="Marriage Place" value={form.marriage_place} onChange={set('marriage_place')} placeholder="Church / City" />
               </Grid2>
-
               <SectionDivider title="Spouse / Partner" />
               <Grid2>
                 <FieldInput label="Spouse Name" value={form.spouse_name} onChange={set('spouse_name')} />
                 <FieldInput label="Spouse Phone" value={form.spouse_phone} onChange={set('spouse_phone')} />
               </Grid2>
               <div style={{ marginTop: 14 }}>
-                <FieldInput
-                  label="Cohabiting Partner Name"
-                  value={form.cohabiting_partner_name}
-                  onChange={set('cohabiting_partner_name')}
-                  placeholder="If applicable"
-                />
+                <FieldInput label="Cohabiting Partner Name" value={form.cohabiting_partner_name} onChange={set('cohabiting_partner_name')} placeholder="If applicable" />
               </div>
             </div>
           )}
@@ -651,19 +452,13 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
                 <FieldInput label="Occupation" value={form.occupation} onChange={set('occupation')} placeholder="e.g. Teacher, Nurse" />
                 <FieldInput label="Workplace" value={form.workplace} onChange={set('workplace')} placeholder="Employer / Company" />
               </Grid2>
-
               <SectionDivider title="Education & Skills" />
               <Grid2>
                 <FieldInput label="Education Level" value={form.education} onChange={set('education')} placeholder="e.g. Bachelor's, Form 4" />
                 <FieldInput label="Profession / Skill" value={form.profession} onChange={set('profession')} placeholder="e.g. Engineer, Accountant" />
               </Grid2>
-
               <SectionDivider title="Church Volunteering" />
-              <FieldCheckbox
-                label="Willing to volunteer in church ministry"
-                checked={form.willing_to_volunteer}
-                onChange={setCheck('willing_to_volunteer')}
-              />
+              <FieldCheckbox label="Willing to volunteer in church ministry" checked={form.willing_to_volunteer} onChange={setCheck('willing_to_volunteer')} />
             </div>
           )}
 
@@ -673,91 +468,52 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
               <SectionDivider title="Address" />
               <Grid2>
                 <>
-  <FieldInput
-    label="Jumuiya"
-    value={form.jumuiya}
-    onChange={set('jumuiya')}
-    placeholder="Select or type jumuiya…"
-    listId="jumuiya-options"
-  />
-  <datalist id="jumuiya-options">
-    {JUMUIYA_LIST.map(j => <option key={j} value={j} />)}
-  </datalist>
-</>
+                  <FieldInput label="Jumuiya" value={form.jumuiya} onChange={set('jumuiya')} placeholder="Select or type jumuiya…" listId="jumuiya-options" />
+                  <datalist id="jumuiya-options">
+                    {JUMUIYA_LIST.map(j => <option key={j} value={j} />)}
+                  </datalist>
+                </>
                 <FieldInput label="Block No." value={form.block_no} onChange={set('block_no')} placeholder="e.g. B-12" />
               </Grid2>
               <Grid2>
                 <FieldInput label="Area Name" value={form.area_name} onChange={set('area_name')} placeholder="Neighbourhood" />
                 <FieldInput label="SLP / P.O. Box" value={form.slp} onChange={set('slp')} placeholder="Postal address" />
               </Grid2>
-
               <SectionDivider title="Nearby Member Contact" />
               <Grid2>
                 <FieldInput label="Neighbour Member Name" value={form.neighbour_member_name} onChange={set('neighbour_member_name')} />
                 <FieldInput label="Neighbour Member Phone" value={form.neighbour_member_phone} onChange={set('neighbour_member_phone')} />
               </Grid2>
-
               <SectionDivider title="Elder Contact" />
               <Grid2>
                 <FieldInput label="Elder Name" value={form.elder_name} onChange={set('elder_name')} />
                 <FieldInput label="Elder Phone" value={form.elder_phone} onChange={set('elder_phone')} />
               </Grid2>
-
               <SectionDivider title="Church History" />
               <FieldInput label="Previous Church" value={form.previous_church} onChange={set('previous_church')} placeholder="If transferred" />
             </div>
           )}
 
           {/* ── DEPENDANTS ── */}
-          {tab === 'dependants' && (
-            <DependantsTab memberId={form.id} lang={lang} />
-          )}
+          {tab === 'dependants' && <DependantsTab memberId={form.id} />}
 
-          {/* Save bar — hidden on dependants tab (managed separately) */}
+          {/* Save bar */}
           {tab !== 'dependants' && (
-            <div style={{
-              display: 'flex', justifyContent: 'flex-end', gap: 10,
-              marginTop: 24, paddingTop: 18,
-              borderTop: `1px solid ${tokens.hairline}`,
-            }}>
-              <button
-                type="button"
-                onClick={onClose}
-                style={{
-                  padding: '8px 18px', borderRadius: 8,
-                  border: `1.5px solid ${tokens.border}`,
-                  background: tokens.canvas, fontSize: 13,
-                  fontWeight: 600, color: tokens.ink, cursor: 'pointer',
-                }}
-              >Cancel</button>
-              <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  padding: '8px 20px', borderRadius: 8,
-                  background: tokens.navy, color: '#fff',
-                  border: 'none', fontSize: 13,
-                  fontWeight: 600, cursor: 'pointer',
-                  opacity: saving ? 0.65 : 1,
-                  transition: 'opacity 0.15s',
-                }}
-              >{saving ? 'Saving…' : 'Save Changes'}</button>
+            <div className="flex justify-end gap-2" style={{ marginTop: 24, paddingTop: 18, borderTop: '1px solid var(--border-subtle)' }}>
+              <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
+              <button type="submit" disabled={saving} className="btn btn-primary">
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
             </div>
           )}
         </form>
 
         {/* Inline toast */}
         {toast && (
-          <div style={{
-            position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-            padding: '10px 18px', borderRadius: 10,
-            background: toast.type === 'error' ? '#FEF2F2' : '#F0FDF4',
-            border: `1px solid ${toast.type === 'error' ? '#FECACA' : '#BBF7D0'}`,
-            color: toast.type === 'error' ? '#991B1B' : '#166534',
-            fontSize: 13, fontWeight: 600,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-            zIndex: 100, whiteSpace: 'nowrap',
-          }}>
+          <div
+            className={`toast ${toast.type}`}
+            style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100, whiteSpace: 'nowrap' }}
+          >
             {toast.msg}
           </div>
         )}
@@ -767,7 +523,7 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
 }
 
 // ─── Member Row Card ──────────────────────────────────────────────────────────
-function MemberCard({ m, user, t, lang, onEdit, onToggle, onDelete }) {
+function MemberCard({ m, user, lang, onEdit, onToggle, onDelete }) {
   const [lightbox, setLightbox] = useState(false);
   const sc = statusColor(m.member_status);
 
@@ -776,131 +532,130 @@ function MemberCard({ m, user, t, lang, onEdit, onToggle, onDelete }) {
       {lightbox && m.profile_photo_url && (
         <PhotoLightbox member={m} onClose={() => setLightbox(false)} />
       )}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 0', gap: 12,
-      }}>
+      <div
+        className="flex items-center justify-between"
+        style={{ padding: '12px 0', gap: 12, borderBottom: '1px solid var(--border-subtle)' }}
+      >
         {/* Left: avatar + info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+        <div className="flex items-center gap-3" style={{ minWidth: 0 }}>
           {m.profile_photo_url ? (
             <img
               src={m.profile_photo_url}
               alt={m.full_name}
               onClick={() => setLightbox(true)}
-              style={{
-                width: 36, height: 36, borderRadius: '50%', objectFit: 'cover',
-                flexShrink: 0, border: `1.5px solid ${tokens.border}`,
-                cursor: 'zoom-in', transition: 'opacity 0.15s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.75'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+              className="avatar avatar-sm"
+              style={{ cursor: 'zoom-in', width: 36, height: 36 }}
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           ) : (
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: `linear-gradient(135deg, ${tokens.navyMuted}, #dde8f5)`,
-              border: `1.5px solid ${tokens.border}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0, fontSize: 14, fontWeight: 700, color: tokens.navy,
-            }}>
+            <div className="avatar avatar-sm" style={{ width: 36, height: 36 }}>
               {m.full_name?.[0]?.toUpperCase()}
             </div>
           )}
+
           <div style={{ minWidth: 0 }}>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: tokens.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p
+              className="text-sm font-semibold"
+              style={{ margin: 0, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
               {m.full_name}
             </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+            <div className="flex items-center gap-1" style={{ marginTop: 2, flexWrap: 'wrap' }}>
               <RoleBadge role={m.role} lang={lang} />
               {m.group_name && (
                 <>
-                  <span style={{ color: tokens.inkFaint, fontSize: 11 }}>·</span>
-                  <span style={{ fontSize: 11, color: tokens.inkFaint }}>{m.group_name}</span>
+                  <span className="text-2xs" style={{ color: 'var(--text-disabled)' }}>·</span>
+                  <span className="text-2xs" style={{ color: 'var(--text-tertiary)' }}>{m.group_name}</span>
+                </>
+              )}
+              {m.jumuiya && (
+                <>
+                  <span className="text-2xs" style={{ color: 'var(--text-disabled)' }}>·</span>
+                  <span className="badge badge-navy text-2xs">{m.jumuiya}</span>
                 </>
               )}
               {m.member_status && m.member_status !== 'hai' && (
-                <span style={{
-                  fontSize: 10, fontWeight: 700, padding: '1px 7px',
-                  borderRadius: 20, background: sc.bg, color: sc.text,
-                  textTransform: 'uppercase', letterSpacing: '0.05em',
-                  border: `1px solid ${sc.dot}44`,
-                }}>
+                <span className={`badge badge-${sc}`}>
+                  <span className={`status-dot ${sc}`} />
                   {m.member_status}
                 </span>
               )}
               {m.gender && (
-                <span style={{ fontSize: 11, color: tokens.inkFaint }}>
+                <span className="text-2xs" style={{ color: 'var(--text-tertiary)' }}>
                   {m.gender === 'Male' ? '♂' : '♀'}
                 </span>
               )}
               {m.occupation && (
-                <span style={{ fontSize: 11, color: tokens.inkFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
+                <span className="text-2xs" style={{ color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
                   {m.occupation}
                 </span>
               )}
-              {!m.is_active && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: tokens.danger, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Inactive
-                </span>
-              )}
+              {!m.is_active && <span className="badge badge-warning">Inactive</span>}
             </div>
           </div>
         </div>
 
         {/* Right: actions */}
         {user?.role === 'pastor' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <button
-              onClick={onEdit}
-              style={{
-                padding: '5px 11px', borderRadius: 7,
-                background: tokens.navyMuted, color: tokens.navy,
-                border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                transition: 'background 0.12s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#d4e3f5'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = tokens.navyMuted; }}
-            >Edit</button>
-            <button
-              onClick={onToggle}
-              style={{
-                padding: '5px 11px', borderRadius: 7,
-                background: tokens.surface, color: tokens.inkMuted,
-                border: `1px solid ${tokens.border}`, fontSize: 12,
-                fontWeight: 600, cursor: 'pointer',
-              }}
-            >{m.is_active ? 'Deactivate' : 'Activate'}</button>
-            <button
-              onClick={onDelete}
-              style={{
-                padding: '5px 11px', borderRadius: 7,
-                background: 'none', color: tokens.error,
-                border: 'none', fontSize: 12, fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >Delete</button>
+          <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+            <button onClick={onEdit} className="btn btn-secondary btn-sm">Edit</button>
+            <button onClick={onToggle} className="btn btn-ghost btn-sm">
+              {m.is_active ? 'Deactivate' : 'Activate'}
+            </button>
+            <button onClick={onDelete} className="btn btn-sm" style={{ color: 'var(--danger)', background: 'none', border: 'none' }}>
+              Delete
+            </button>
           </div>
         )}
       </div>
-      <div style={{ height: 1, background: tokens.hairline }} />
     </>
+  );
+}
+
+// ─── Filter Chip ─────────────────────────────────────────────────────────────
+// Uses .filter-chip / .filter-chip--active classes (defined in the <style> block below).
+// No inline styles — all appearance is driven by CSS utility classes.
+function FilterChip({ label, active, onClear, children }) {
+  return (
+    <div className={`filter-chip${active ? ' filter-chip--active' : ''}`}>
+      <span className="filter-chip__label">{label}</span>
+      {children}
+      {active && (
+        <button
+          onClick={onClear}
+          className="btn btn-ghost btn-icon filter-chip__clear"
+          aria-label={`Clear ${label} filter`}
+        >
+          ×
+        </button>
+      )}
+    </div>
   );
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function MembersPage() {
-  const { user, lang }        = useAuth();
-  const { t }                 = useTranslation(lang);
-  const [members, setMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch]   = useState('');
-  const [filter, setFilter]   = useState('all');  // all | active | inactive | amehamia | amefariki
-  const [toast, setToast]     = useState(null);
-  const [deleteId, setDeleteId] = useState(null);
+  const { user, lang }      = useAuth();
+  const { t }               = useTranslation(lang);
+
+  const [members, setMembers]     = useState([]);
+  const [ministries, setMinistries] = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [search, setSearch]       = useState('');
+
+  // Status filter (pill row)
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  // Prominent field filters
+  const [jumuiyaFilter,    setJumuiyaFilter]    = useState('');
+  const [ministryFilter,   setMinistryFilter]   = useState('');
+  const [genderFilter,     setGenderFilter]     = useState('');
+  const [occupationFilter, setOccupationFilter] = useState('');
+
+  const [toast, setToast]               = useState(null);
+  const [deleteId, setDeleteId]         = useState(null);
   const [showAddMember, setShowAddMember] = useState(false);
-  const [editUser, setEditUser] = useState(null);
-  const [saving, setSaving]   = useState(false);
+  const [editUser, setEditUser]         = useState(null);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -917,6 +672,13 @@ export default function MembersPage() {
   }, []);
 
   useEffect(() => { fetchMembers(); }, [fetchMembers]);
+
+  // FIX: res.data is { success, data: [...] } — unwrap .data before storing
+  useEffect(() => {
+    ministryApi.getAll()
+      .then(res => setMinistries(res.data.data || res.data || []))
+      .catch(() => {});
+  }, []);
 
   const handleToggle = async (m) => {
     try {
@@ -935,32 +697,55 @@ export default function MembersPage() {
     } catch (err) { showToast(err.message, 'error'); }
   };
 
+  // Derived unique values for dropdowns (from live member data)
+  const jumuiyaOptions    = [...new Set(members.map(m => m.jumuiya).filter(Boolean))].sort();
+  const occupationOptions = [...new Set(members.map(m => m.occupation).filter(Boolean))].sort();
+
+  const hasActiveFieldFilters = jumuiyaFilter || ministryFilter || genderFilter || occupationFilter;
+
+  const clearAllFieldFilters = () => {
+    setJumuiyaFilter('');
+    setMinistryFilter('');
+    setGenderFilter('');
+    setOccupationFilter('');
+  };
+
   // Stats
-  const activeCount   = members.filter(m => m.is_active && m.member_status !== 'amefariki').length;
-  const transferCount = members.filter(m => m.member_status === 'amehamia').length;
-  const deceasedCount = members.filter(m => m.member_status === 'amefariki').length;
+  const activeCount    = members.filter(m => m.is_active && m.member_status !== 'amefariki').length;
+  const transferCount  = members.filter(m => m.member_status === 'amehamia').length;
+  const deceasedCount  = members.filter(m => m.member_status === 'amefariki').length;
   const volunteerCount = members.filter(m => m.willing_to_volunteer).length;
 
-  const FILTER_OPTIONS = [
-    { id: 'all',       label: 'All', count: members.length },
-    { id: 'active',    label: 'Active', count: activeCount },
-    { id: 'amehamia',  label: 'Transferred', count: transferCount },
-    { id: 'amefariki', label: 'Deceased', count: deceasedCount },
-    { id: 'inactive',  label: 'Inactive', count: members.filter(m => !m.is_active).length },
+  const STATUS_PILLS = [
+    { id: 'all',       label: 'All',         count: members.length },
+    { id: 'active',    label: 'Active',       count: activeCount },
+    { id: 'amehamia',  label: 'Transferred',  count: transferCount },
+    { id: 'amefariki', label: 'Deceased',     count: deceasedCount },
+    { id: 'inactive',  label: 'Inactive',     count: members.filter(m => !m.is_active).length },
   ];
 
   const displayed = members.filter(m => {
-    const matchSearch = (
-      m.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-      m.email?.toLowerCase().includes(search.toLowerCase()) ||
-      m.occupation?.toLowerCase().includes(search.toLowerCase()) ||
-      m.jumuiya?.toLowerCase().includes(search.toLowerCase())
+    const q = search.toLowerCase();
+    const matchSearch = !search || (
+      m.full_name?.toLowerCase().includes(q) ||
+      m.email?.toLowerCase().includes(q) ||
+      m.occupation?.toLowerCase().includes(q) ||
+      m.jumuiya?.toLowerCase().includes(q) ||
+      m.profession?.toLowerCase().includes(q)
     );
-    const matchFilter = filter === 'all' ? true
-      : filter === 'active'    ? (m.is_active && m.member_status !== 'amefariki')
-      : filter === 'inactive'  ? !m.is_active
-      : m.member_status === filter;
-    return matchSearch && matchFilter;
+    const matchStatus =
+      statusFilter === 'all'      ? true :
+      statusFilter === 'active'   ? (m.is_active && m.member_status !== 'amefariki') :
+      statusFilter === 'inactive' ? !m.is_active :
+      m.member_status === statusFilter;
+
+    const matchJumuiya    = !jumuiyaFilter    || m.jumuiya === jumuiyaFilter;
+    const matchGender     = !genderFilter     || m.gender  === genderFilter;
+    const matchOccupation = !occupationFilter || m.occupation === occupationFilter;
+    const matchMinistry   = !ministryFilter   ||
+      (m.ministries || []).some(mn => String(mn.ministry_id) === String(ministryFilter));
+
+    return matchSearch && matchStatus && matchJumuiya && matchGender && matchOccupation && matchMinistry;
   });
 
   return (
@@ -971,117 +756,146 @@ export default function MembersPage() {
         subtitle={`${members.length} ${lang === 'sw' ? 'washarika wote' : 'total members'}`}
       />
 
-      <div style={{ padding: '24px 32px', maxWidth: 900 }}>
+      <div style={{ padding: '24px 32px', maxWidth: 960 }}>
 
-        {/* Stat Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+        {/* ── Stat Cards ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 28 }}>
           {[
-            { label: 'Total Members',  value: members.length, accent: tokens.navy,    bg: tokens.navyMuted },
-            { label: 'Active',         value: activeCount,    accent: '#16A34A',      bg: '#F0FDF4' },
-            { label: 'Transferred',    value: transferCount,  accent: '#D97706',      bg: '#FFFBEB' },
-            { label: 'Volunteers',     value: volunteerCount, accent: tokens.gold,    bg: tokens.goldLight },
+            { label: 'Total Members', value: members.length },
+            { label: 'Active',        value: activeCount },
+            { label: 'Transferred',   value: transferCount },
+            { label: 'Volunteers',    value: volunteerCount },
           ].map((s) => (
-            <div key={s.label} style={{
-              background: s.bg, borderRadius: 12, padding: '14px 18px',
-              border: `1px solid ${s.accent}22`,
-            }}>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: s.accent, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{s.label}</p>
-              <p style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 700, color: s.accent, lineHeight: 1.1 }}>{s.value}</p>
+            <div key={s.label} className="stat-card">
+              <p className="stat-label">{s.label}</p>
+              <p className="stat-value">{s.value}</p>
             </div>
           ))}
         </div>
 
-        {/* Search + Filter bar */}
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-            <span style={{
-              position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
-              color: tokens.inkFaint, fontSize: 14, pointerEvents: 'none',
-            }}>⊙</span>
+        {/* ── Search + Add ── */}
+        <div className="flex gap-3 items-center" style={{ marginBottom: 12 }}>
+          <div className="search-bar" style={{ flex: 1 }}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, color: 'var(--text-disabled)' }}>
+              <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name, email, occupation, jumuiya…"
-              style={{
-                width: '100%', padding: '9px 12px 9px 34px',
-                borderRadius: 9, border: `1.5px solid ${tokens.border}`,
-                background: tokens.canvas, fontSize: 13, color: tokens.ink,
-                outline: 'none', boxSizing: 'border-box',
-              }}
-              onFocus={(e) => { e.target.style.borderColor = tokens.navy; e.target.style.boxShadow = '0 0 0 3px rgba(27,58,107,0.1)'; }}
-              onBlur={(e)  => { e.target.style.borderColor = tokens.border; e.target.style.boxShadow = 'none'; }}
             />
+            {search && (
+              <button onClick={() => setSearch('')} className="btn btn-ghost btn-icon" style={{ width: 22, height: 22, fontSize: 13, flexShrink: 0 }}>
+                ×
+              </button>
+            )}
           </div>
 
-          {/* Filter pills */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {FILTER_OPTIONS.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                style={{
-                  padding: '6px 12px', borderRadius: 20,
-                  background: filter === f.id ? tokens.navy : tokens.canvas,
-                  color: filter === f.id ? '#fff' : tokens.inkMuted,
-                  border: `1.5px solid ${filter === f.id ? tokens.navy : tokens.border}`,
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  transition: 'all 0.12s',
-                  display: 'flex', alignItems: 'center', gap: 5,
-                }}
-              >
-                {f.label}
-                <span style={{
-                  fontSize: 10, fontWeight: 700,
-                  background: filter === f.id ? 'rgba(255,255,255,0.2)' : tokens.surface,
-                  color: filter === f.id ? '#fff' : tokens.inkMuted,
-                  borderRadius: 20, padding: '1px 6px',
-                }}>
-                  {f.count}
-                </span>
-              </button>
-            ))}
+          {(user?.role === 'pastor' || user?.role === 'elder') && (
+            <button onClick={() => setShowAddMember(true)} className="btn btn-primary" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+              + Add Member
+            </button>
+          )}
+        </div>
 
-              {(user?.role === 'pastor' || user?.role === 'elder') && (
-    <button
-      onClick={() => setShowAddMember(true)}
-      style={{
-        padding: '8px 16px', borderRadius: 9,
-        background: tokens.navy, color: '#fff',
-        border: 'none', fontSize: 12, fontWeight: 700,
-        cursor: 'pointer', whiteSpace: 'nowrap',
-        display: 'flex', alignItems: 'center', gap: 6,
-        transition: 'background 0.12s',
-        flexShrink: 0,
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = tokens.navyLight; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = tokens.navy; }}
-    >
-      <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-      Add Member
-    </button>
-  )}
+        {/* ── Prominent Filter Bar ── */}
+        <div className="card filter-bar">
+          {/* Header row: label + clear-all */}
+          <div className="flex items-center justify-between filter-bar__header">
+            <span className="filter-bar__title">Filter members</span>
+            {hasActiveFieldFilters && (
+              <button onClick={clearAllFieldFilters} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)', fontSize: 11 }}>
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {/* Chip row */}
+          <div className="flex items-center gap-2 flex-wrap">
+
+            {/* Jumuiya */}
+            <FilterChip label="Jumuiya" active={!!jumuiyaFilter} onClear={() => setJumuiyaFilter('')}>
+              <select
+                value={jumuiyaFilter}
+                onChange={(e) => setJumuiyaFilter(e.target.value)}
+                className={`filter-chip__select${jumuiyaFilter ? ' filter-chip__select--active' : ''}`}
+              >
+                <option value="">All jumuiya</option>
+                {jumuiyaOptions.map(j => <option key={j} value={j}>{j}</option>)}
+              </select>
+            </FilterChip>
+
+            {/* Ministry */}
+            <FilterChip label="Ministry" active={!!ministryFilter} onClear={() => setMinistryFilter('')}>
+              <select
+                value={ministryFilter}
+                onChange={(e) => setMinistryFilter(e.target.value)}
+                className={`filter-chip__select${ministryFilter ? ' filter-chip__select--active' : ''}`}
+              >
+                <option value="">All ministries</option>
+                {ministries.map(mn => <option key={mn.id} value={mn.id}>{mn.name}</option>)}
+              </select>
+            </FilterChip>
+
+            {/* Gender */}
+            <FilterChip label="Gender" active={!!genderFilter} onClear={() => setGenderFilter('')}>
+              <select
+                value={genderFilter}
+                onChange={(e) => setGenderFilter(e.target.value)}
+                className={`filter-chip__select${genderFilter ? ' filter-chip__select--active' : ''}`}
+              >
+                <option value="">All genders</option>
+                <option value="Male">Male ♂</option>
+                <option value="Female">Female ♀</option>
+              </select>
+            </FilterChip>
+
+            {/* Occupation / Profession */}
+            <FilterChip label="Occupation" active={!!occupationFilter} onClear={() => setOccupationFilter('')}>
+              <select
+                value={occupationFilter}
+                onChange={(e) => setOccupationFilter(e.target.value)}
+                className={`filter-chip__select${occupationFilter ? ' filter-chip__select--active' : ''}`}
+              >
+                <option value="">All occupations</option>
+                {occupationOptions.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </FilterChip>
+
           </div>
         </div>
 
-        {/* List */}
-        <div style={{
-          background: tokens.canvas, borderRadius: 12,
-          border: `1px solid ${tokens.hairline}`,
-          overflow: 'hidden',
-          boxShadow: '0 2px 8px rgba(27,58,107,0.04)',
-        }}>
+        {/* ── Status pills ── */}
+        <div className="flex gap-2 items-center" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+          {STATUS_PILLS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setStatusFilter(f.id)}
+              className={`tab-pill ${statusFilter === f.id ? 'active' : ''}`}
+            >
+              {f.label}
+              <span className="badge badge-neutral" style={{ fontSize: 10, padding: '1px 6px', marginLeft: 2 }}>
+                {f.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* ── Member List ── */}
+        <div className="card" style={{ overflow: 'hidden' }}>
           {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
-              <div style={{
-                width: 20, height: 20, borderRadius: '50%',
-                border: `2.5px solid ${tokens.border}`,
-                borderTopColor: tokens.navy,
-                animation: 'spin 0.7s linear infinite',
-              }} />
+            <div className="empty-state">
+              <div className="skeleton" style={{ width: 160, height: 16, borderRadius: 8 }} />
+              <div className="skeleton" style={{ width: 120, height: 12, borderRadius: 8, marginTop: 8 }} />
             </div>
           ) : displayed.length === 0 ? (
-            <div style={{ padding: 48, textAlign: 'center', color: tokens.inkMuted, fontSize: 13 }}>
-              {search ? `No members found for "${search}"` : t('no_data')}
+            <div className="empty-state">
+              <span className="empty-state-icon">🔍</span>
+              <p className="empty-state-title">No members found</p>
+              <p className="empty-state-body">
+                {search ? `No results for "${search}"` : 'Try adjusting your filters'}
+              </p>
             </div>
           ) : (
             <div style={{ padding: '0 16px' }}>
@@ -1090,7 +904,6 @@ export default function MembersPage() {
                   key={m.id}
                   m={m}
                   user={user}
-                  t={t}
                   lang={lang}
                   onEdit={() => setEditUser({ ...m })}
                   onToggle={() => handleToggle(m)}
@@ -1101,9 +914,9 @@ export default function MembersPage() {
           )}
         </div>
 
-        {/* Shown count */}
+        {/* Count */}
         {!loading && displayed.length > 0 && (
-          <p style={{ margin: '10px 0 0', fontSize: 12, color: tokens.inkFaint, textAlign: 'right' }}>
+          <p className="text-xs text-right" style={{ margin: '10px 0 0', color: 'var(--text-disabled)' }}>
             Showing {displayed.length} of {members.length} members
           </p>
         )}
@@ -1121,48 +934,113 @@ export default function MembersPage() {
       )}
 
       {/* Add Member Modal */}
-{showAddMember && (
-  <AdminAddMemberModal
-    onClose={() => setShowAddMember(false)}
-    onAdded={() => {
-      setShowAddMember(false);
-      fetchMembers();
-      showToast('Member added successfully');
-    }}
-  />
-)}
+      {showAddMember && (
+        <AdminAddMemberModal
+          onClose={() => setShowAddMember(false)}
+          onAdded={() => {
+            setShowAddMember(false);
+            fetchMembers();
+            showToast('Member added successfully');
+          }}
+        />
+      )}
 
       {/* Delete Confirm Modal */}
       <Modal isOpen={!!deleteId} onClose={() => setDeleteId(null)} title={t('delete_member')}>
-        <p style={{ fontSize: 14, color: tokens.inkMuted, margin: '0 0 20px' }}>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)', margin: '0 0 20px' }}>
           {t('confirm_delete')}
         </p>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => setDeleteId(null)}
-            style={{
-              padding: '8px 16px', borderRadius: 8,
-              border: `1.5px solid ${tokens.border}`,
-              background: tokens.canvas, fontSize: 13,
-              fontWeight: 600, color: tokens.ink, cursor: 'pointer',
-            }}
-          >{t('cancel')}</button>
-          <button
-            onClick={() => handleDelete(deleteId)}
-            style={{
-              padding: '8px 16px', borderRadius: 8,
-              background: tokens.error, color: '#fff',
-              border: 'none', fontSize: 13,
-              fontWeight: 600, cursor: 'pointer',
-            }}
-          >{t('delete')}</button>
+        <div className="flex gap-2 justify-end">
+          <button onClick={() => setDeleteId(null)} className="btn btn-secondary">{t('cancel')}</button>
+          <button onClick={() => handleDelete(deleteId)} className="btn btn-danger">{t('delete')}</button>
         </div>
       </Modal>
 
       <Toast toast={toast} />
 
-      {/* Spinner keyframe */}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Filter bar container ───────────────────────────── */
+        .filter-bar {
+          padding: 14px 16px;
+          margin-bottom: 14px;
+        }
+        .filter-bar__header {
+          margin-bottom: 10px;
+        }
+        .filter-bar__title {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: var(--text-tertiary);
+        }
+
+        /* ── Individual filter chip ─────────────────────────── */
+        .filter-chip {
+          display: inline-flex;
+          align-items: center;
+          height: 36px;
+          padding: 0 6px 0 12px;
+          border-radius: 8px;
+          border: 1.5px solid var(--border-default);
+          background: var(--surface-page);
+          gap: 0;
+          transition: border-color 0.12s ease, background 0.12s ease;
+        }
+        .filter-chip--active {
+          border-color: var(--navy);
+          background: color-mix(in srgb, var(--navy) 7%, transparent);
+        }
+
+        /* Label inside chip */
+        .filter-chip__label {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: var(--text-tertiary);
+          white-space: nowrap;
+          margin-right: 6px;
+          pointer-events: none;
+          user-select: none;
+        }
+        .filter-chip--active .filter-chip__label {
+          color: var(--navy);
+        }
+
+        /* × clear button */
+        .filter-chip__clear {
+          width: 22px !important;
+          height: 22px !important;
+          font-size: 14px !important;
+          flex-shrink: 0;
+          margin-left: 2px;
+          color: var(--navy) !important;
+          opacity: 0.7;
+        }
+        .filter-chip__clear:hover { opacity: 1; }
+
+        /* Select inside chip — borderless, transparent */
+        .filter-chip__select {
+          height: 24px;
+          border: none !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          outline: none !important;
+          font-size: 12px;
+          font-weight: 400;
+          color: var(--text-secondary);
+          padding: 0 24px 0 2px;
+          min-width: 110px;
+          cursor: pointer;
+        }
+        .filter-chip__select--active {
+          font-weight: 600;
+          color: var(--navy);
+        }
+      `}</style>
     </div>
   );
 }

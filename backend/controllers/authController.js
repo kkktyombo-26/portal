@@ -454,6 +454,10 @@ exports.adminCreateUser = async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/admin-bulk-create  — pastor / elder only
 // ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// POST /api/auth/admin-bulk-create  — pastor / elder only
+// ═══════════════════════════════════════════════════════════
 exports.adminBulkCreateUsers = async (req, res, next) => {
   try {
     const { users } = req.body;
@@ -464,31 +468,36 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         message: 'A non-empty "users" array is required.',
       });
     }
-    if (users.length > 200) {
+    if (users.length > 1200) {
       return res.status(400).json({
         success: false,
-        message: 'Maximum 200 members per bulk upload.',
+        message: 'Maximum 1200 members per bulk upload.',
       });
     }
 
     const results = [];
 
+    // ── Pre-flight: catch duplicates within the batch itself ──
+    const seenPhones  = new Set();
+    const seenAhadis  = new Set();
+    const seenNames   = new Set();
+
     for (let i = 0; i < users.length; i++) {
       const row = i + 1;
       const {
-        full_name,          // JINA LA MSHARIKA
-        phone,              // NAMBA YA SIMU
-        ahadi_number,       // AHADI NUMBER
-        gender,             // GANDER
-        marital_status,     // MARITAL STATUS
-        occupation,         // KAZI/UJUZI
-        jumuiya,            // JUMUIYA
+        full_name,
+        phone,
+        ahadi_number,
+        gender,
+        marital_status,
+        occupation,
+        jumuiya,
         role     = 'member',
         group_id,
         password: suppliedPassword,
       } = users[i];
 
-      // ── Validation ────────────────────────────────────────
+      // ── Basic validation ────────────────────────────────────
       if (!full_name || !String(full_name).trim()) {
         results.push({ row, status: 'skipped', reason: 'Missing full_name.' });
         continue;
@@ -497,22 +506,62 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         results.push({
           row,
           status: 'skipped',
-          name: full_name,
+          name:   full_name,
           reason: 'Phone or ahadi_number is required.',
         });
         continue;
       }
 
+      const cleanName = String(full_name).trim();
+
+      // ── Intra-batch duplicate checks ────────────────────────
+      if (phone && seenPhones.has(phone)) {
+        results.push({
+          row,
+          status: 'skipped',
+          name:   cleanName,
+          reason: `Duplicate phone in batch: "${phone}".`,
+        });
+        continue;
+      }
+
+      if (ahadi_number && seenAhadis.has(ahadi_number)) {
+        results.push({
+          row,
+          status: 'skipped',
+          name:   cleanName,
+          reason: `Duplicate ahadi_number in batch: "${ahadi_number}".`,
+        });
+        continue;
+      }
+
+      if (seenNames.has(cleanName.toLowerCase())) {
+        results.push({
+          row,
+          status: 'skipped',
+          name:   cleanName,
+          reason: `Duplicate full_name in batch: "${cleanName}".`,
+        });
+        continue;
+      }
+
+      // Track seen values before attempting DB insert
+      if (phone)        seenPhones.add(phone);
+      if (ahadi_number) seenAhadis.add(ahadi_number);
+      seenNames.add(cleanName.toLowerCase());
+
       try {
-        // ── Duplicate guards ──────────────────────────────
+        // ── Database duplicate checks ───────────────────────
         if (phone) {
           const [dupPhone] = await db.execute(
             'SELECT id FROM users WHERE phone = ?', [phone]
           );
           if (dupPhone.length > 0) {
             results.push({
-              row, status: 'skipped', name: full_name,
-              reason: `Phone "${phone}" already exists.`,
+              row,
+              status: 'skipped',
+              name:   cleanName,
+              reason: `Phone "${phone}" already exists in database.`,
             });
             continue;
           }
@@ -524,19 +573,36 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
           );
           if (dupAhadi.length > 0) {
             results.push({
-              row, status: 'skipped', name: full_name,
-              reason: `Ahadi number "${ahadi_number}" already exists.`,
+              row,
+              status: 'skipped',
+              name:   cleanName,
+              reason: `Ahadi number "${ahadi_number}" already exists in database.`,
             });
             continue;
           }
         }
 
-        // ── Password ──────────────────────────────────────
+        // Check full_name against the database as well
+        const [dupName] = await db.execute(
+          'SELECT id FROM users WHERE LOWER(full_name) = LOWER(?) AND role = ?',
+          [cleanName, role]
+        );
+        if (dupName.length > 0) {
+          results.push({
+            row,
+            status: 'skipped',
+            name:   cleanName,
+            reason: `A member named "${cleanName}" already exists in database.`,
+          });
+          continue;
+        }
+
+        // ── Password ──────────────────────────────────────────
         const isGenerated = !suppliedPassword;
         const rawPassword = suppliedPassword || generateTempPassword();
         const hashed      = await bcrypt.hash(rawPassword, 12);
 
-        // ── INSERT ────────────────────────────────────────
+        // ── INSERT ────────────────────────────────────────────
         const [result] = await db.execute(
           `INSERT INTO users (
             full_name, phone, ahadi_number,
@@ -550,15 +616,15 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
             1, 1
           )`,
           [
-            String(full_name).trim(),
-            phone         || null,
-            ahadi_number  || null,
-            gender        || null,
-            marital_status|| null,
-            occupation    || null,
-            jumuiya       || null,
+            cleanName,
+            phone          || null,
+            ahadi_number   || null,
+            gender         || null,
+            marital_status || null,
+            occupation     || null,
+            jumuiya        || null,
             role,
-            group_id      || null,
+            group_id       || null,
             hashed,
           ]
         );
@@ -566,7 +632,7 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         results.push({
           row,
           status:            'created',
-          name:              String(full_name).trim(),
+          name:              cleanName,
           phone:             phone        || null,
           ahadi_number:      ahadi_number || null,
           userId:            result.insertId,
@@ -575,13 +641,14 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
 
       } catch (rowErr) {
         console.error(`Bulk create row ${row} error:`, rowErr.message);
-        results.push({ row, status: 'error', name: full_name, reason: rowErr.message });
+        results.push({ row, status: 'error', name: cleanName, reason: rowErr.message });
       }
     }
 
     // ── Summary ───────────────────────────────────────────────
     const created = results.filter(r => r.status === 'created');
-    const skipped = results.filter(r => r.status !== 'created');
+    const skipped = results.filter(r => r.status === 'skipped');
+    const errored = results.filter(r => r.status === 'error');
 
     if (created.length > 0) {
       broadcast('members_bulk_added_by_admin', {
@@ -598,17 +665,21 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
 
     console.log(
       `Admin ${req.user.name} bulk-created ${created.length}/${users.length} members ` +
-      `(${skipped.length} skipped/errored)`
+      `(${skipped.length} skipped, ${errored.length} errored)`
     );
 
     return res.status(201).json({
       success: true,
-      summary: { total: users.length, created: created.length, skipped: skipped.length },
+      summary: {
+        total:   users.length,
+        created: created.length,
+        skipped: skipped.length,
+        errored: errored.length,
+      },
       results,
     });
   } catch (err) { next(err); }
 };
-
 
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/login
@@ -769,3 +840,211 @@ exports.me = async (req, res, next) => {
     res.json({ success: true, user: rows[0] });
   } catch (err) { next(err); }
 };
+
+
+// ═══════════════════════════════════════════════════════════
+// GET /api/auth/members          — pastor / elder only
+//
+// Query params (all optional, combinable):
+//   sortBy      — field to sort by: full_name | jumuiya | gender |
+//                 marital_status | occupation | created_at | member_since
+//                 (default: full_name)
+//   order       — asc | desc  (default: asc)
+//   jumuiya     — filter by exact jumuiya name
+//   ministry    — filter by ministry ID
+//   gender      — Male | Female
+//   marital_status
+//   member_status — hai | amehamia | amefariki
+//   group_id    — filter by group
+//   search      — partial match on full_name, phone, ahadi_number,
+//                 namba_ya_usharika
+//   page        — page number (default: 1)
+//   limit       — rows per page, max 200 (default: 50)
+// ═══════════════════════════════════════════════════════════
+exports.getMembers = async (req, res, next) => {
+  try {
+    // ── Allowed sort columns (whitelist to prevent SQL injection) ──
+    const SORTABLE = new Set([
+      'full_name', 'jumuiya', 'gender', 'marital_status',
+      'occupation', 'created_at', 'member_since', 'date_of_birth',
+    ]);
+
+    // ── Parse & sanitise query params ──────────────────────────
+    const sortBy        = SORTABLE.has(req.query.sortBy) ? req.query.sortBy : 'full_name';
+    const order         = req.query.order === 'desc' ? 'DESC' : 'ASC';
+    const page          = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit         = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+    const offset        = (page - 1) * limit;
+
+    const filterJumuiya       = req.query.jumuiya        || null;
+    const filterMinistry      = parseInt(req.query.ministry) || null;
+    const filterGender        = req.query.gender         || null;
+    const filterMarital       = req.query.marital_status || null;
+    const filterMemberStatus  = req.query.member_status  || null;
+    const filterGroupId       = parseInt(req.query.group_id) || null;
+    const search              = req.query.search         || null;
+
+    // ── Build WHERE clauses dynamically ────────────────────────
+    const conditions = [`u.role = 'member'`, `u.is_active = 1`];
+    const params     = [];
+
+    if (filterJumuiya) {
+      conditions.push('u.jumuiya = ?');
+      params.push(filterJumuiya);
+    }
+    if (filterGender) {
+      conditions.push('u.gender = ?');
+      params.push(filterGender);
+    }
+    if (filterMarital) {
+      conditions.push('u.marital_status = ?');
+      params.push(filterMarital);
+    }
+    if (filterMemberStatus) {
+      conditions.push('u.member_status = ?');
+      params.push(filterMemberStatus);
+    }
+    if (filterGroupId) {
+      conditions.push('u.group_id = ?');
+      params.push(filterGroupId);
+    }
+    if (search) {
+      conditions.push(`(
+        u.full_name           LIKE ? OR
+        u.phone               LIKE ? OR
+        u.ahadi_number        LIKE ? OR
+        u.namba_ya_usharika   LIKE ?
+      )`);
+      const like = `%${search}%`;
+      params.push(like, like, like, like);
+    }
+
+    // Ministry filter requires a JOIN — handle separately
+    const ministryJoin = filterMinistry
+      ? `INNER JOIN member_ministries mm ON mm.member_id = u.id AND mm.ministry_id = ?`
+      : '';
+    if (filterMinistry) params.unshift(filterMinistry); // must be first param (before WHERE params)
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    // ── Count total rows (for pagination meta) ─────────────────
+    const countParams = filterMinistry ? [filterMinistry, ...params.slice(1)] : [...params];
+    // rebuild cleanly
+    const countConditionParams = [];
+    if (filterMinistry)      countConditionParams.push(filterMinistry);
+    if (filterJumuiya)       countConditionParams.push(filterJumuiya);
+    if (filterGender)        countConditionParams.push(filterGender);
+    if (filterMarital)       countConditionParams.push(filterMarital);
+    if (filterMemberStatus)  countConditionParams.push(filterMemberStatus);
+    if (filterGroupId)       countConditionParams.push(filterGroupId);
+    if (search) {
+      const like = `%${search}%`;
+      countConditionParams.push(like, like, like, like);
+    }
+
+    const [[{ total }]] = await db.execute(
+      `SELECT COUNT(DISTINCT u.id) AS total
+       FROM users u
+       ${ministryJoin}
+       ${whereClause}`,
+      countConditionParams
+    );
+
+    // ── Fetch page of members ───────────────────────────────────
+    const dataParams = [...countConditionParams, limit, offset];
+
+    const [members] = await db.execute(
+      `SELECT
+         u.id,
+         u.full_name,
+         u.phone,
+         u.ahadi_number,
+         u.namba_ya_usharika,
+         u.email,
+         u.gender,
+         u.date_of_birth,
+         u.member_status,
+         u.marital_status,
+         u.jumuiya,
+         u.block_no,
+         u.area_name,
+         u.occupation,
+         u.profile_photo_url,
+         u.member_since,
+         u.created_at,
+         g.name AS group_name,
+
+         -- Aggregate ministries as a JSON array
+         (
+           SELECT JSON_ARRAYAGG(
+             JSON_OBJECT('id', m.id, 'name', m.name)
+           )
+           FROM member_ministries mm2
+           INNER JOIN ministries m ON m.id = mm2.ministry_id
+           WHERE mm2.member_id = u.id
+         ) AS ministries,
+
+         -- Dependant count
+         (
+           SELECT COUNT(*) FROM member_dependants md
+           WHERE md.member_id = u.id
+         ) AS dependants_count
+
+       FROM users u
+       LEFT JOIN \`groups\` g ON g.id = u.group_id
+       ${ministryJoin}
+       ${whereClause}
+       GROUP BY u.id
+       ORDER BY u.${sortBy} ${order}
+       LIMIT ? OFFSET ?`,
+      dataParams
+    );
+
+    // ── Parse JSON_ARRAYAGG strings (MySQL returns them as strings) ──
+    const parsed = members.map(m => ({
+      ...m,
+      ministries: m.ministries
+        ? (typeof m.ministries === 'string' ? JSON.parse(m.ministries) : m.ministries)
+        : [],
+    }));
+
+    // ── Distinct jumuiya list (useful for filter dropdowns) ─────
+    const [jumuiyaList] = await db.execute(
+      `SELECT DISTINCT jumuiya
+       FROM users
+       WHERE role = 'member' AND is_active = 1 AND jumuiya IS NOT NULL
+       ORDER BY jumuiya ASC`
+    );
+
+    // ── Response ────────────────────────────────────────────────
+    return res.json({
+      success: true,
+      meta: {
+        total,
+        page,
+        limit,
+        pages:   Math.ceil(total / limit),
+        sortBy,
+        order,
+        filters: {
+          jumuiya:       filterJumuiya,
+          ministry:      filterMinistry,
+          gender:        filterGender,
+          marital_status: filterMarital,
+          member_status: filterMemberStatus,
+          group_id:      filterGroupId,
+          search,
+        },
+      },
+      jumuiya_options: jumuiyaList.map(r => r.jumuiya),
+      members: parsed,
+    });
+  } catch (err) { next(err); }
+};
+
+
+
+
+
+
+

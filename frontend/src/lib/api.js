@@ -1,5 +1,3 @@
-
-
 import axios from 'axios';
 
 const api = axios.create({
@@ -7,7 +5,7 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach token from localStorage;
+// Attach token from localStorage
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('church_token');
@@ -33,11 +31,38 @@ api.interceptors.response.use(
 );
 
 export const authApi = {
-  login:    (data) => api.post('/auth/login', data),
-  register: (data) => api.post('/auth/register', data),
-  me:       ()     => api.get('/auth/me'),
-  adminCreate:  (data) => api.post('/auth/admin-create', data),
+  login:           (data) => api.post('/auth/login', data),
+  register:        (data) => api.post('/auth/register', data),
+  me:              ()     => api.get('/auth/me'),
+  adminCreate:     (data) => api.post('/auth/admin-create', data),
   adminBulkCreate: (data) => api.post('/auth/admin-bulk-create', data),
+
+  /**
+   * GET /api/auth/members
+   *
+   * All params are optional and combinable:
+   * @param {Object} params
+   * @param {string}  params.sortBy        — full_name | jumuiya | gender | marital_status |
+   *                                         occupation | created_at | member_since | date_of_birth
+   * @param {string}  params.order         — asc | desc
+   * @param {string}  params.jumuiya       — exact jumuiya name
+   * @param {number}  params.ministry      — ministry ID
+   * @param {string}  params.gender        — Male | Female
+   * @param {string}  params.marital_status
+   * @param {string}  params.member_status — hai | amehamia | amefariki
+   * @param {number}  params.group_id
+   * @param {string}  params.search        — partial match on name / phone / ahadi_number / namba
+   * @param {number}  params.page          — default 1
+   * @param {number}  params.limit         — default 50, max 200
+   */
+  getMembers: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null)
+      )
+    ).toString();
+    return api.get(`/auth/members${qs ? `?${qs}` : ''}`);
+  },
 };
 
 export const userApi = {
@@ -47,7 +72,7 @@ export const userApi = {
   delete:   (id)     => api.delete(`/users/${id}`),
   getStats: ()       => api.get('/users/stats'),
   changePassword: (userId, data) =>
-  api.put(`/users/${userId}/password`, data),
+    api.put(`/users/${userId}/password`, data),
 };
 
 export const ministryApi = {
@@ -55,12 +80,12 @@ export const ministryApi = {
   // Returns full catalogue: [{ id, name, category, description }]
   getAll: () =>
     api.get('/ministries'),
- 
+
   // GET /api/ministries/member/:userId
   // Returns member's current memberships: [{ ministry_id, name, category }]
   getMemberMinistries: (userId) =>
     api.get(`/ministries/member/${userId}`),
- 
+
   // PUT /api/ministries/member/:userId/sync
   // Replaces the member's ministry set with the supplied ID array.
   // ministryIds: number[]
@@ -82,23 +107,23 @@ export const groupApi = {
     ).toString();
     return api.get(`/groups${qs ? `?${qs}` : ''}`);
   },
- 
+
   // GET /api/groups/:id
   getById: (id) => api.get(`/groups/${id}`),
- 
+
   // POST /api/groups
   create: (data) => api.post('/groups', data),
   // data shape: { name, name_sw, type, description?, year?, start_date?, end_date?, leader_id? }
- 
+
   // PUT /api/groups/:id
   update: (id, data) => api.put(`/groups/${id}`, data),
- 
+
   // PUT /api/groups/:id/archive
   archive: (id) => api.put(`/groups/${id}/archive`),
- 
+
   // DELETE /api/groups/:id
   delete: (id) => api.delete(`/groups/${id}`),
- 
+
   // GET /api/groups/:id/members?year=2025&status=active
   getMembers: (id, params = {}) => {
     const qs = new URLSearchParams(
@@ -106,11 +131,11 @@ export const groupApi = {
     ).toString();
     return api.get(`/groups/${id}/members${qs ? `?${qs}` : ''}`);
   },
- 
+
   // POST /api/groups/:id/members
   addMember: (id, data) => api.post(`/groups/${id}/members`, data),
   // data shape: { user_id, year?, role_in_group?, joined_date? }
- 
+
   // DELETE /api/groups/:id/members/:membershipId   (soft-remove by membership row id)
   removeMember: (id, membershipId) => api.delete(`/groups/${id}/members/${membershipId}`),
 };
@@ -123,11 +148,11 @@ export const eventApi = {
 };
 
 export const formTemplateApi = {
-  getAll:  ()               => api.get('/form-templates'),
-  getOne:  (id)             => api.get(`/form-templates/${id}`),
-  create:  (payload)        => api.post('/form-templates', payload),
-  update:  (id, payload)    => api.put(`/form-templates/${id}`, payload),
-  remove:  (id)             => api.delete(`/form-templates/${id}`),
+  getAll:  ()            => api.get('/form-templates'),
+  getOne:  (id)          => api.get(`/form-templates/${id}`),
+  create:  (payload)     => api.post('/form-templates', payload),
+  update:  (id, payload) => api.put(`/form-templates/${id}`, payload),
+  remove:  (id)          => api.delete(`/form-templates/${id}`),
 };
 
 export const committeeApi = {
@@ -142,25 +167,24 @@ export const siteContentApi = {
   getAll: () => api.get('/site-content'),
 
   // GET /api/site-content/:key  → { success, data: <value>, updatedAt }
-  getOne:      (key)        => api.get(`/site-content/${key}`),
+  getOne:     (key)         => api.get(`/site-content/${key}`),
 
   // Alias used by the content editor page
-  getSection:  (key)        => api.get(`/site-content/${key}`),
+  getSection: (key)         => api.get(`/site-content/${key}`),
 
   // PUT /api/site-content/:key  (pastor | elder)
-  save:        (key, value) => api.put(`/site-content/${key}`, value),
+  save:       (key, value)  => api.put(`/site-content/${key}`, value),
 
   // DELETE /api/site-content/:key  (pastor only)
   // Removes the DB row so the frontend falls back to the hardcoded default.
-  reset:       (key)        => api.delete(`/site-content/${key}`),
+  reset:      (key)         => api.delete(`/site-content/${key}`),
 };
-
-// Replace the existing dependantApi block in lib/api.js with this:
 
 export const dependantApi = {
-  getAll: (userId)               => api.get(`/users/${userId}/dependants`),
-  add:    (userId, data)         => api.post(`/users/${userId}/dependants`, data),
-  update: (userId, depId, data)  => api.patch(`/users/${userId}/dependants/${depId}`, data),
-  remove: (userId, depId)        => api.delete(`/users/${userId}/dependants/${depId}`),
+  getAll: (userId)              => api.get(`/users/${userId}/dependants`),
+  add:    (userId, data)        => api.post(`/users/${userId}/dependants`, data),
+  update: (userId, depId, data) => api.patch(`/users/${userId}/dependants/${depId}`, data),
+  remove: (userId, depId)       => api.delete(`/users/${userId}/dependants/${depId}`),
 };
+
 export default api;
