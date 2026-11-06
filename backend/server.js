@@ -7,6 +7,7 @@ const { initSocket } = require('./socket');
 
 const authRoutes          = require('./routes/auth');
 const userRoutes          = require('./routes/users');
+const phoneLoginRoutes = require('./routes/phoneLogin'); 
 const announcementRoutes  = require('./routes/announcements');
 const emailRoutes         = require('./routes/email-routes');
 const groupRoutes         = require('./routes/groups');
@@ -49,6 +50,7 @@ app.use('/api/ministries',     ministriesRouter);
 app.use('/api/committees',     committeesRouter);
 app.use('/api/r2', r2Routes);
 app.use('/api/pledges', pledgeRoutes);
+app.use('/api/auth', phoneLoginRoutes); 
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
 app.use(errorHandler);

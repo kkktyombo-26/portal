@@ -4,7 +4,9 @@ const db = require('../config/db');
 
 const { broadcast, notifyUser } = require('../socket/index');
 const { sendNotification, sendWelcomeEmail } = require('../services/emailService');
-
+const { requestPhoneOTP, verifyPhoneOTP } =
+  require('../controllers/phoneLoginController');
+  
 const generateToken = (user) => jwt.sign(
   { id: user.id, role: user.role, name: user.full_name, groupId: user.group_id },
   process.env.JWT_SECRET,

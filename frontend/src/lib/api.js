@@ -34,6 +34,8 @@ export const authApi = {
   login:           (data) => api.post('/auth/login', data),
   register:        (data) => api.post('/auth/register', data),
   me:              ()     => api.get('/auth/me'),
+  requestPhoneOTP: (data) => api.post('/auth/phone-login/request', data),
+  verifyPhoneOTP:  (data) => api.post('/auth/phone-login/verify', data),
   adminCreate:     (data) => api.post('/auth/admin-create', data),
   adminBulkCreate: (data) => api.post('/auth/admin-bulk-create', data),
 
