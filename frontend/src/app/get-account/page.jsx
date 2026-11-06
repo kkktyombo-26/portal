@@ -1,35 +1,64 @@
 'use client';
 /**
- * components/auth/PhoneLogin.jsx
- * ───────────────────────────────
+ * app/get-account/page.jsx
+ * ────────────────────────
  * Passwordless phone OTP login — NextSMS backend.
- * Corporate minimalist, responsive, no icons/emojis.
+ *
+ * Public-route guard: if the user is already logged in this page immediately
+ * redirects to /dashboard/profile so they never see the login form again.
+ *
+ * On successful verification:
+ *   1. Persists token + user to localStorage via setAuth()
+ *   2. Syncs AuthContext in memory via loginWithToken()
+ *   3. Navigates to /dashboard/profile via router.push()
+ *
+ * Layout helpers (Wrap, Wordmark, Divider) are defined at module scope —
+ * not inside the default export — so React never sees a new component type
+ * on re-render, which would unmount the card and re-trigger autoFocus.
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { authApi } from '../../lib/api';
-import { setAuth } from '../../lib/auth';
+import { useRouter } from 'next/navigation';
+import { authApi }   from '../../lib/api';
+import { setAuth }   from '../../lib/auth';
+import { useAuth }   from '../../hooks/useAuth';
 
 const OTP_TTL_MINUTES = 5;
-const RESEND_COOLDOWN = 60;
+const RESEND_COOLDOWN  = 60;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 6-digit OTP input — underline-only style
 // ═══════════════════════════════════════════════════════════════════════════
 function OTPBoxes({ value, onChange, disabled }) {
   const refs   = useRef([]);
-  const digits = (value + '      ').slice(0, 6).split('');
+  const digits = value.padEnd(6, ' ').slice(0, 6).split('');
 
   function handleInput(i, e) {
-    const ch   = e.target.value.replace(/\D/g, '').slice(-1);
-    const next = digits.map((d, j) => (j === i ? ch : d)).join('').trimEnd();
+    const ch = e.target.value.replace(/\D/g, '').slice(-1);
+    const next = digits
+      .map((d, j) => (j === i ? (ch || ' ') : d))
+      .join('')
+      .trimEnd();
     onChange(next);
     if (ch && i < 5) refs.current[i + 1]?.focus();
   }
 
   function handleKeyDown(i, e) {
-    if (e.key === 'Backspace' && !digits[i].trim() && i > 0) {
-      refs.current[i - 1]?.focus();
+    if (e.key === 'Backspace') {
+      if (digits[i].trim()) {
+        const next = digits
+          .map((d, j) => (j === i ? ' ' : d))
+          .join('')
+          .trimEnd();
+        onChange(next);
+      } else if (i > 0) {
+        const next = digits
+          .map((d, j) => (j === i - 1 ? ' ' : d))
+          .join('')
+          .trimEnd();
+        onChange(next);
+        refs.current[i - 1]?.focus();
+      }
     }
   }
 
@@ -85,9 +114,96 @@ function OTPBoxes({ value, onChange, disabled }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Layout helpers — module scope (see note at top of file)
+// ═══════════════════════════════════════════════════════════════════════════
+function Wrap({ children }) {
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{
+        background: 'var(--surface-page)',
+        padding: 'clamp(1.5rem, 5vw, 3rem) 1rem',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '26rem',
+          padding: 'clamp(2rem, 6vw, 3rem) clamp(1.5rem, 5vw, 2.5rem)',
+          background: 'var(--surface-card, #ffffff)',
+          borderRadius: '2px',
+          border: '1px solid var(--border, #e5e7eb)',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Wordmark() {
+  return (
+    <p
+      style={{
+        fontSize: '0.6875rem',
+        fontWeight: 600,
+        letterSpacing: '0.12em',
+        color: 'var(--text-tertiary)',
+        textTransform: 'uppercase',
+        margin: '0 0 2rem 0',
+      }}
+    >
+      Kanisa la KKKT
+    </p>
+  );
+}
+
+function Divider() {
+  return (
+    <div
+      style={{
+        height: '1px',
+        background: 'var(--border, #e5e7eb)',
+        margin: '0 0 2rem 0',
+      }}
+    />
+  );
+}
+
+// ── Minimal inline spinner ─────────────────────────────────────────────────
+function Spinner() {
+  return (
+    <svg
+      className="animate-spin"
+      style={{ width: 15, height: 15, flexShrink: 0, marginRight: '0.5rem' }}
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+      <path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  );
+}
+
+// ── Full-screen blank while AuthProvider resolves the stored token ─────────
+function AuthLoadingScreen() {
+  return (
+    <div
+      className="min-h-screen"
+      style={{ background: 'var(--surface-page)' }}
+      aria-hidden="true"
+    />
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Main component
 // ═══════════════════════════════════════════════════════════════════════════
-export default function PhoneLogin({ onSuccess }) {
+export default function PhoneLogin() {
+  const router             = useRouter();
+  const { user, loading: authLoading, loginWithToken } = useAuth();
+
   const [step,      setStep]      = useState('phone');
   const [phone,     setPhone]     = useState('');
   const [otp,       setOtp]       = useState('');
@@ -95,23 +211,36 @@ export default function PhoneLogin({ onSuccess }) {
   const [error,     setError]     = useState('');
   const [countdown, setCountdown] = useState(0);
 
+  // ── Public-route guard ───────────────────────────────────────────────────
+  // Wait for AuthProvider to finish validating the stored token before
+  // deciding what to render. Once it settles:
+  //   • user is set  → already logged in, skip the form and go to dashboard
+  //   • user is null → show the login form as normal
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace('/dashboard/profile');
+    }
+  }, [authLoading, user, router]);
+
+  // Countdown timer for resend cooldown
   useEffect(() => {
     if (countdown <= 0) return;
     const id = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(id);
   }, [countdown]);
 
+  // Auto-submit when all 6 digits are entered
   useEffect(() => {
     if (step === 'otp' && otp.length === 6 && !loading) handleVerify();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otp]);
 
-  async function requestOTP(phone) {
-    return authApi.requestPhoneOTP({ phone });
+  async function requestOTP(phoneNumber) {
+    return authApi.requestPhoneOTP({ phone: phoneNumber });
   }
 
-  async function verifyOTP(phone, otp) {
-    return authApi.verifyPhoneOTP({ phone, otp });
+  async function verifyOTP(phoneNumber, otpCode) {
+    return authApi.verifyPhoneOTP({ phone: phoneNumber, otp: otpCode });
   }
 
   async function handleRequest(e) {
@@ -138,8 +267,9 @@ export default function PhoneLogin({ onSuccess }) {
     try {
       const res  = await verifyOTP(phone.trim(), otp);
       const data = res.data;
-      setAuth(data.token, data.user);
-      onSuccess?.(data.token, data.user);
+      setAuth(data.token, data.user);        // 1. persist to localStorage
+      loginWithToken(data.token, data.user); // 2. sync AuthContext in memory
+      router.push('/dashboard/profile');     // 3. navigate to dashboard
     } catch (err) {
       setError(err.message);
       setOtp('');
@@ -163,47 +293,15 @@ export default function PhoneLogin({ onSuccess }) {
     }
   }
 
-  // ── Layout shell ──────────────────────────────────────────────────────────
-  const Wrap = ({ children }) => (
-    <div
-      className="min-h-screen flex items-center justify-center"
-      style={{
-        background: 'var(--surface-page)',
-        padding: 'clamp(1.5rem, 5vw, 3rem) 1rem',
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '26rem',          // ~416 px — comfortable on mobile, not wide on desktop
-          padding: 'clamp(2rem, 6vw, 3rem) clamp(1.5rem, 5vw, 2.5rem)',
-          background: 'var(--surface-card, #ffffff)',
-          borderRadius: '2px',        // near-sharp — deliberately non-rounded for corporate feel
-          border: '1px solid var(--border, #e5e7eb)',
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
+  // ── While AuthProvider is still checking the stored token, render nothing.
+  // This prevents a flash of the login form before the redirect fires.
+  if (authLoading || (!authLoading && user)) return <AuthLoadingScreen />;
 
   // ── STEP: phone entry ──────────────────────────────────────────────────────
   if (step === 'phone') {
     return (
       <Wrap>
-        {/* Wordmark / org label */}
-        <p
-          style={{
-            fontSize: '0.6875rem',
-            fontWeight: 600,
-            letterSpacing: '0.12em',
-            color: 'var(--text-tertiary)',
-            textTransform: 'uppercase',
-            marginBottom: '2rem',
-          }}
-        >
-          Kanisa la KKKT
-        </p>
+        <Wordmark />
 
         <div style={{ marginBottom: '2rem' }}>
           <h1
@@ -214,7 +312,7 @@ export default function PhoneLogin({ onSuccess }) {
               color: 'var(--text-primary)',
               letterSpacing: '-0.02em',
               lineHeight: 1.2,
-              marginBottom: '0.5rem',
+              margin: '0 0 0.5rem 0',
             }}
           >
             Ingia kwa nambari ya simu
@@ -224,14 +322,7 @@ export default function PhoneLogin({ onSuccess }) {
           </p>
         </div>
 
-        {/* Thin rule — the one decorative gesture */}
-        <div
-          style={{
-            height: '1px',
-            background: 'var(--border, #e5e7eb)',
-            marginBottom: '2rem',
-          }}
-        />
+        <Divider />
 
         <form onSubmit={handleRequest} noValidate>
           <div className="form-group" style={{ marginBottom: '1.25rem' }}>
@@ -275,12 +366,7 @@ export default function PhoneLogin({ onSuccess }) {
             className="btn btn-primary w-full"
             type="submit"
             disabled={loading}
-            style={{
-              borderRadius: '2px',
-              fontWeight: 600,
-              fontSize: '0.9375rem',
-              height: '2.75rem',
-            }}
+            style={{ borderRadius: '2px', fontWeight: 600, fontSize: '0.9375rem', height: '2.75rem' }}
           >
             {loading ? <><Spinner /> Inatuma…</> : 'Tuma nambari ya uthibitisho'}
           </button>
@@ -292,19 +378,7 @@ export default function PhoneLogin({ onSuccess }) {
   // ── STEP: OTP entry ────────────────────────────────────────────────────────
   return (
     <Wrap>
-      {/* Wordmark */}
-      <p
-        style={{
-          fontSize: '0.6875rem',
-          fontWeight: 600,
-          letterSpacing: '0.12em',
-          color: 'var(--text-tertiary)',
-          textTransform: 'uppercase',
-          marginBottom: '2rem',
-        }}
-      >
-        Kanisa la KKKT
-      </p>
+      <Wordmark />
 
       <div style={{ marginBottom: '2rem' }}>
         <h1
@@ -315,7 +389,7 @@ export default function PhoneLogin({ onSuccess }) {
             color: 'var(--text-primary)',
             letterSpacing: '-0.02em',
             lineHeight: 1.2,
-            marginBottom: '0.5rem',
+            margin: '0 0 0.5rem 0',
           }}
         >
           Weka nambari ya uthibitisho
@@ -327,13 +401,7 @@ export default function PhoneLogin({ onSuccess }) {
         </p>
       </div>
 
-      <div
-        style={{
-          height: '1px',
-          background: 'var(--border, #e5e7eb)',
-          marginBottom: '2rem',
-        }}
-      />
+      <Divider />
 
       <form onSubmit={handleVerify} noValidate>
         <OTPBoxes
@@ -361,18 +429,12 @@ export default function PhoneLogin({ onSuccess }) {
           className="btn btn-primary w-full"
           type="submit"
           disabled={loading || otp.length !== 6}
-          style={{
-            borderRadius: '2px',
-            fontWeight: 600,
-            fontSize: '0.9375rem',
-            height: '2.75rem',
-          }}
+          style={{ borderRadius: '2px', fontWeight: 600, fontSize: '0.9375rem', height: '2.75rem' }}
         >
           {loading ? <><Spinner /> Inathibitisha…</> : 'Thibitisha na uingie'}
         </button>
       </form>
 
-      {/* Resend row */}
       <div
         style={{
           textAlign: 'center',
@@ -408,7 +470,6 @@ export default function PhoneLogin({ onSuccess }) {
         )}
       </div>
 
-      {/* Back link */}
       <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
         <button
           type="button"
@@ -422,28 +483,12 @@ export default function PhoneLogin({ onSuccess }) {
             cursor: 'pointer',
             transition: 'color 120ms ease',
           }}
-          onMouseEnter={e => e.target.style.color = 'var(--text-primary)'}
-          onMouseLeave={e => e.target.style.color = 'var(--text-tertiary)'}
+          onMouseEnter={e => (e.target.style.color = 'var(--text-primary)')}
+          onMouseLeave={e => (e.target.style.color = 'var(--text-tertiary)')}
         >
           ← Badilisha nambari
         </button>
       </div>
     </Wrap>
-  );
-}
-
-// ── Minimal inline spinner ─────────────────────────────────────────────────
-function Spinner() {
-  return (
-    <svg
-      className="animate-spin"
-      style={{ width: 15, height: 15, flexShrink: 0, marginRight: '0.5rem' }}
-      fill="none"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-      <path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-    </svg>
   );
 }

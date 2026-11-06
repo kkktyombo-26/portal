@@ -5,7 +5,8 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach token from localStorage
+// Attach token from localStorage — read fresh on every request so tokens
+// set after import time (OTP login, token refresh) are always picked up.
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('church_token');
@@ -21,11 +22,15 @@ api.interceptors.response.use(
       err.response?.data?.message ||
       err.response?.data?.errors?.[0]?.message ||
       'Something went wrong';
+
+    // 401 = token missing or expired — clear session and send to login.
+    // ⚠️  Use /get-account, not /auth/login (that route doesn't exist).
     if (err.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('church_token');
       localStorage.removeItem('church_user');
-      window.location.href = '/auth/login';
+      window.location.href = '/get-account';
     }
+
     return Promise.reject(new Error(message));
   }
 );
@@ -73,27 +78,16 @@ export const userApi = {
   update:   (id, d)  => api.put(`/users/${id}`, d),
   delete:   (id)     => api.delete(`/users/${id}`),
   getStats: ()       => api.get('/users/stats'),
-   getMembers: (params) => api.get('/auth/members', { 
-    params: { limit: 500, ...params } 
+  getMembers: (params) => api.get('/auth/members', {
+    params: { limit: 500, ...params }
   }),
   changePassword: (userId, data) =>
     api.put(`/users/${userId}/password`, data),
 };
 
 export const ministryApi = {
-  // GET /api/ministries
-  // Returns full catalogue: [{ id, name, category, description }]
-  getAll: () =>
-    api.get('/ministries'),
-
-  // GET /api/ministries/member/:userId
-  // Returns member's current memberships: [{ ministry_id, name, category }]
-  getMemberMinistries: (userId) =>
-    api.get(`/ministries/member/${userId}`),
-
-  // PUT /api/ministries/member/:userId/sync
-  // Replaces the member's ministry set with the supplied ID array.
-  // ministryIds: number[]
+  getAll:               ()         => api.get('/ministries'),
+  getMemberMinistries:  (userId)   => api.get(`/ministries/member/${userId}`),
   syncMemberMinistries: (userId, ministryIds) =>
     api.put(`/ministries/member/${userId}/sync`, { ministryIds }),
 };
@@ -105,44 +99,25 @@ export const announcementApi = {
 };
 
 export const groupApi = {
-  // GET /api/groups?type=jumuiya&year=2025&is_archived=0
   getAll: (params = {}) => {
     const qs = new URLSearchParams(
       Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null))
     ).toString();
     return api.get(`/groups${qs ? `?${qs}` : ''}`);
   },
-
-  // GET /api/groups/:id
-  getById: (id) => api.get(`/groups/${id}`),
-
-  // POST /api/groups
-  create: (data) => api.post('/groups', data),
-  // data shape: { name, name_sw, type, description?, year?, start_date?, end_date?, leader_id? }
-
-  // PUT /api/groups/:id
-  update: (id, data) => api.put(`/groups/${id}`, data),
-
-  // PUT /api/groups/:id/archive
-  archive: (id) => api.put(`/groups/${id}/archive`),
-
-  // DELETE /api/groups/:id
-  delete: (id) => api.delete(`/groups/${id}`),
-
-  // GET /api/groups/:id/members?year=2025&status=active
+  getById:      (id)       => api.get(`/groups/${id}`),
+  create:       (data)     => api.post('/groups', data),
+  update:       (id, data) => api.put(`/groups/${id}`, data),
+  archive:      (id)       => api.put(`/groups/${id}/archive`),
+  delete:       (id)       => api.delete(`/groups/${id}`),
   getMembers: (id, params = {}) => {
     const qs = new URLSearchParams(
       Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null))
     ).toString();
     return api.get(`/groups/${id}/members${qs ? `?${qs}` : ''}`);
   },
-
-  // POST /api/groups/:id/members
-  addMember: (id, data) => api.post(`/groups/${id}/members`, data),
-  // data shape: { user_id, year?, role_in_group?, joined_date? }
-
-  // DELETE /api/groups/:id/members/:membershipId   (soft-remove by membership row id)
-  removeMember: (id, membershipId) => api.delete(`/groups/${id}/members/${membershipId}`),
+  addMember:    (id, data)              => api.post(`/groups/${id}/members`, data),
+  removeMember: (id, membershipId)      => api.delete(`/groups/${id}/members/${membershipId}`),
 };
 
 export const eventApi = {
@@ -166,22 +141,11 @@ export const committeeApi = {
   syncMemberCommittees: (userId, ids) => api.put(`/committees/member/${userId}/sync`, { committeeIds: ids }),
 };
 
-// ── Site Content API ──────────────────────────────────────────────────────────
 export const siteContentApi = {
-  // GET /api/site-content  → { success, data: { hero_slides: […], schedule: […], … } }
-  getAll: () => api.get('/site-content'),
-
-  // GET /api/site-content/:key  → { success, data: <value>, updatedAt }
+  getAll:     ()            => api.get('/site-content'),
   getOne:     (key)         => api.get(`/site-content/${key}`),
-
-  // Alias used by the content editor page
   getSection: (key)         => api.get(`/site-content/${key}`),
-
-  // PUT /api/site-content/:key  (pastor | elder)
   save:       (key, value)  => api.put(`/site-content/${key}`, value),
-
-  // DELETE /api/site-content/:key  (pastor only)
-  // Removes the DB row so the frontend falls back to the hardcoded default.
   reset:      (key)         => api.delete(`/site-content/${key}`),
 };
 
