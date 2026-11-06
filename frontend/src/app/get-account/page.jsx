@@ -3,40 +3,18 @@
  * components/auth/PhoneLogin.jsx
  * ───────────────────────────────
  * Passwordless phone OTP login — NextSMS backend.
- *
- * Uses:
- *   • authApi (axios, church_token, port 4000) from lib/api.js
- *   • setAuth from lib/auth.js (same helper AuthContext uses)
- *   • KKKT design system CSS classes (card, btn, input, etc.)
- *   • Tailwind stone + amber palette
- *
- * Usage:
- *   import PhoneLogin from '@/components/auth/PhoneLogin';
- *
- *   // Standalone page (no AuthContext needed):
- *   <PhoneLogin onSuccess={(token, user) => {
- *     setAuth(token, user);           // persist to localStorage
- *     router.push('/dashboard');
- *   }} />
- *
- *   // Inside AuthProvider — calls context login after OTP:
- *   <PhoneLogin onSuccess={(token, user) => {
- *     setAuth(token, user);
- *     setUser(user);                  // update context manually
- *     router.push('/dashboard');
- *   }} />
+ * Corporate minimalist, responsive, no icons/emojis.
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { authApi }  from '../../lib/api';
-import { setAuth }  from '../../lib/auth';
+import { authApi } from '../../lib/api';
+import { setAuth } from '../../lib/auth';
 
-// ── OTP_TTL must match OTP_TTL_MINUTES in phoneLoginController.js ──────────
 const OTP_TTL_MINUTES = 5;
-const RESEND_COOLDOWN = 60; // seconds before "Resend" becomes active
+const RESEND_COOLDOWN = 60;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 6-box OTP input
+// 6-digit OTP input — underline-only style
 // ═══════════════════════════════════════════════════════════════════════════
 function OTPBoxes({ value, onChange, disabled }) {
   const refs   = useRef([]);
@@ -63,7 +41,7 @@ function OTPBoxes({ value, onChange, disabled }) {
   }
 
   return (
-    <div className="flex gap-2.5 justify-center mb-6">
+    <div className="flex gap-3 justify-center mb-8">
       {digits.map((d, i) => (
         <input
           key={i}
@@ -77,19 +55,29 @@ function OTPBoxes({ value, onChange, disabled }) {
           onPaste={handlePaste}
           disabled={disabled}
           autoFocus={i === 0 && !disabled}
-          className={[
-            // base sizing
-            'w-11 h-14 text-center text-xl font-bold rounded-lg',
-            // border — uses design system input focus colours
-            'border-2 border-neutral-300 outline-none',
-            'transition-all duration-150',
-            // focus: amber-400 ring, matches .input:focus in index.css
-            'focus:border-gold-400 focus:shadow-[0_0_0_2px_rgba(251,191,36,0.40)]',
-            // filled digit
-            d.trim() ? 'bg-gold-50 border-gold-400 text-neutral-800' : 'bg-white text-neutral-800',
-            // disabled
-            disabled ? 'bg-neutral-100 cursor-not-allowed opacity-60' : '',
-          ].join(' ')}
+          style={{
+            width: '2.75rem',
+            height: '3.25rem',
+            textAlign: 'center',
+            fontSize: '1.375rem',
+            fontWeight: 600,
+            background: 'transparent',
+            border: 'none',
+            borderBottom: `2px solid ${d.trim() ? 'var(--text-primary)' : 'var(--border, #d1d5db)'}`,
+            outline: 'none',
+            borderRadius: 0,
+            color: 'var(--text-primary)',
+            transition: 'border-color 120ms ease',
+            cursor: disabled ? 'not-allowed' : 'text',
+            opacity: disabled ? 0.5 : 1,
+          }}
+          onFocus={e => {
+            if (!disabled) e.target.style.borderBottomColor = 'var(--text-primary)';
+          }}
+          onBlur={e => {
+            e.target.style.borderBottomColor =
+              d.trim() ? 'var(--text-primary)' : 'var(--border, #d1d5db)';
+          }}
         />
       ))}
     </div>
@@ -100,32 +88,24 @@ function OTPBoxes({ value, onChange, disabled }) {
 // Main component
 // ═══════════════════════════════════════════════════════════════════════════
 export default function PhoneLogin({ onSuccess }) {
-  const [step,      setStep]      = useState('phone');   // 'phone' | 'otp'
+  const [step,      setStep]      = useState('phone');
   const [phone,     setPhone]     = useState('');
   const [otp,       setOtp]       = useState('');
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
   const [countdown, setCountdown] = useState(0);
 
-  // ── Countdown timer for resend cooldown ──────────────────────────────────
   useEffect(() => {
     if (countdown <= 0) return;
     const id = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(id);
   }, [countdown]);
 
-  // ── Auto-submit when all 6 digits entered ────────────────────────────────
   useEffect(() => {
-    if (step === 'otp' && otp.length === 6 && !loading) {
-      handleVerify();
-    }
+    if (step === 'otp' && otp.length === 6 && !loading) handleVerify();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otp]);
 
-  // ── API helpers — use authApi from lib/api.js ────────────────────────────
-  // authApi uses axios with baseURL http://localhost:4000/api
-  // These two endpoints are added to authApi below as a local extension
-  // rather than modifying lib/api.js (keeps the diff minimal).
   async function requestOTP(phone) {
     return authApi.requestPhoneOTP({ phone });
   }
@@ -134,13 +114,9 @@ export default function PhoneLogin({ onSuccess }) {
     return authApi.verifyPhoneOTP({ phone, otp });
   }
 
-  // ── Step 1: request OTP ──────────────────────────────────────────────────
   async function handleRequest(e) {
     e?.preventDefault();
-    if (!phone.trim()) {
-      setError('Tafadhali weka nambari ya simu.');
-      return;
-    }
+    if (!phone.trim()) { setError('Tafadhali weka nambari ya simu.'); return; }
     setError('');
     setLoading(true);
     try {
@@ -154,19 +130,15 @@ export default function PhoneLogin({ onSuccess }) {
     }
   }
 
-  // ── Step 2: verify OTP ───────────────────────────────────────────────────
   async function handleVerify(e) {
     e?.preventDefault();
-    if (otp.length !== 6) {
-      setError('Tafadhali weka nambari zote 6.');
-      return;
-    }
+    if (otp.length !== 6) { setError('Tafadhali weka nambari zote 6.'); return; }
     setError('');
     setLoading(true);
     try {
       const res  = await verifyOTP(phone.trim(), otp);
-      const data = res.data;                          // axios wraps in .data
-      setAuth(data.token, data.user);                 // persist to localStorage
+      const data = res.data;
+      setAuth(data.token, data.user);
       onSuccess?.(data.token, data.user);
     } catch (err) {
       setError(err.message);
@@ -176,7 +148,6 @@ export default function PhoneLogin({ onSuccess }) {
     }
   }
 
-  // ── Resend OTP ────────────────────────────────────────────────────────────
   async function handleResend() {
     if (countdown > 0 || loading) return;
     setOtp('');
@@ -192,66 +163,84 @@ export default function PhoneLogin({ onSuccess }) {
     }
   }
 
-  // ── Shared layout wrapper ─────────────────────────────────────────────────
-  // Uses --surface-page as the full-screen background (design system rule:
-  // single root background, no nested boxes).
+  // ── Layout shell ──────────────────────────────────────────────────────────
   const Wrap = ({ children }) => (
     <div
-      className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: 'var(--surface-page)' }}
+      className="min-h-screen flex items-center justify-center"
+      style={{
+        background: 'var(--surface-page)',
+        padding: 'clamp(1.5rem, 5vw, 3rem) 1rem',
+      }}
     >
-      {/* card — white, shadow-md, rounded-2xl — matches .card in index.css */}
       <div
-        className="card w-full max-w-sm"
-        style={{ padding: '2.5rem 2rem' }}
+        style={{
+          width: '100%',
+          maxWidth: '26rem',          // ~416 px — comfortable on mobile, not wide on desktop
+          padding: 'clamp(2rem, 6vw, 3rem) clamp(1.5rem, 5vw, 2.5rem)',
+          background: 'var(--surface-card, #ffffff)',
+          borderRadius: '2px',        // near-sharp — deliberately non-rounded for corporate feel
+          border: '1px solid var(--border, #e5e7eb)',
+        }}
       >
         {children}
       </div>
     </div>
   );
 
-  // ── STEP: phone entry ─────────────────────────────────────────────────────
+  // ── STEP: phone entry ──────────────────────────────────────────────────────
   if (step === 'phone') {
     return (
       <Wrap>
-        {/* Amber top rule — matches stat-card::before in index.css */}
-        <div
-          className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl"
-          style={{ background: 'var(--gold)' }}
-        />
+        {/* Wordmark / org label */}
+        <p
+          style={{
+            fontSize: '0.6875rem',
+            fontWeight: 600,
+            letterSpacing: '0.12em',
+            color: 'var(--text-tertiary)',
+            textTransform: 'uppercase',
+            marginBottom: '2rem',
+          }}
+        >
+          Kanisa la KKKT
+        </p>
 
-        {/* Church icon */}
-        <div className="flex justify-center mb-5">
-          <span
-            className="flex items-center justify-center w-12 h-12 rounded-xl text-2xl"
-            style={{ background: 'var(--gold-subtle)' }}
-            aria-hidden="true"
+        <div style={{ marginBottom: '2rem' }}>
+          <h1
+            className="font-display"
+            style={{
+              fontSize: 'clamp(1.25rem, 4vw, 1.5rem)',
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+              letterSpacing: '-0.02em',
+              lineHeight: 1.2,
+              marginBottom: '0.5rem',
+            }}
           >
-            ⛪
-          </span>
-        </div>
-
-        {/* Heading */}
-        <div className="text-center mb-6">
-          <h2
-            className="font-display font-bold text-xl mb-1"
-            style={{ color: 'var(--text-primary)', letterSpacing: '-0.02em' }}
-          >
-            Ingia kwa Simu
-          </h2>
-          <p
-            className="text-sm"
-            style={{ color: 'var(--text-tertiary)', maxWidth: 'none' }}
-          >
-            Tutakutumia nambari ya OTP kwa SMS.
+            Ingia kwa nambari ya simu
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)', margin: 0 }}>
+            Utapokea nambari ya uthibitisho kwa SMS.
           </p>
         </div>
 
-        {/* Form */}
+        {/* Thin rule — the one decorative gesture */}
+        <div
+          style={{
+            height: '1px',
+            background: 'var(--border, #e5e7eb)',
+            marginBottom: '2rem',
+          }}
+        />
+
         <form onSubmit={handleRequest} noValidate>
-          <div className="form-group mb-4">
-            <label className="form-label" htmlFor="phone-input">
-              Nambari ya Simu
+          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+            <label
+              className="form-label"
+              htmlFor="phone-input"
+              style={{ fontSize: '0.8125rem', fontWeight: 500 }}
+            >
+              Nambari ya simu
             </label>
             <input
               id="phone-input"
@@ -263,109 +252,155 @@ export default function PhoneLogin({ onSuccess }) {
               autoFocus
               autoComplete="tel"
               required
+              style={{ borderRadius: '2px' }}
             />
           </div>
 
           {error && (
             <div
-              className="banner banner-danger mb-4 text-sm py-2.5 px-3"
+              className="banner banner-danger"
               role="alert"
+              style={{
+                fontSize: '0.8125rem',
+                padding: '0.625rem 0.75rem',
+                borderRadius: '2px',
+                marginBottom: '1.25rem',
+              }}
             >
               {error}
             </div>
           )}
 
           <button
-            className="btn btn-primary w-full btn-lg"
+            className="btn btn-primary w-full"
             type="submit"
             disabled={loading}
+            style={{
+              borderRadius: '2px',
+              fontWeight: 600,
+              fontSize: '0.9375rem',
+              height: '2.75rem',
+            }}
           >
-            {loading
-              ? <><Spinner /> Inatuma OTP…</>
-              : 'Tuma OTP'}
+            {loading ? <><Spinner /> Inatuma…</> : 'Tuma nambari ya uthibitisho'}
           </button>
         </form>
       </Wrap>
     );
   }
 
-  // ── STEP: OTP entry ───────────────────────────────────────────────────────
+  // ── STEP: OTP entry ────────────────────────────────────────────────────────
   return (
     <Wrap>
-      {/* Amber top rule */}
-      <div
-        className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl"
-        style={{ background: 'var(--gold)' }}
-      />
+      {/* Wordmark */}
+      <p
+        style={{
+          fontSize: '0.6875rem',
+          fontWeight: 600,
+          letterSpacing: '0.12em',
+          color: 'var(--text-tertiary)',
+          textTransform: 'uppercase',
+          marginBottom: '2rem',
+        }}
+      >
+        Kanisa la KKKT
+      </p>
 
-      {/* Phone icon */}
-      <div className="flex justify-center mb-5">
-        <span
-          className="flex items-center justify-center w-12 h-12 rounded-xl text-2xl"
-          style={{ background: 'var(--gold-subtle)' }}
-          aria-hidden="true"
+      <div style={{ marginBottom: '2rem' }}>
+        <h1
+          className="font-display"
+          style={{
+            fontSize: 'clamp(1.25rem, 4vw, 1.5rem)',
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+            letterSpacing: '-0.02em',
+            lineHeight: 1.2,
+            marginBottom: '0.5rem',
+          }}
         >
-          📱
-        </span>
-      </div>
-
-      {/* Heading */}
-      <div className="text-center mb-6">
-        <h2
-          className="font-display font-bold text-xl mb-1"
-          style={{ color: 'var(--text-primary)', letterSpacing: '-0.02em' }}
-        >
-          Weka Nambari ya OTP
-        </h2>
-        <p className="text-sm" style={{ color: 'var(--text-tertiary)', maxWidth: 'none' }}>
+          Weka nambari ya uthibitisho
+        </h1>
+        <p style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)', margin: 0 }}>
           Imetumwa kwa{' '}
-          <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-            {phone}
-          </span>
-          {' '}— inaisha dakika {OTP_TTL_MINUTES}.
+          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{phone}</span>
+          {' '}— inaisha baada ya dakika {OTP_TTL_MINUTES}.
         </p>
       </div>
 
-      {/* OTP boxes */}
+      <div
+        style={{
+          height: '1px',
+          background: 'var(--border, #e5e7eb)',
+          marginBottom: '2rem',
+        }}
+      />
+
       <form onSubmit={handleVerify} noValidate>
-        <OTPBoxes value={otp} onChange={v => { setOtp(v); setError(''); }} disabled={loading} />
+        <OTPBoxes
+          value={otp}
+          onChange={v => { setOtp(v); setError(''); }}
+          disabled={loading}
+        />
 
         {error && (
           <div
-            className="banner banner-danger mb-4 text-sm py-2.5 px-3"
+            className="banner banner-danger"
             role="alert"
+            style={{
+              fontSize: '0.8125rem',
+              padding: '0.625rem 0.75rem',
+              borderRadius: '2px',
+              marginBottom: '1.25rem',
+            }}
           >
             {error}
           </div>
         )}
 
         <button
-          className="btn btn-primary w-full btn-lg"
+          className="btn btn-primary w-full"
           type="submit"
           disabled={loading || otp.length !== 6}
+          style={{
+            borderRadius: '2px',
+            fontWeight: 600,
+            fontSize: '0.9375rem',
+            height: '2.75rem',
+          }}
         >
-          {loading
-            ? <><Spinner /> Inathibitisha…</>
-            : 'Thibitisha & Ingia'}
+          {loading ? <><Spinner /> Inathibitisha…</> : 'Thibitisha na uingie'}
         </button>
       </form>
 
       {/* Resend row */}
       <div
-        className="text-center mt-4 text-sm"
-        style={{ color: 'var(--text-tertiary)' }}
+        style={{
+          textAlign: 'center',
+          marginTop: '1.5rem',
+          fontSize: '0.8125rem',
+          color: 'var(--text-tertiary)',
+        }}
       >
         {countdown > 0 ? (
           <span>Tuma tena baada ya {countdown}s</span>
         ) : (
           <>
-            Hukupokea OTP?{' '}
+            Hukupokea nambari?{' '}
             <button
               type="button"
-              className="font-semibold underline bg-transparent border-none cursor-pointer"
-              style={{ color: 'var(--gold-dark)' }}
               onClick={handleResend}
               disabled={loading}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                fontWeight: 600,
+                fontSize: 'inherit',
+                color: 'var(--text-primary)',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                textDecoration: 'underline',
+                textUnderlineOffset: '2px',
+              }}
             >
               Tuma tena
             </button>
@@ -374,42 +409,41 @@ export default function PhoneLogin({ onSuccess }) {
       </div>
 
       {/* Back link */}
-      <div className="text-center mt-3">
+      <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
         <button
           type="button"
-          className="text-xs bg-transparent border-none cursor-pointer transition-colors duration-150"
-          style={{ color: 'var(--text-tertiary)' }}
-          onMouseEnter={e => e.target.style.color = 'var(--gold-dark)'}
-          onMouseLeave={e => e.target.style.color = 'var(--text-tertiary)'}
           onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            fontSize: '0.8125rem',
+            color: 'var(--text-tertiary)',
+            cursor: 'pointer',
+            transition: 'color 120ms ease',
+          }}
+          onMouseEnter={e => e.target.style.color = 'var(--text-primary)'}
+          onMouseLeave={e => e.target.style.color = 'var(--text-tertiary)'}
         >
-          ← Badilisha nambari ya simu
+          ← Badilisha nambari
         </button>
       </div>
     </Wrap>
   );
 }
 
-// ── Tiny inline spinner ───────────────────────────────────────────────────────
+// ── Minimal inline spinner ─────────────────────────────────────────────────
 function Spinner() {
   return (
     <svg
-      className="animate-spin mr-2"
-      style={{ width: 16, height: 16, flexShrink: 0 }}
+      className="animate-spin"
+      style={{ width: 15, height: 15, flexShrink: 0, marginRight: '0.5rem' }}
       fill="none"
       viewBox="0 0 24 24"
       aria-hidden="true"
     >
-      <circle
-        className="opacity-25"
-        cx="12" cy="12" r="10"
-        stroke="currentColor" strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+      <path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
   );
 }
