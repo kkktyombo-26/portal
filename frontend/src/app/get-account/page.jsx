@@ -153,7 +153,7 @@ function Wordmark() {
         margin: '0 0 2rem 0',
       }}
     >
-      Kanisa la KKKT
+      KKKT DMP YOMBO
     </p>
   );
 }
