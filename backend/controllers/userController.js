@@ -88,9 +88,16 @@ exports.getUsers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+
 exports.getUser = async (req, res, next) => {
   try {
-    const { role, groupId } = req.user;
+    const { role, id: callerId, groupId } = req.user;
+    const targetId = parseInt(req.params.id, 10);
+
+    // Members may only fetch their own profile
+    if (role === 'member' && callerId !== targetId) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
 
     const [rows] = await db.execute(
       `SELECT ${PASTOR_COLUMNS},
@@ -98,7 +105,7 @@ exports.getUser = async (req, res, next) => {
               g.type AS group_type
        FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
        WHERE u.id = ?`,
-      [req.params.id]
+      [targetId]
     );
 
     if (rows.length === 0)

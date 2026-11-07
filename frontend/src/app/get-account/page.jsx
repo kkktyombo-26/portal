@@ -259,24 +259,44 @@ export default function PhoneLogin() {
     }
   }
 
-  async function handleVerify(e) {
-    e?.preventDefault();
-    if (otp.length !== 6) { setError('Tafadhali weka nambari zote 6.'); return; }
-    setError('');
-    setLoading(true);
+
+async function handleVerify(e) {
+  e?.preventDefault();
+  if (otp.length !== 6) { setError('Tafadhali weka nambari zote 6.'); return; }
+  setError('');
+  setLoading(true);
+  try {
+    const res  = await verifyOTP(phone.trim(), otp);
+    const data = res.data;
+
+    // 1. Persist token immediately so authApi.me() can read it
+    setAuth(data.token, data.user);
+
+    // 2. Re-validate against server — get fresh user data from DB
+    //    (mirrors the cold-start me() call in useAuth.js)
     try {
-      const res  = await verifyOTP(phone.trim(), otp);
-      const data = res.data;
-      setAuth(data.token, data.user);        // 1. persist to localStorage
-      loginWithToken(data.token, data.user); // 2. sync AuthContext in memory
-      router.push('/dashboard/profile');     // 3. navigate to dashboard
-    } catch (err) {
-      setError(err.message);
-      setOtp('');
-    } finally {
-      setLoading(false);
+      const meRes   = await authApi.me();
+      const freshUser = meRes.data.user;
+
+      // 3. Overwrite the JWT-decoded snapshot with fresh DB data
+      setAuth(data.token, freshUser);
+      loginWithToken(data.token, freshUser); // sync AuthContext
+    } catch {
+      // me() failed — token was just issued so this is unlikely,
+      // but fall back gracefully to the data we already have
+      loginWithToken(data.token, data.user);
     }
+
+    // 4. Navigate only after everything is settled
+    router.push('/dashboard/profile');
+  } catch (err) {
+    setError(err.message);
+    setOtp('');
+  } finally {
+    setLoading(false);
   }
+}
+
 
   async function handleResend() {
     if (countdown > 0 || loading) return;

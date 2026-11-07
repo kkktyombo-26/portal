@@ -24,7 +24,7 @@ router.get('/stats', authorize('pastor'), getStats);
 
 // ── Users ────────────────────────────────────────────────────────────────────
 router.get('/',     authorize('pastor', 'elder', 'group_leader'), getUsers);
-router.get('/:id',  authorize('pastor', 'elder', 'group_leader'), getUser);
+router.get('/:id',  authorize('pastor', 'elder', 'group_leader','member'), getUser);
 router.put('/:id',  authorize('pastor', 'elder', 'group_leader', 'member'), updateUser);
 router.delete('/:id', authorize('pastor'), deleteUser);
 
