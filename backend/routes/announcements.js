@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { authenticate, authorize } = require('../middleware/auth');
-const { getAnnouncements, createAnnouncement, deleteAnnouncement } = require('../controllers/announcementController');
+const { getAnnouncements, createAnnouncement, deleteAnnouncement, updateAnnouncement } = require('../controllers/announcementController');
 const { body } = require('express-validator');
 const validate = require('../middleware/validate');
 
@@ -13,5 +13,8 @@ router.post('/', [
   body('body_sw').trim().notEmpty().withMessage('Swahili body is required'),
 ], validate, authorize('pastor', 'elder', 'group_leader'), createAnnouncement);
 router.delete('/:id', deleteAnnouncement);
+
+// routes/announcements.js — add this line
+router.put('/:id', authorize('pastor', 'elder', 'group_leader'), updateAnnouncement);
 
 module.exports = router;

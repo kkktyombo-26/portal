@@ -96,6 +96,7 @@ export const announcementApi = {
   getAll: ()     => api.get('/announcements'),
   create: (data) => api.post('/announcements', data),
   delete: (id)   => api.delete(`/announcements/${id}`),
+  update: (id, data) => api.put(`/announcements/${id}`, data),
 };
 
 export const groupApi = {

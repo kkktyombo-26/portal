@@ -59,6 +59,31 @@ exports.createAnnouncement = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+
+// announcementController.js
+exports.updateAnnouncement = async (req, res, next) => {
+  try {
+    const { role, id: userId } = req.user;
+    const [rows] = await db.execute('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Not found.' });
+    if (role !== 'pastor' && rows[0].author_id !== userId)
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+
+    const { title_en, title_sw, body_en, body_sw, scope, image_url } = req.body;
+    const finalScope = role === 'pastor' ? (scope || rows[0].scope) : rows[0].scope;
+
+    await db.execute(
+      `UPDATE announcements SET title_en=?, title_sw=?, body_en=?, body_sw=?, scope=?, image_url=? WHERE id=?`,
+      [title_en, title_sw, body_en, body_sw, finalScope, image_url || null, req.params.id]
+    );
+    const [updated] = await db.execute(
+      `SELECT a.*, u.full_name as author_name FROM announcements a JOIN users u ON a.author_id = u.id WHERE a.id = ?`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: updated[0] });
+  } catch (err) { next(err); }
+};
+
 // DELETE /api/announcements/:id — pastor or original author
 exports.deleteAnnouncement = async (req, res, next) => {
   try {

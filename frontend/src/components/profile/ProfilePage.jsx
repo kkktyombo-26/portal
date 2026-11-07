@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../lib/i18n';
 import { userApi, dependantApi, ministryApi, committeeApi } from '../../lib/api';
-// ── CHANGED: was `import CloudinaryService from '../../lib/cloudinary'`
 import R2UploadService from '../../lib/r2UploadService';
 
-// ── Icons ────────────────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────
 const Icon = ({ path, size = 18, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"
@@ -35,7 +33,6 @@ const icons = {
   x:         'M18 6L6 18M6 6l12 12',
 };
 
-// ── Tiny cross decoration ────────────────────────────────────────────────────
 function TinyCross({ className = 'text-amber-400' }) {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" className={className} aria-hidden>
@@ -45,7 +42,6 @@ function TinyCross({ className = 'text-amber-400' }) {
   );
 }
 
-// ── Primitives ────────────────────────────────────────────────────────────────
 function Field({ label, hint, error, children, className = '' }) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
@@ -83,40 +79,28 @@ function Select({ className = '', children, ...props }) {
   );
 }
 
-// ── Floating Save Button ──────────────────────────────────────────────────────
-
-function FloatingSaveBtn({ saving, saved, onClick }) {
+function FloatingSaveBtn({ saving, saved, onClick, t }) {
   return (
     <div className="fab-profile-save">
       <button
         onClick={onClick}
         disabled={saving}
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '12px 20px',
-          fontSize: '14px',
-          fontWeight: 600,
-          fontFamily: 'Inter, system-ui, sans-serif',
-          color: '#ffffff',
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '12px 20px', fontSize: '14px', fontWeight: 600,
+          fontFamily: 'Inter, system-ui, sans-serif', color: '#ffffff',
           backgroundColor: saved ? '#16a34a' : '#f59e0b',
-          border: 'none',
-          borderRadius: '9999px',
+          border: 'none', borderRadius: '9999px',
           cursor: saving ? 'not-allowed' : 'pointer',
           opacity: saving ? 0.75 : 1,
-          boxShadow: '0 8px 24px rgba(245,158,11,0.35)',
-          whiteSpace: 'nowrap',
+          boxShadow: '0 8px 24px rgba(245,158,11,0.35)', whiteSpace: 'nowrap',
         }}
       >
         {saving ? (
           <span style={{
             width: 15, height: 15, borderRadius: '50%',
-            border: '2px solid rgba(255,255,255,0.35)',
-            borderTopColor: '#fff',
-            display: 'inline-block',
-            animation: 'spin 0.7s linear infinite',
-            flexShrink: 0,
+            border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff',
+            display: 'inline-block', animation: 'spin 0.7s linear infinite', flexShrink: 0,
           }} />
         ) : saved ? (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
@@ -129,14 +113,12 @@ function FloatingSaveBtn({ saving, saved, onClick }) {
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
           </svg>
         )}
-        <span>{saving ? 'Saving…' : saved ? 'Saved!' : 'Save changes'}</span>
+        <span>{saving ? t('loading') : saved ? t('save') + '!' : t('save')}</span>
       </button>
     </div>
   );
 }
 
-
-// ── Section wrapper ──────────────────────────────────────────────────────────
 function Section({ icon, title, children, noPadding = false }) {
   return (
     <div className="bg-white rounded-2xl border border-stone-100 shadow-sm">
@@ -146,9 +128,7 @@ function Section({ icon, title, children, noPadding = false }) {
         </span>
         <h2 className="font-semibold text-stone-800">{title}</h2>
       </div>
-      <div className={noPadding ? '' : 'px-6 py-5'}>
-        {children}
-      </div>
+      <div className={noPadding ? '' : 'px-6 py-5'}>{children}</div>
     </div>
   );
 }
@@ -162,7 +142,6 @@ function SubHeading({ children }) {
   );
 }
 
-// ── Shared checkbox (ministries & committees) ────────────────────────────────
 function ServiceCheck({ label, checked, onChange }) {
   return (
     <label className="flex items-center gap-2.5 cursor-pointer group">
@@ -180,65 +159,62 @@ function ServiceCheck({ label, checked, onChange }) {
   );
 }
 
-// ── Upload progress ring ──────────────────────────────────────────────────────
 function ProgressRing({ percent, size = 64 }) {
   const r = (size - 6) / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ - (percent / 100) * circ;
   return (
     <svg width={size} height={size} className="absolute inset-0 -rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="3" />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="white" strokeWidth="3"
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="3" />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="white" strokeWidth="3"
         strokeDasharray={circ} strokeDashoffset={offset}
         strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.2s' }} />
     </svg>
   );
 }
 
-// ── Tabs ─────────────────────────────────────────────────────────────────────
-const TABS = [
-  { id: 'personal',   label: 'Personal',        icon: icons.user },
-  { id: 'family',     label: 'Family',           icon: icons.heart },
-  { id: 'work',       label: 'Work & Education', icon: icons.briefcase },
-  { id: 'address',    label: 'Address',          icon: icons.mapPin },
-  { id: 'spiritual',  label: 'Spiritual',        icon: icons.cross },
-  { id: 'dependants', label: 'Dependants',       icon: icons.users },
-  { id: 'security',   label: 'Security',         icon: icons.lock },
-];
-
-// ── DB ENUM maps ──────────────────────────────────────────────────────────────
-const MEMBER_STATUS = [
-  { value: 'hai',       label: 'Active (Hai)' },
-  { value: 'amehamia',  label: 'Transferred (Amehamia)' },
-  { value: 'amefariki', label: 'Deceased (Amefariki)' },
-];
-const MARITAL_STATUS = [
-  { value: 'Ameoa',          label: 'Married — male (Ameoa)' },
-  { value: 'Ameolewa',       label: 'Married — female (Ameolewa)' },
-  { value: 'Hajaoa',         label: 'Single — male (Hajaoa)' },
-  { value: 'Hajaolewa',      label: 'Single — female (Hajaolewa)' },
-  { value: 'Mjane',          label: 'Widowed (Mjane)' },
-  { value: 'Talaka',         label: 'Divorced (Talaka)' },
-  { value: 'Anaishi na mtu', label: 'Cohabiting (Anaishi na mtu)' },
-];
-const MARRIAGE_TYPE = [
-  { value: 'Kikristo',      label: 'Church (Kikristo)' },
-  { value: 'Siya Kikristo', label: 'Civil / Customary (Siya Kikristo)' },
-];
-
-// ════════════════════════════════════════════════════════════════════════════
-// Main component
 // ════════════════════════════════════════════════════════════════════════════
 export default function ProfilePage() {
-  const { user: authUser } = useAuth();
-  const { t } = useTranslation();
+  
+
+  // ── Language toggle ───────────────────────────────────────────────────────
+ const { user: authUser, lang, switchLang } = useAuth();
+const { t } = useTranslation(lang);
+
+  const TABS = [
+    { id: 'personal',   label: t('tab_personal'),   icon: icons.user },
+    { id: 'family',     label: t('tab_family'),      icon: icons.heart },
+    { id: 'work',       label: t('tab_work'),        icon: icons.briefcase },
+    { id: 'address',    label: t('tab_address'),     icon: icons.mapPin },
+    { id: 'spiritual',  label: t('tab_spiritual'),   icon: icons.cross },
+    { id: 'dependants', label: t('tab_dependants'),  icon: icons.users },
+    { id: 'security',   label: t('tab_security'),    icon: icons.lock },
+  ];
+
+  const MEMBER_STATUS = [
+    { value: 'hai',       label: t('status_hai') },
+    { value: 'amehamia',  label: t('status_amehamia') },
+    { value: 'amefariki', label: t('status_amefariki') },
+  ];
+  const MARITAL_STATUS = [
+    { value: 'Ameoa',          label: t('marital_ameoa') },
+    { value: 'Ameolewa',       label: t('marital_ameolewa') },
+    { value: 'Hajaoa',         label: t('marital_hajaoa') },
+    { value: 'Hajaolewa',      label: t('marital_hajaolewa') },
+    { value: 'Mjane',          label: t('marital_mjane') },
+    { value: 'Talaka',         label: t('marital_talaka') },
+    { value: 'Anaishi na mtu', label: t('marital_cohabiting') },
+  ];
+  const MARRIAGE_TYPE = [
+    { value: 'Kikristo',      label: t('marriage_church') },
+    { value: 'Siya Kikristo', label: t('marriage_civil') },
+  ];
 
   const [activeTab, setActiveTab] = useState('personal');
   const [profile,   setProfile]   = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
 
-  // Per-section save state
   const [sectionState, setSectionState] = useState({});
   const setSaving = (key, val) =>
     setSectionState(s => ({ ...s, [key]: { ...s[key], saving: val } }));
@@ -249,42 +225,32 @@ export default function ProfilePage() {
     saved:  sectionState[key]?.saved  ?? false,
   });
 
-  // ── Photo upload state ────────────────────────────────────────────────────
   const [photoStage,    setPhotoStage]    = useState('idle');
   const [photoProgress, setPhotoProgress] = useState(0);
   const [photoError,    setPhotoError]    = useState(null);
   const photoInputRef = useRef(null);
 
-  // ── CV upload state ───────────────────────────────────────────────────────
   const [cvStage,    setCvStage]    = useState('idle');
   const [cvProgress, setCvProgress] = useState(0);
   const [cvFileName, setCvFileName] = useState(null);
   const [cvError,    setCvError]    = useState(null);
   const cvInputRef = useRef(null);
 
-  // ── Ministries ────────────────────────────────────────────────────────────
   const [ministries,       setMinistries]  = useState([]);
   const [memberMinistries, setMemberMin]   = useState([]);
-
-  // ── Committees ───────────────────────────────────────────────────────────
   const [committees,       setCommittees]  = useState([]);
   const [memberCommittees, setMemberCom]   = useState([]);
+  const [minLoading,       setMinLoading]  = useState(false);
 
-  // Single loading flag shared by both spiritual data fetches
-  const [minLoading, setMinLoading] = useState(false);
-
-  // ── Dependants ────────────────────────────────────────────────────────────
   const [dependants, setDependants] = useState([]);
   const [depLoading, setDepLoading] = useState(false);
   const [depForm,    setDepForm]    = useState({ full_name: '', relationship: '', date_of_birth: '' });
   const [depError,   setDepError]   = useState('');
 
-  // ── Security ──────────────────────────────────────────────────────────────
   const [pwForm,  setPwForm]  = useState({ current_password: '', new_password: '', confirm: '' });
   const [pwError, setPwError] = useState('');
   const [showPw,  setShowPw]  = useState({ current_password: false, new_password: false, confirm: false });
 
-  // ── Load profile ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!authUser?.id) return;
     setLoading(true);
@@ -294,11 +260,9 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [authUser?.id]);
 
-  // ── Load spiritual data (lazy) — ministries + committees together ─────────
   useEffect(() => {
     if (!authUser?.id || activeTab !== 'spiritual') return;
     if (ministries.length > 0 || committees.length > 0) return;
-
     setMinLoading(true);
     Promise.all([
       ministryApi.getAll(),
@@ -316,7 +280,6 @@ export default function ProfilePage() {
       .finally(() => setMinLoading(false));
   }, [authUser?.id, activeTab]);
 
-  // ── Load dependants (lazy) ────────────────────────────────────────────────
   useEffect(() => {
     if (!authUser?.id || activeTab !== 'dependants') return;
     setDepLoading(true);
@@ -326,11 +289,9 @@ export default function ProfilePage() {
       .finally(() => setDepLoading(false));
   }, [authUser?.id, activeTab]);
 
-  // ── Generic field updater ─────────────────────────────────────────────────
   const setField = useCallback((key, val) =>
     setProfile(p => p ? { ...p, [key]: val } : p), []);
 
-  // ── Save section ──────────────────────────────────────────────────────────
   const saveSection = async (sectionKey, payload) => {
     setSaving(sectionKey, true);
     try {
@@ -344,33 +305,21 @@ export default function ProfilePage() {
     }
   };
 
-  // ════════════════════════════════════════════════════════════════════════
-  // PHOTO UPLOAD
-  // ── CHANGED: CloudinaryService.uploadFromFile → R2UploadService.uploadFromFile
-  //    folder maps to an R2 key prefix on your backend instead of a Cloudinary folder
-  //    result.secureUrl is still result.secureUrl (R2UploadService mirrors the shape)
-  // ════════════════════════════════════════════════════════════════════════
   async function handlePhotoChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
     setPhotoError(null);
     setPhotoProgress(0);
-
     if (file.size > 5 * 1024 * 1024) { setPhotoError('Image must be under 5 MB.'); return; }
-
     const localPreview = URL.createObjectURL(file);
     setField('_photoPreview', localPreview);
-
     try {
       setPhotoStage('uploading');
-      // ── CHANGED ──────────────────────────────────────────────────────────
       const result = await R2UploadService.uploadFromFile({
-        file,
-        folder: 'church_portal/profile_photos',
+        file, folder: 'church_portal/profile_photos',
         onProgress: pct => setPhotoProgress(pct),
       });
-      // ─────────────────────────────────────────────────────────────────────
       setPhotoStage('saving');
       await userApi.update(authUser.id, { profile_photo_url: result.secureUrl });
       setField('profile_photo_url', result.secureUrl);
@@ -386,10 +335,6 @@ export default function ProfilePage() {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // CV UPLOAD
-  // ── CHANGED: same swap as above
-  // ════════════════════════════════════════════════════════════════════════
   async function handleCvChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -397,18 +342,13 @@ export default function ProfilePage() {
     setCvError(null);
     setCvProgress(0);
     setCvFileName(file.name);
-
     if (file.size > 10 * 1024 * 1024) { setCvError('CV must be under 10 MB.'); setCvFileName(null); return; }
-
     try {
       setCvStage('uploading');
-      // ── CHANGED ──────────────────────────────────────────────────────────
       const result = await R2UploadService.uploadFromFile({
-        file,
-        folder: 'church_portal/cvs',
+        file, folder: 'church_portal/cvs',
         onProgress: pct => setCvProgress(pct),
       });
-      // ─────────────────────────────────────────────────────────────────────
       setCvStage('saving');
       await userApi.update(authUser.id, { cv_url: result.secureUrl });
       setField('cv_url', result.secureUrl);
@@ -421,24 +361,18 @@ export default function ProfilePage() {
     }
   }
 
-  // ── Save handlers ─────────────────────────────────────────────────────────
   const savePersonal = () => saveSection('personal', {
-    full_name:            profile.full_name,
-    email:                profile.email,
-    phone:                profile.phone,
-    gender:               profile.gender,
-    date_of_birth:        profile.date_of_birth,
-    place_of_birth:       profile.place_of_birth,
-    member_since:         profile.member_since,
-    member_status:        profile.member_status,
-    willing_to_volunteer: profile.willing_to_volunteer,
+    full_name: profile.full_name, email: profile.email, phone: profile.phone,
+    gender: profile.gender, date_of_birth: profile.date_of_birth,
+    place_of_birth: profile.place_of_birth, member_since: profile.member_since,
+    member_status: profile.member_status, willing_to_volunteer: profile.willing_to_volunteer,
   });
 
   const saveFamily = () => {
     const isMarried    = ['Ameoa', 'Ameolewa'].includes(profile.marital_status);
     const isCohabiting = profile.marital_status === 'Anaishi na mtu';
     return saveSection('family', {
-      marital_status:          profile.marital_status,
+      marital_status: profile.marital_status,
       marriage_type:           isMarried    ? profile.marriage_type           : null,
       marriage_date:           isMarried    ? profile.marriage_date           : null,
       marriage_place:          isMarried    ? profile.marriage_place          : null,
@@ -449,26 +383,18 @@ export default function ProfilePage() {
   };
 
   const saveWork    = () => saveSection('work', {
-    occupation: profile.occupation,
-    workplace:  profile.workplace,
-    education:  profile.education,
-    profession: profile.profession,
+    occupation: profile.occupation, workplace: profile.workplace,
+    education: profile.education, profession: profile.profession,
   });
 
   const saveAddress = () => saveSection('address', {
-    street:                 profile.street,
-    district:               profile.district,
-    region:                 profile.region,
-    postal_code:            profile.postal_code,
-    area_name:              profile.area_name,
-    block_no:               profile.block_no,
-    jumuiya:                profile.jumuiya,
-    slp:                    profile.slp,
-    previous_church:        profile.previous_church,
-    neighbour_member_name:  profile.neighbour_member_name,
+    street: profile.street, district: profile.district, region: profile.region,
+    postal_code: profile.postal_code, area_name: profile.area_name,
+    block_no: profile.block_no, jumuiya: profile.jumuiya, slp: profile.slp,
+    previous_church: profile.previous_church,
+    neighbour_member_name: profile.neighbour_member_name,
     neighbour_member_phone: profile.neighbour_member_phone,
-    elder_name:             profile.elder_name,
-    elder_phone:            profile.elder_phone,
+    elder_name: profile.elder_name, elder_phone: profile.elder_phone,
   });
 
   const saveSpiritual = async () => {
@@ -476,9 +402,9 @@ export default function ProfilePage() {
     try {
       await Promise.all([
         userApi.update(authUser.id, {
-          baptism_date:      profile.baptism_date,
+          baptism_date: profile.baptism_date,
           confirmation_date: profile.confirmation_date,
-          takes_communion:   profile.takes_communion,
+          takes_communion: profile.takes_communion,
         }),
         ministryApi.syncMemberMinistries(authUser.id, memberMinistries),
         committeeApi.syncMemberCommittees(authUser.id, memberCommittees),
@@ -492,9 +418,8 @@ export default function ProfilePage() {
     }
   };
 
-  // ── Dependant handlers ────────────────────────────────────────────────────
   const addDependant = async () => {
-    if (!depForm.full_name.trim()) { setDepError('Name is required.'); return; }
+    if (!depForm.full_name.trim()) { setDepError(t('profile_dep_name_placeholder')); return; }
     setDepError('');
     try {
       const res = await dependantApi.add(authUser.id, depForm);
@@ -506,7 +431,7 @@ export default function ProfilePage() {
   };
 
   const removeDependant = async (depId) => {
-    if (!confirm('Remove this dependant?')) return;
+    if (!confirm(t('profile_dep_remove_confirm'))) return;
     try {
       await dependantApi.remove(authUser.id, depId);
       setDependants(d => d.filter(x => x.id !== depId));
@@ -515,17 +440,14 @@ export default function ProfilePage() {
     }
   };
 
-  // ── Toggle helpers ────────────────────────────────────────────────────────
   const toggleMinistry  = (id) =>
     setMemberMin(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-
   const toggleCommittee = (id) =>
     setMemberCom(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  // ── Password handler ──────────────────────────────────────────────────────
   const saveSecurity = async () => {
-    if (pwForm.new_password !== pwForm.confirm) { setPwError('New passwords do not match.'); return; }
-    if (pwForm.new_password.length < 8)          { setPwError('Password must be at least 8 characters.'); return; }
+    if (pwForm.new_password !== pwForm.confirm) { setPwError(t('profile_pw_mismatch')); return; }
+    if (pwForm.new_password.length < 8)          { setPwError(t('profile_pw_tooshort')); return; }
     setPwError('');
     setSaving('security', true);
     try {
@@ -543,7 +465,6 @@ export default function ProfilePage() {
     }
   };
 
-  // ── Derived ───────────────────────────────────────────────────────────────
   const isMarried    = ['Ameoa', 'Ameolewa'].includes(profile?.marital_status);
   const isCohabiting = profile?.marital_status === 'Anaishi na mtu';
 
@@ -556,7 +477,6 @@ export default function ProfilePage() {
 
   const avatarSrc = profile?._photoPreview || profile?.profile_photo_url || null;
 
-  // ── Loading / error ───────────────────────────────────────────────────────
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <span className="w-6 h-6 border-2 border-stone-300 border-t-amber-400 rounded-full animate-spin" />
@@ -565,7 +485,6 @@ export default function ProfilePage() {
   if (error)    return <div className="p-6 text-center text-red-500 text-sm">{error}</div>;
   if (!profile) return null;
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F5F4F0]">
 
@@ -573,16 +492,27 @@ export default function ProfilePage() {
       <div className="bg-white border-b border-stone-100 px-6 py-5">
         <div className="max-w-3xl mx-auto flex items-center gap-3">
           <TinyCross className="text-amber-400" />
-          <div>
-            <h1 className="text-lg font-semibold text-stone-900">My Profile</h1>
+          <div className="flex-1">
+            <h1 className="text-lg font-semibold text-stone-900">{t('profile_my_profile')}</h1>
             <p className="text-xs text-stone-400 mt-0.5">{profile.email}</p>
           </div>
+          {/* Language toggle */}
+          <button
+            onClick={() => setLang(l => l === 'en' ? 'sw' : 'en')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200
+              text-xs font-semibold text-stone-600 hover:border-amber-400 hover:text-amber-600
+              bg-white transition select-none"
+          >
+            <span className={lang === 'en' ? 'text-amber-500' : 'text-stone-400'}>EN</span>
+            <span className="text-stone-300">/</span>
+            <span className={lang === 'sw' ? 'text-amber-500' : 'text-stone-400'}>SW</span>
+          </button>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-4 xl:pr-6 py-6 pb-24 space-y-4">
 
-        {/* ── Avatar / identity card ──────────────────────────────────── */}
+        {/* Avatar card */}
         <div className="bg-white rounded-2xl border border-stone-100 shadow-sm px-6 py-5 flex items-center gap-5">
           <div className="relative flex-shrink-0 group">
             <div className="w-16 h-16 rounded-full overflow-hidden bg-amber-100 flex items-center
@@ -592,13 +522,12 @@ export default function ProfilePage() {
                 : (profile.full_name?.trim() || '?')[0].toUpperCase()
               }
             </div>
-
             {photoStage === 'idle' || photoStage === 'done' ? (
               <label
                 className={`absolute inset-0 rounded-full flex items-center justify-center
                   bg-black/40 cursor-pointer transition-opacity duration-150
                   ${photoStage === 'done' ? 'opacity-0' : 'opacity-0 group-hover:opacity-100'}`}
-                title="Change photo"
+                title={t('profile_add_photo')}
               >
                 <Icon path={icons.camera} size={18} className="text-white" />
                 <input ref={photoInputRef} type="file"
@@ -613,7 +542,6 @@ export default function ProfilePage() {
                 </span>
               </div>
             )}
-
             {photoStage === 'done' && (
               <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full
                 bg-green-500 border-2 border-white flex items-center justify-center">
@@ -625,27 +553,25 @@ export default function ProfilePage() {
                 ${profile.member_status === 'hai' ? 'bg-green-400' : 'bg-stone-300'}`} />
             )}
           </div>
-
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-stone-900 truncate">{profile.full_name}</p>
             <p className="text-xs text-stone-400 capitalize">
-              {profile.role} · {MEMBER_STATUS.find(s => s.value === profile.member_status)?.label ?? 'Member'}
+              {profile.role} · {MEMBER_STATUS.find(s => s.value === profile.member_status)?.label ?? t('member')}
             </p>
             {photoError && <p className="text-xs text-red-500 mt-1">{photoError}</p>}
             {!avatarSrc && photoStage === 'idle' && (
               <button onClick={() => photoInputRef.current?.click()}
                 className="mt-1 text-xs text-amber-600 hover:underline">
-                + Add photo
+                {t('profile_add_photo')}
               </button>
             )}
           </div>
-
           <span className="hidden sm:block text-xs text-stone-300 font-mono">
             #{String(profile.id).padStart(4, '0')}
           </span>
         </div>
 
-        {/* ── Tab bar ─────────────────────────────────────────────────── */}
+        {/* Tab bar */}
         <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-hide">
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -659,60 +585,58 @@ export default function ProfilePage() {
           ))}
         </div>
 
-        {/* ══════════════════════════════════════════════════════════════
-            PERSONAL
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ── PERSONAL ── */}
         {activeTab === 'personal' && (
-          <Section icon={icons.user} title="Personal Information">
+          <Section icon={icons.user} title={t('profile_personal_info')}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Full name">
+              <Field label={t('profile_full_name')}>
                 <Input value={profile.full_name ?? ''} onChange={e => setField('full_name', e.target.value)} />
               </Field>
-              <Field label="Email address">
+              <Field label={t('profile_email_address')}>
                 <Input type="email" value={profile.email ?? ''} onChange={e => setField('email', e.target.value)}
-                  placeholder="member@example.com" />
+                  placeholder={t('profile_email_placeholder')} />
               </Field>
-              <Field label="Phone">
+              <Field label={t('profile_phone')}>
                 <Input type="tel" value={profile.phone ?? ''} onChange={e => setField('phone', e.target.value)}
-                  placeholder="+255 700 000 000" />
+                  placeholder={t('profile_phone_placeholder')} />
               </Field>
-              <Field label="Gender">
+              <Field label={t('profile_gender')}>
                 <Select value={profile.gender ?? ''} onChange={e => setField('gender', e.target.value)}>
-                  <option value="">— Select —</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
+                  <option value="">{t('profile_select')}</option>
+                  <option value="male">{t('profile_gender_male')}</option>
+                  <option value="female">{t('profile_gender_female')}</option>
                 </Select>
               </Field>
-              <Field label="Date of birth">
+              <Field label={t('profile_dob')}>
                 <Input type="date" value={profile.date_of_birth?.split('T')[0] ?? ''}
                   onChange={e => setField('date_of_birth', e.target.value)} />
               </Field>
-              <Field label="Place of birth">
+              <Field label={t('profile_place_of_birth')}>
                 <Input value={profile.place_of_birth ?? ''} onChange={e => setField('place_of_birth', e.target.value)}
-                  placeholder="City or town" />
+                  placeholder={t('profile_pob_placeholder')} />
               </Field>
-              <Field label="Member since">
+              <Field label={t('profile_member_since')}>
                 <Input type="date" value={profile.member_since?.split('T')[0] ?? ''}
                   onChange={e => setField('member_since', e.target.value)} />
               </Field>
-              <Field label="Member status">
+              <Field label={t('profile_member_status')}>
                 <Select value={profile.member_status ?? ''} onChange={e => setField('member_status', e.target.value)}>
-                  <option value="">— Select —</option>
+                  <option value="">{t('profile_select')}</option>
                   {MEMBER_STATUS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </Select>
               </Field>
-              <Field label="Willing to volunteer?" className="sm:col-span-2">
+              <Field label={t('profile_volunteer')} className="sm:col-span-2">
                 <Select value={profile.willing_to_volunteer ? 'yes' : 'no'}
                   onChange={e => setField('willing_to_volunteer', e.target.value === 'yes')}>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
+                  <option value="yes">{t('profile_yes')}</option>
+                  <option value="no">{t('profile_no')}</option>
                 </Select>
               </Field>
             </div>
 
             {/* CV upload */}
             <div className="mt-6 pt-5 border-t border-stone-100">
-              <SubHeading>CV / Résumé</SubHeading>
+              <SubHeading>{t('profile_cv_heading')}</SubHeading>
               <input ref={cvInputRef} type="file" accept=".pdf,.doc,.docx"
                 className="hidden" onChange={handleCvChange} />
               <div className="flex flex-wrap items-center gap-3">
@@ -722,12 +646,12 @@ export default function ProfilePage() {
                     bg-white text-stone-600 hover:border-amber-400 hover:text-amber-600
                     disabled:opacity-50 disabled:cursor-not-allowed transition">
                   <Icon path={icons.upload} size={14} />
-                  {profile.cv_url ? 'Replace CV' : 'Upload CV'}
+                  {profile.cv_url ? t('profile_cv_replace') : t('profile_cv_upload')}
                 </button>
                 {cvStage === 'uploading' && (
                   <div className="flex items-center gap-2 text-xs text-stone-500">
                     <span className="w-3.5 h-3.5 border-2 border-stone-300 border-t-amber-500 rounded-full animate-spin flex-shrink-0" />
-                    Uploading… {cvProgress}%
+                    {t('profile_cv_uploading')} {cvProgress}%
                     <div className="w-24 h-1.5 bg-stone-100 rounded-full overflow-hidden">
                       <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${cvProgress}%` }} />
                     </div>
@@ -736,12 +660,12 @@ export default function ProfilePage() {
                 {cvStage === 'saving' && (
                   <div className="flex items-center gap-2 text-xs text-stone-500">
                     <span className="w-3.5 h-3.5 border-2 border-stone-300 border-t-amber-500 rounded-full animate-spin flex-shrink-0" />
-                    Saving…
+                    {t('profile_cv_saving')}
                   </div>
                 )}
                 {cvStage === 'done' && (
                   <div className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
-                    <Icon path={icons.check} size={13} />CV uploaded
+                    <Icon path={icons.check} size={13} />{t('profile_cv_uploaded')}
                   </div>
                 )}
                 {cvStage === 'idle' && cvFileName && (
@@ -750,59 +674,57 @@ export default function ProfilePage() {
                 {profile.cv_url && cvStage === 'idle' && (
                   <a href={profile.cv_url} target="_blank" rel="noreferrer"
                     className="flex items-center gap-1.5 text-xs text-amber-600 hover:underline ml-auto">
-                    <Icon path={icons.file} size={13} />View current CV
+                    <Icon path={icons.file} size={13} />{t('profile_cv_view')}
                   </a>
                 )}
               </div>
               {cvError && <p className="mt-2 text-xs text-red-500">{cvError}</p>}
               {cvStage === 'idle' && !cvError && (
-                <p className="mt-1.5 text-xs text-stone-400">PDF or Word · max 10 MB</p>
+                <p className="mt-1.5 text-xs text-stone-400">{t('profile_cv_hint')}</p>
               )}
             </div>
           </Section>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            FAMILY
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ── FAMILY ── */}
         {activeTab === 'family' && (
-          <Section icon={icons.heart} title="Family & Marital Status">
+          <Section icon={icons.heart} title={t('profile_family_title')}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Marital status" className="sm:col-span-2">
+              <Field label={t('profile_marital_status')} className="sm:col-span-2">
                 <Select value={profile.marital_status ?? ''} onChange={e => setField('marital_status', e.target.value)}>
-                  <option value="">— Select —</option>
+                  <option value="">{t('profile_select')}</option>
                   {MARITAL_STATUS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </Select>
               </Field>
               {isCohabiting && (
-                <Field label="Partner name" className="sm:col-span-2">
+                <Field label={t('profile_partner_name')} className="sm:col-span-2">
                   <Input value={profile.cohabiting_partner_name ?? ''}
                     onChange={e => setField('cohabiting_partner_name', e.target.value)}
-                    placeholder="Full name of partner" />
+                    placeholder={t('profile_partner_placeholder')} />
                 </Field>
               )}
               {isMarried && (
                 <>
-                  <Field label="Type of marriage">
+                  <Field label={t('profile_marriage_type')}>
                     <Select value={profile.marriage_type ?? ''} onChange={e => setField('marriage_type', e.target.value)}>
-                      <option value="">— Select —</option>
+                      <option value="">{t('profile_select')}</option>
                       {MARRIAGE_TYPE.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </Select>
                   </Field>
-                  <Field label="Marriage date">
+                  <Field label={t('profile_marriage_date')}>
                     <Input type="date" value={profile.marriage_date?.split('T')[0] ?? ''}
                       onChange={e => setField('marriage_date', e.target.value)} />
                   </Field>
-                  <Field label="Marriage place">
+                  <Field label={t('profile_marriage_place')}>
                     <Input value={profile.marriage_place ?? ''} onChange={e => setField('marriage_place', e.target.value)}
-                      placeholder="Church or office name" />
+                      placeholder={t('profile_marriage_place_placeholder')} />
                   </Field>
-                  <Field label="Spouse name">
+                  <Field label={t('profile_spouse_name')}>
                     <Input value={profile.spouse_name ?? ''} onChange={e => setField('spouse_name', e.target.value)} />
                   </Field>
-                  <Field label="Spouse phone">
+                  <Field label={t('profile_spouse_phone')}>
                     <Input type="tel" value={profile.spouse_phone ?? ''} onChange={e => setField('spouse_phone', e.target.value)}
-                      placeholder="+255 700 000 000" />
+                      placeholder={t('profile_phone_placeholder')} />
                   </Field>
                 </>
               )}
@@ -810,124 +732,117 @@ export default function ProfilePage() {
           </Section>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            WORK & EDUCATION
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ── WORK ── */}
         {activeTab === 'work' && (
-          <Section icon={icons.briefcase} title="Work & Education">
+          <Section icon={icons.briefcase} title={t('profile_work_title')}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Occupation">
+              <Field label={t('profile_occupation')}>
                 <Input value={profile.occupation ?? ''} onChange={e => setField('occupation', e.target.value)}
-                  placeholder="e.g. Teacher" />
+                  placeholder={t('profile_occupation_placeholder')} />
               </Field>
-              <Field label="Workplace / Employer">
+              <Field label={t('profile_workplace')}>
                 <Input value={profile.workplace ?? ''} onChange={e => setField('workplace', e.target.value)} />
               </Field>
-              <Field label="Highest education">
+              <Field label={t('profile_education')}>
                 <Select value={profile.education ?? ''} onChange={e => setField('education', e.target.value)}>
-                  <option value="">— Select —</option>
-                  <option value="none">None</option>
-                  <option value="primary">Primary</option>
-                  <option value="secondary">Secondary</option>
-                  <option value="diploma">Diploma</option>
-                  <option value="degree">Degree</option>
-                  <option value="postgraduate">Postgraduate</option>
+                  <option value="">{t('profile_select')}</option>
+                  <option value="none">{t('profile_edu_none')}</option>
+                  <option value="primary">{t('profile_edu_primary')}</option>
+                  <option value="secondary">{t('profile_edu_secondary')}</option>
+                  <option value="diploma">{t('profile_edu_diploma')}</option>
+                  <option value="degree">{t('profile_edu_degree')}</option>
+                  <option value="postgraduate">{t('profile_edu_postgrad')}</option>
                 </Select>
               </Field>
-              <Field label="Profession / Field">
+              <Field label={t('profile_profession')}>
                 <Input value={profile.profession ?? ''} onChange={e => setField('profession', e.target.value)}
-                  placeholder="e.g. Engineering" />
+                  placeholder={t('profile_profession_placeholder')} />
               </Field>
             </div>
           </Section>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            ADDRESS
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ── ADDRESS ── */}
         {activeTab === 'address' && (
-          <Section icon={icons.mapPin} title="Address & Contact Details">
-            <SubHeading>General address</SubHeading>
+          <Section icon={icons.mapPin} title={t('profile_address_title')}>
+            <SubHeading>{t('profile_address_general')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <Field label="Street / Plot no.">
+              <Field label={t('profile_street')}>
                 <Input value={profile.street ?? ''} onChange={e => setField('street', e.target.value)}
-                  placeholder="Plot 12, Uhuru Street" />
+                  placeholder={t('profile_street_placeholder')} />
               </Field>
-              <Field label="Area name (Mtaa)">
+              <Field label={t('profile_area_name')}>
                 <Input value={profile.area_name ?? ''} onChange={e => setField('area_name', e.target.value)}
-                  placeholder="e.g. Mikocheni" />
+                  placeholder={t('profile_area_placeholder')} />
               </Field>
-              <Field label="Block no.">
+              <Field label={t('profile_block_no')}>
                 <Input value={profile.block_no ?? ''} onChange={e => setField('block_no', e.target.value)}
-                  placeholder="e.g. B-14" />
+                  placeholder={t('profile_block_placeholder')} />
               </Field>
-              <Field label="Jumuiya">
+              <Field label={t('profile_jumuiya')}>
                 <Input value={profile.jumuiya ?? ''} onChange={e => setField('jumuiya', e.target.value)}
-                  placeholder="Jumuiya name" />
+                  placeholder={t('profile_jumuiya_placeholder')} />
               </Field>
-              <Field label="District">
+              <Field label={t('profile_district')}>
                 <Input value={profile.district ?? ''} onChange={e => setField('district', e.target.value)}
-                  placeholder="Kinondoni" />
+                  placeholder={t('profile_district_placeholder')} />
               </Field>
-              <Field label="Region">
+              <Field label={t('profile_region')}>
                 <Input value={profile.region ?? ''} onChange={e => setField('region', e.target.value)}
-                  placeholder="Dar es Salaam" />
+                  placeholder={t('profile_region_placeholder')} />
               </Field>
-              <Field label="P.O. Box (SLP)">
+              <Field label={t('profile_slp')}>
                 <Input value={profile.slp ?? ''} onChange={e => setField('slp', e.target.value)}
-                  placeholder="S.L.P 1234" />
+                  placeholder={t('profile_slp_placeholder')} />
               </Field>
-              <Field label="Postal code">
+              <Field label={t('profile_postal_code')}>
                 <Input value={profile.postal_code ?? ''} onChange={e => setField('postal_code', e.target.value)}
-                  placeholder="11101" />
+                  placeholder={t('profile_postal_placeholder')} />
               </Field>
             </div>
-            <SubHeading>Church history</SubHeading>
+            <SubHeading>{t('profile_church_history')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <Field label="Previous church" className="sm:col-span-2">
+              <Field label={t('profile_prev_church')} className="sm:col-span-2">
                 <Input value={profile.previous_church ?? ''} onChange={e => setField('previous_church', e.target.value)}
-                  placeholder="Name of previous congregation" />
+                  placeholder={t('profile_prev_church_placeholder')} />
               </Field>
             </div>
-            <SubHeading>Neighbour member reference</SubHeading>
+            <SubHeading>{t('profile_neighbour_ref')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <Field label="Neighbour member name">
+              <Field label={t('profile_neighbour_name')}>
                 <Input value={profile.neighbour_member_name ?? ''} onChange={e => setField('neighbour_member_name', e.target.value)}
-                  placeholder="Full name" />
+                  placeholder={t('profile_neighbour_name_placeholder')} />
               </Field>
-              <Field label="Neighbour member phone">
+              <Field label={t('profile_neighbour_phone')}>
                 <Input type="tel" value={profile.neighbour_member_phone ?? ''}
                   onChange={e => setField('neighbour_member_phone', e.target.value)}
-                  placeholder="+255 700 000 000" />
+                  placeholder={t('profile_phone_placeholder')} />
               </Field>
             </div>
-            <SubHeading>Elder / Cell leader</SubHeading>
+            <SubHeading>{t('profile_elder_section')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Elder name (Mzee wa roho)">
+              <Field label={t('profile_elder_name')}>
                 <Input value={profile.elder_name ?? ''} onChange={e => setField('elder_name', e.target.value)}
-                  placeholder="Full name" />
+                  placeholder={t('profile_elder_name_placeholder')} />
               </Field>
-              <Field label="Elder phone">
+              <Field label={t('profile_elder_phone')}>
                 <Input type="tel" value={profile.elder_phone ?? ''} onChange={e => setField('elder_phone', e.target.value)}
-                  placeholder="+255 700 000 000" />
+                  placeholder={t('profile_phone_placeholder')} />
               </Field>
             </div>
           </Section>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            SPIRITUAL
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ── SPIRITUAL ── */}
         {activeTab === 'spiritual' && (
-          <Section icon={icons.cross} title="Spiritual Services (Huduma za Kiroho)">
-
-            <SubHeading>Sacraments (Sakramenti)</SubHeading>
+          <Section icon={icons.cross} title={t('profile_spiritual_title')}>
+            <SubHeading>{t('profile_sacraments')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <Field label="Baptism date (Tarehe ya Ubatizo)">
+              <Field label={t('profile_baptism_date')}>
                 <Input type="date" value={profile.baptism_date?.split('T')[0] ?? ''}
                   onChange={e => setField('baptism_date', e.target.value)} />
               </Field>
-              <Field label="Confirmation date (Tarehe ya Kipaimara)">
+              <Field label={t('profile_confirmation_date')}>
                 <Input type="date" value={profile.confirmation_date?.split('T')[0] ?? ''}
                   onChange={e => setField('confirmation_date', e.target.value)} />
               </Field>
@@ -945,8 +860,8 @@ export default function ProfilePage() {
                     checked={!!profile.takes_communion}
                     onChange={e => setField('takes_communion', e.target.checked)} />
                   <span className="text-sm text-stone-700">
-                    Participates in Lord's Supper
-                    <span className="text-stone-400 ml-1">(Sakramenti ya Meza ya Bwana)</span>
+                    {t('profile_communion')}
+                    <span className="text-stone-400 ml-1">{t('profile_communion_sub')}</span>
                   </span>
                 </label>
               </div>
@@ -958,9 +873,9 @@ export default function ProfilePage() {
               </div>
             ) : (
               <>
-                <SubHeading>Ministry involvement (Huduma)</SubHeading>
+                <SubHeading>{t('profile_ministries')}</SubHeading>
                 {ministries.length === 0 ? (
-                  <p className="text-sm text-stone-400 mb-6">No ministries found.</p>
+                  <p className="text-sm text-stone-400 mb-6">{t('profile_no_ministries')}</p>
                 ) : (
                   <div className="space-y-5 mb-8">
                     {Object.entries(ministryGroups).map(([cat, items]) => (
@@ -977,10 +892,9 @@ export default function ProfilePage() {
                     ))}
                   </div>
                 )}
-
-                <SubHeading>Committee membership (Kamati)</SubHeading>
+                <SubHeading>{t('profile_committees')}</SubHeading>
                 {committees.length === 0 ? (
-                  <p className="text-sm text-stone-400">No committees found.</p>
+                  <p className="text-sm text-stone-400">{t('profile_no_committees')}</p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {committees.map(c => (
@@ -995,23 +909,21 @@ export default function ProfilePage() {
           </Section>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            DEPENDANTS
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ── DEPENDANTS ── */}
         {activeTab === 'dependants' && (
-          <Section icon={icons.users} title="Dependants" noPadding>
+          <Section icon={icons.users} title={t('profile_dependants_title')} noPadding>
             <div className="px-6 py-5 border-b border-stone-100">
-              <p className="text-xs text-stone-500 mb-3">Add children, elderly relatives, or others under your care.</p>
+              <p className="text-xs text-stone-500 mb-3">{t('profile_dependants_hint')}</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Input placeholder="Full name *" value={depForm.full_name}
+                <Input placeholder={t('profile_dep_name_placeholder')} value={depForm.full_name}
                   onChange={e => setDepForm(f => ({ ...f, full_name: e.target.value }))} />
                 <Select value={depForm.relationship}
                   onChange={e => setDepForm(f => ({ ...f, relationship: e.target.value }))}>
-                  <option value="">Relationship</option>
-                  <option value="child">Child</option>
-                  <option value="parent">Parent</option>
-                  <option value="sibling">Sibling</option>
-                  <option value="other">Other</option>
+                  <option value="">{t('profile_dep_relationship')}</option>
+                  <option value="child">{t('profile_dep_child')}</option>
+                  <option value="parent">{t('profile_dep_parent')}</option>
+                  <option value="sibling">{t('profile_dep_sibling')}</option>
+                  <option value="other">{t('profile_dep_other')}</option>
                 </Select>
                 <Input type="date" value={depForm.date_of_birth}
                   onChange={e => setDepForm(f => ({ ...f, date_of_birth: e.target.value }))} />
@@ -1021,7 +933,7 @@ export default function ProfilePage() {
                 className="mt-3 flex items-center gap-1.5 px-4 py-2 text-sm font-medium
                   bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow-sm transition">
                 <Icon path={icons.plus} size={14} />
-                Add dependant
+                {t('profile_add_dependant')}
               </button>
             </div>
             {depLoading ? (
@@ -1029,7 +941,7 @@ export default function ProfilePage() {
                 <span className="w-5 h-5 border-2 border-stone-200 border-t-amber-400 rounded-full animate-spin" />
               </div>
             ) : dependants.length === 0 ? (
-              <p className="px-6 py-8 text-center text-sm text-stone-400">No dependants added yet.</p>
+              <p className="px-6 py-8 text-center text-sm text-stone-400">{t('profile_no_dependants')}</p>
             ) : (
               <ul className="divide-y divide-stone-50">
                 {dependants.map(dep => (
@@ -1043,7 +955,7 @@ export default function ProfilePage() {
                       <p className="text-xs text-stone-400 capitalize">
                         {dep.relationship || '—'}
                         {dep.date_of_birth
-                          ? ` · Born ${new Date(dep.date_of_birth).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                          ? ` · ${t('profile_dep_born')} ${new Date(dep.date_of_birth).toLocaleDateString(lang === 'sw' ? 'sw-TZ' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
                           : ''}
                       </p>
                     </div>
@@ -1058,16 +970,14 @@ export default function ProfilePage() {
           </Section>
         )}
 
-        {/* ══════════════════════════════════════════════════════════════
-            SECURITY
-        ══════════════════════════════════════════════════════════════ */}
+        {/* ── SECURITY ── */}
         {activeTab === 'security' && (
-          <Section icon={icons.lock} title="Change Password">
+          <Section icon={icons.lock} title={t('profile_security_title')}>
             <div className="max-w-sm space-y-4">
               {[
-                { key: 'current_password', label: 'Current password' },
-                { key: 'new_password',     label: 'New password' },
-                { key: 'confirm',          label: 'Confirm new password' },
+                { key: 'current_password', label: t('profile_current_password') },
+                { key: 'new_password',     label: t('profile_new_password') },
+                { key: 'confirm',          label: t('profile_confirm_password') },
               ].map(({ key, label }) => (
                 <Field key={key} label={label}>
                   <div className="relative">
@@ -1086,22 +996,20 @@ export default function ProfilePage() {
                 </Field>
               ))}
               {pwError && <p className="text-xs text-red-500">{pwError}</p>}
-              <p className="text-xs text-stone-400">
-                Minimum 8 characters. Use a mix of letters, numbers, and symbols.
-              </p>
+              <p className="text-xs text-stone-400">{t('profile_pw_hint')}</p>
             </div>
           </Section>
         )}
 
       </div>
 
-      {/* ── Floating save button ── */}
-      {activeTab === 'personal'  && <FloatingSaveBtn {...ss('personal')}  onClick={savePersonal}  />}
-      {activeTab === 'family'    && <FloatingSaveBtn {...ss('family')}    onClick={saveFamily}    />}
-      {activeTab === 'work'      && <FloatingSaveBtn {...ss('work')}      onClick={saveWork}      />}
-      {activeTab === 'address'   && <FloatingSaveBtn {...ss('address')}   onClick={saveAddress}   />}
-      {activeTab === 'spiritual' && <FloatingSaveBtn {...ss('spiritual')} onClick={saveSpiritual} />}
-      {activeTab === 'security'  && <FloatingSaveBtn {...ss('security')}  onClick={saveSecurity}  />}
+      {/* Floating save buttons */}
+      {activeTab === 'personal'  && <FloatingSaveBtn {...ss('personal')}  onClick={savePersonal}  t={t} />}
+      {activeTab === 'family'    && <FloatingSaveBtn {...ss('family')}    onClick={saveFamily}    t={t} />}
+      {activeTab === 'work'      && <FloatingSaveBtn {...ss('work')}      onClick={saveWork}      t={t} />}
+      {activeTab === 'address'   && <FloatingSaveBtn {...ss('address')}   onClick={saveAddress}   t={t} />}
+      {activeTab === 'spiritual' && <FloatingSaveBtn {...ss('spiritual')} onClick={saveSpiritual} t={t} />}
+      {activeTab === 'security'  && <FloatingSaveBtn {...ss('security')}  onClick={saveSecurity}  t={t} />}
 
     </div>
   );
