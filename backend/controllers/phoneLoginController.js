@@ -15,7 +15,8 @@
  *     3. Rate-limit: max 3 OTP requests per phone per 10 minutes
  *     4. Invalidate any previous unused OTPs
  *     5. Generate 6-digit OTP, bcrypt-hash and store it
- *     6. Send SMS via NextSMS
+ *     6. Generate a plain-text password, bcrypt-hash and save to users.password
+ *     7. Send a single SMS containing both the OTP and the new password
  *
  *   POST /api/auth/phone-login/verify
  *     1. Fetch latest unused, unexpired OTP for the phone
@@ -25,10 +26,11 @@
  *
  * Security:
  *   • OTP stored as bcrypt hash — never plain text
- *   • 5-minute expiry
+ *   • 5-minute OTP expiry
  *   • Max 5 wrong attempts before OTP invalidated
  *   • Max 3 OTP requests per phone per 10 minutes
  *   • IP-level rate limiting at the route layer (express-rate-limit)
+ *   • Password stored as bcrypt hash — plain text only appears in SMS
  *
  * Supported input formats (all resolve to 255XXXXXXXXX internally):
  *   +255 617 833 806   → 255617833806
@@ -52,12 +54,50 @@ const OTP_TTL_MINUTES = 5;
 const MAX_ATTEMPTS    = 5;
 const MAX_REQUESTS    = 3;      // per phone per 10 minutes
 const REQUEST_WINDOW  = 10;     // minutes
+const LOGIN_URL       = 'www.kkktdmpyombo.org/auth/login';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function generateOTP() {
   // Cryptographically random 6-digit number, zero-padded
   return String(crypto.randomInt(0, 1_000_000)).padStart(OTP_LENGTH, '0');
+}
+
+/**
+ * generatePassword
+ * ────────────────
+ * Produces a memorable but reasonably secure 10-character password.
+ * Character set deliberately avoids visually ambiguous characters
+ * (0/O, 1/l/I) so the SMS recipient can type it accurately.
+ *
+ * Example output: "mK4#vP9!rX"
+ */
+function generatePassword() {
+  const lower   = 'abcdefghjkmnpqrstuvwxyz';
+  const upper   = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+  const digits  = '23456789';
+  const symbols = '!@#';
+
+  // Guarantee at least one of each class, then fill the rest randomly
+  const all = lower + upper + digits + symbols;
+  const pick = (set) => set[crypto.randomInt(0, set.length)];
+
+  const chars = [
+    pick(lower),
+    pick(upper),
+    pick(digits),
+    pick(symbols),
+    // Remaining 6 chars from the full set
+    ...Array.from({ length: 6 }, () => pick(all)),
+  ];
+
+  // Shuffle so the guaranteed chars aren't always in fixed positions
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join('');
 }
 
 function generateToken(user) {
@@ -206,22 +246,40 @@ exports.requestPhoneOTP = async (req, res, next) => {
       [canonicalPhone, otpHash, expiresAt]
     );
 
-    // ── 5. Build Swahili SMS message ─────────────────────────────────────────
-    const firstName = user.full_name.split(' ')[0];
-    const message   =
-      `Habari ${firstName}, nambari yako ya kuingia (OTP) ni: ${otp}. ` +
-      `Inaisha baada ya dakika ${OTP_TTL_MINUTES}. Usimwambie mtu yeyote.`;
+    // ── 5. Generate a new plain-text password, hash it, save to users ────────
+    // A fresh password is issued every time an OTP is requested.
+    // The plain text is included in the SMS below and never stored.
+    const plainPassword  = generatePassword();
+    const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
-    // ── 6. Send via NextSMS ──────────────────────────────────────────────────
+    await db.execute(
+      `UPDATE users SET password = ? WHERE id = ?`,
+      [hashedPassword, user.id]
+    );
+
+    // ── 6. Build Swahili SMS containing OTP + login credentials ──────────────
+    const firstName = user.full_name.split(' ')[0];
+
+    const message =
+      `Habari ${firstName},\n` +
+      `Nambari yako ya uthibitisho (OTP): ${otp}\n` +
+      `Inaisha baada ya dakika ${OTP_TTL_MINUTES}.\n\n` +
+      `Unaweza pia kuingia kwa nambari yako ya simu na nenosiri hili:\n` +
+      `Simu: ${canonicalPhone}\n` +
+      `Nenosiri: ${plainPassword}\n` +
+      `Tovuti: ${LOGIN_URL}\n\n` +
+      `Usimwambie mtu yeyote nenosiri hili.`;
+
+    // ── 7. Send via NextSMS ──────────────────────────────────────────────────
     await sendSMS(canonicalPhone, message);
 
-    console.log(`[PhoneOTP] OTP sent → userId=${user.id} phone=${canonicalPhone}`);
+    console.log(`[PhoneOTP] OTP + password sent → userId=${user.id} phone=${canonicalPhone}`);
 
     return res.json({
       success: true,
       message:
-        'OTP imetumwa kwa nambari yako ya simu. Itaisha baada ya dakika 5. ' +
-        '/ OTP sent to your phone number. It expires in 5 minutes.',
+        'OTP na nenosiri vimetumwa kwa nambari yako ya simu. OTP itaisha baada ya dakika 5. ' +
+        '/ OTP and password sent to your phone number. OTP expires in 5 minutes.',
     });
 
   } catch (err) {
