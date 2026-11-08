@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../lib/i18n';
 import { userApi, dependantApi, ministryApi, committeeApi } from '../../lib/api';
 import R2UploadService from '../../lib/r2UploadService';
+import { JUMUIYA_LIST } from '../../lib/constants';
 
 // ── Icons ─────────────────────────────────────────────────────────────────
 const Icon = ({ path, size = 18, className = '' }) => (
@@ -262,7 +263,7 @@ const { t } = useTranslation(lang);
 
   useEffect(() => {
     if (!authUser?.id || activeTab !== 'spiritual') return;
-    if (ministries.length > 0 || committees.length > 0) return;
+    
     setMinLoading(true);
     Promise.all([
       ministryApi.getAll(),
@@ -779,10 +780,14 @@ const { t } = useTranslation(lang);
                 <Input value={profile.block_no ?? ''} onChange={e => setField('block_no', e.target.value)}
                   placeholder={t('profile_block_placeholder')} />
               </Field>
-              <Field label={t('profile_jumuiya')}>
-                <Input value={profile.jumuiya ?? ''} onChange={e => setField('jumuiya', e.target.value)}
-                  placeholder={t('profile_jumuiya_placeholder')} />
-              </Field>
+            <Field label={t('profile_jumuiya')}>
+  <Select value={profile.jumuiya ?? ''} onChange={e => setField('jumuiya', e.target.value)}>
+    <option value="">{t('profile_select')}</option>
+    {JUMUIYA_LIST.map(j => (
+      <option key={j} value={j}>{j}</option>
+    ))}
+  </Select>
+</Field>
               <Field label={t('profile_district')}>
                 <Input value={profile.district ?? ''} onChange={e => setField('district', e.target.value)}
                   placeholder={t('profile_district_placeholder')} />
