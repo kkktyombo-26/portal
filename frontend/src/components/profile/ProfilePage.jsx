@@ -275,12 +275,16 @@ useEffect(() => {
     committeeApi.getAll(),
     committeeApi.getMemberCommittees(authUser.id),
   ])
-    .then(([minCat, minMem, comCat, comMem]) => {
-      setMinistries(minCat.data.data ?? []);
-      setMemberMin((minMem.data.data ?? []).map(m => m.ministry_id ?? m.id));
-      setCommittees(comCat.data.data ?? []);
-      setMemberCom((comMem.data.data ?? []).map(c => c.committee_id ?? c.id));
-    })
+  .then(([minCat, minMem, comCat, comMem]) => {
+  setMinistries(minCat.data.data ?? []);
+  setMemberMin(
+    (minMem.data.data ?? []).map(m => Number(m.ministry_id ?? m.id))
+  );
+  setCommittees(comCat.data.data ?? []);
+  setMemberCom(
+    (comMem.data.data ?? []).map(c => Number(c.committee_id ?? c.id))
+  );
+})
     .catch(() => { spiritualFetched.current = false; }) // allow retry on error
     .finally(() => setMinLoading(false));
 }, [authUser?.id, activeTab]);
@@ -445,10 +449,19 @@ useEffect(() => {
     }
   };
 
-  const toggleMinistry  = (id) =>
-    setMemberMin(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  const toggleCommittee = (id) =>
-    setMemberCom(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+const toggleMinistry = (id) => {
+  const nid = Number(id);
+  setMemberMin(prev =>
+    prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid]
+  );
+};
+
+const toggleCommittee = (id) => {
+  const nid = Number(id);
+  setMemberCom(prev =>
+    prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid]
+  );
+};
 
   const saveSecurity = async () => {
     if (pwForm.new_password !== pwForm.confirm) { setPwError(t('profile_pw_mismatch')); return; }
@@ -762,18 +775,9 @@ useEffect(() => {
           <Section icon={icons.mapPin} title={t('profile_address_title')}>
             <SubHeading>{t('profile_address_general')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <Field label={t('profile_street')}>
-                <Input value={profile.street ?? ''} onChange={e => setField('street', e.target.value)}
-                  placeholder={t('profile_street_placeholder')} />
-              </Field>
-              <Field label={t('profile_area_name')}>
-                <Input value={profile.area_name ?? ''} onChange={e => setField('area_name', e.target.value)}
-                  placeholder={t('profile_area_placeholder')} />
-              </Field>
-              <Field label={t('profile_block_no')}>
-                <Input value={profile.block_no ?? ''} onChange={e => setField('block_no', e.target.value)}
-                  placeholder={t('profile_block_placeholder')} />
-              </Field>
+          
+           
+           
             <Field label={t('profile_jumuiya')}>
   <Select value={profile.jumuiya ?? ''} onChange={e => setField('jumuiya', e.target.value)}>
     <option value="">{t('profile_select')}</option>
@@ -782,22 +786,10 @@ useEffect(() => {
     ))}
   </Select>
 </Field>
-              <Field label={t('profile_district')}>
-                <Input value={profile.district ?? ''} onChange={e => setField('district', e.target.value)}
-                  placeholder={t('profile_district_placeholder')} />
-              </Field>
-              <Field label={t('profile_region')}>
-                <Input value={profile.region ?? ''} onChange={e => setField('region', e.target.value)}
-                  placeholder={t('profile_region_placeholder')} />
-              </Field>
-              <Field label={t('profile_slp')}>
-                <Input value={profile.slp ?? ''} onChange={e => setField('slp', e.target.value)}
-                  placeholder={t('profile_slp_placeholder')} />
-              </Field>
-              <Field label={t('profile_postal_code')}>
-                <Input value={profile.postal_code ?? ''} onChange={e => setField('postal_code', e.target.value)}
-                  placeholder={t('profile_postal_placeholder')} />
-              </Field>
+            
+             
+         
+             
             </div>
             <SubHeading>{t('profile_church_history')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -883,7 +875,7 @@ useEffect(() => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {items.map(m => (
                             <ServiceCheck key={m.id} label={m.name}
-                              checked={memberMinistries.includes(m.id)}
+                              checked={memberMinistries.includes(Number(m.id))}
                               onChange={() => toggleMinistry(m.id)} />
                           ))}
                         </div>
@@ -898,7 +890,7 @@ useEffect(() => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {committees.map(c => (
                       <ServiceCheck key={c.id} label={c.name}
-                        checked={memberCommittees.includes(c.id)}
+                       checked={memberCommittees.includes(Number(c.id))}
                         onChange={() => toggleCommittee(c.id)} />
                     ))}
                   </div>
