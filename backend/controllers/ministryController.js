@@ -22,6 +22,151 @@ exports.getAll = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+
+// ── PUT /api/groups/member/:userId/sync ──────────────────────────────────────
+// Replaces a member's spiritual group memberships (huduma/kwaya/idara/kamati).
+// Called by the Spiritual tab Save button.
+//
+// Body: { groupIds: number[] }
+//
+// Logic:
+//  - Only syncs groups of type: huduma | kwaya | idara | kamati
+//    (leaves jumuiya/vingine memberships untouched)
+//  - New IDs     → INSERT into group_members
+//  - Re-joining  → re-activate a 'former' row
+//  - Removed IDs → soft-retire (status='former', left_date=today)
+//  - Hard DELETE is avoided — history is never lost
+//
+exports.syncMemberGroups = async (req, res, next) => {
+  try {
+    const { role, id: callerId } = req.user;
+    const targetId = parseInt(req.params.userId);
+
+    if (!ALL_MANAGERS.includes(role) && callerId !== targetId) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const { groupIds = [] } = req.body;
+
+    if (!Array.isArray(groupIds)) {
+      return res.status(400).json({ success: false, message: 'groupIds must be an array.' });
+    }
+
+    const desiredIds = [...new Set(groupIds.map(Number).filter(n => Number.isInteger(n) && n > 0))];
+
+    // Validate that every supplied ID exists and is a spiritual type
+    if (desiredIds.length > 0) {
+      const ph = desiredIds.map(() => '?').join(', ');
+      const [validRows] = await db.execute(
+        `SELECT id FROM \`groups\`
+         WHERE id IN (${ph})
+           AND type IN ('huduma','kwaya','idara','kamati')
+           AND is_archived = 0`,
+        desiredIds
+      );
+      const validIds = validRows.map(r => r.id);
+      const invalid  = desiredIds.filter(id => !validIds.includes(id));
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid or non-spiritual group IDs: ${invalid.join(', ')}.`,
+        });
+      }
+    }
+
+    // Fetch current spiritual memberships (all statuses)
+    const [existing] = await db.execute(
+      `SELECT gm.group_id, gm.status
+       FROM   group_members gm
+       JOIN   \`groups\` g ON g.id = gm.group_id
+       WHERE  gm.member_id = ?
+         AND  g.type IN ('huduma','kwaya','idara','kamati')`,
+      [targetId]
+    );
+
+    const activeIds   = existing.filter(r => r.status === 'active').map(r => r.group_id);
+    const formerIds   = existing.filter(r => r.status === 'former').map(r => r.group_id);
+    const allKnownIds = existing.map(r => r.group_id);
+
+    const toInsert   = desiredIds.filter(id => !allKnownIds.includes(id));
+    const toActivate = desiredIds.filter(id => formerIds.includes(id));
+    const toRetire   = activeIds.filter(id => !desiredIds.includes(id));
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 1. Insert brand-new memberships
+    if (toInsert.length > 0) {
+      const ph   = toInsert.map(() => '(?, ?, ?, ?)').join(', ');
+      const flat = toInsert.flatMap(id => [targetId, id, 'active', today]);
+      await db.execute(
+        `INSERT INTO group_members (member_id, group_id, status, joined_date) VALUES ${ph}`,
+        flat
+      );
+    }
+
+    // 2. Re-activate formerly retired memberships
+    if (toActivate.length > 0) {
+      const ph = toActivate.map(() => '?').join(', ');
+      await db.execute(
+        `UPDATE group_members gm
+         JOIN \`groups\` g ON g.id = gm.group_id
+         SET    gm.status     = 'active',
+                gm.left_date  = NULL,
+                gm.updated_at = NOW()
+         WHERE  gm.member_id = ?
+           AND  gm.group_id  IN (${ph})
+           AND  gm.status    = 'former'
+           AND  g.type       IN ('huduma','kwaya','idara','kamati')`,
+        [targetId, ...toActivate]
+      );
+    }
+
+    // 3. Soft-retire removed memberships
+    if (toRetire.length > 0) {
+      const ph = toRetire.map(() => '?').join(', ');
+      await db.execute(
+        `UPDATE group_members gm
+         JOIN \`groups\` g ON g.id = gm.group_id
+         SET    gm.status     = 'former',
+                gm.left_date  = ?,
+                gm.updated_at = NOW()
+         WHERE  gm.member_id = ?
+           AND  gm.group_id  IN (${ph})
+           AND  gm.status    = 'active'
+           AND  g.type       IN ('huduma','kwaya','idara','kamati')`,
+        [today, targetId, ...toRetire]
+      );
+    }
+
+    // 4. Return current active spiritual memberships
+    const [current] = await db.execute(
+      `SELECT gm.group_id, gm.status, gm.role_in_group, gm.joined_date,
+              g.name, g.type
+       FROM   group_members gm
+       JOIN   \`groups\` g ON g.id = gm.group_id
+       WHERE  gm.member_id = ?
+         AND  gm.status    = 'active'
+         AND  g.type       IN ('huduma','kwaya','idara','kamati')
+       ORDER  BY g.type, g.name`,
+      [targetId]
+    );
+
+    console.log(
+      `Spiritual group sync — user ${targetId}: ` +
+      `+${toInsert.length} inserted, ` +
+      `↺${toActivate.length} re-activated, ` +
+      `−${toRetire.length} retired`
+    );
+
+    return res.json({
+      success: true,
+      message: 'Spiritual group memberships updated.',
+      summary: { inserted: toInsert.length, reactivated: toActivate.length, retired: toRetire.length },
+      groups:  current,
+    });
+  } catch (err) { next(err); }
+};
+
 // GET /api/ministries/member/:userId
 // Returns all ministry IDs + labels the member currently belongs to.
 // controllers/ministryController.js

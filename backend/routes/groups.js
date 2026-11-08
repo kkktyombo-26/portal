@@ -1,4 +1,3 @@
-
 /**
  * groupRoutes.js  (v2)
  * ─────────────────────
@@ -28,6 +27,7 @@
  * History & cross-member
  *   GET    /api/groups/:id/history             all memberships grouped by year
  *   GET    /api/groups/member/:userId          all groups a member has ever been in
+ *   PUT    /api/groups/member/:userId/sync     sync a member's group memberships
  * ────────────────────────────────────────────────────────────────────
  */
 
@@ -50,22 +50,14 @@ const {
   hardRemoveGroupMember,
   getGroupHistory,
   getMemberGroups,
+  syncMemberGroups,
 } = require('../controllers/groupController');
 
-const VALID_TYPES = ['jumuiya', 'ministry', 'administrative', 'other'];
+const VALID_TYPES = ['jumuiya', 'ministry', 'administrative', 'other',
+                     'huduma', 'kwaya', 'idara', 'kamati'];
 
 // ── All routes require authentication ─────────────────────────────────────────
 router.use(authenticate);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cross-member lookup — must come BEFORE /:id to avoid route collision
-// ─────────────────────────────────────────────────────────────────────────────
-router.get(
-  '/member/:userId',
-  [param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer')],
-  validate,
-  getMemberGroups
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Groups CRUD
@@ -77,6 +69,10 @@ router.get(
       .optional()
       .isIn(VALID_TYPES)
       .withMessage(`type must be one of: ${VALID_TYPES.join(', ')}`),
+    query('types')
+      .optional()
+      .isString()
+      .withMessage('types must be a comma-separated string'),
     query('year')
       .optional()
       .isInt({ min: 1900, max: 2200 })
@@ -164,6 +160,33 @@ router.put(
   validate,
   updateGroup
 );
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-member lookup & sync — must come BEFORE /:id to avoid route collision
+// ─────────────────────────────────────────────────────────────────────────────
+router.get(
+  '/member/:userId',
+  [param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer')],
+  validate,
+  getMemberGroups
+);
+
+router.put(
+  '/member/:userId/sync',
+  [
+    param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+    body('groupIds')
+      .isArray()
+      .withMessage('groupIds must be an array'),
+    body('groupIds.*')
+      .isInt({ min: 1 })
+      .withMessage('each groupId must be a positive integer'),
+  ],
+  validate,
+  syncMemberGroups
+);
+
 
 router.patch(
   '/:id/archive',

@@ -683,9 +683,52 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ═══════════════════════════════════════════════════════════
-// POST /api/auth/login
-// ═══════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// Drop this helper near the top of authController.js (alongside toBit, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Given any phone-like string, return all reasonable stored variants so the
+ * login query can match regardless of how the number was saved at registration.
+ *
+ * Examples (all resolve to the same set):
+ *   "255617833806"   → ["255617833806",  "+255617833806",  "0617833806"]
+ *   "+255617833806"  → ["+255617833806", "255617833806",   "0617833806"]
+ *   "0617833806"     → ["0617833806",    "255617833806",   "+255617833806"]
+ */
+function phoneVariants(raw) {
+  // Strip everything that isn't a digit or a leading +
+  const cleaned = raw.trim();
+  const digits  = cleaned.replace(/\D/g, '');
+
+  // Not phone-shaped — return as-is and let the query try email/namba
+  if (digits.length < 9) return [cleaned];
+
+  let local; // last 9 digits (Tanzanian subscriber number)
+
+  if (digits.startsWith('255') && digits.length === 12) {
+    local = digits.slice(3);                    // "617833806"
+  } else if (digits.startsWith('0') && digits.length === 10) {
+    local = digits.slice(1);                    // "617833806"
+  } else if (digits.length === 9) {
+    local = digits;                             // already bare
+  } else {
+    // Unknown format — just return cleaned variants
+    return [cleaned, `+${digits}`, digits];
+  }
+
+  return [
+    `0${local}`,          // "0617833806"
+    `255${local}`,        // "255617833806"
+    `+255${local}`,       // "+255617833806"
+  ];
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Replace the existing exports.login with this version
+// ─────────────────────────────────────────────────────────────────────────────
+
 exports.login = async (req, res, next) => {
   try {
     const { identifier, password } = req.body;
@@ -697,19 +740,28 @@ exports.login = async (req, res, next) => {
       });
     }
 
+    // Build phone variants so "+255…", "255…", and "0…" all match
+    const variants   = phoneVariants(identifier);
+    const phoneParts = variants.map(() => 'phone = ?').join(' OR ');
+    const phoneVals  = variants;
+
     const [rows] = await db.execute(
       `SELECT * FROM users
-       WHERE email = ? OR phone = ? OR namba_ya_usharika = ?`,
-      [identifier, identifier, identifier]
+       WHERE email = ?
+          OR namba_ya_usharika = ?
+          OR (${phoneParts})`,
+      [identifier, identifier, ...phoneVals]
     );
 
     if (rows.length === 0) {
+      console.log(`Login failed: no user found for identifier "${identifier}" (tried phone variants: ${variants.join(', ')})`);
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
     const user = rows[0];
 
     if (!user.is_active) {
+      console.log(`Login failed: user "${user.full_name}" (${identifier}) is inactive`);
       return res.status(403).json({
         success: false,
         code:    'ACCOUNT_PENDING',
@@ -719,6 +771,7 @@ exports.login = async (req, res, next) => {
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
+      console.log(`Login failed: invalid password for user "${user.full_name}" (${identifier})`);
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
@@ -726,6 +779,7 @@ exports.login = async (req, res, next) => {
 
     const token = generateToken(user);
     const { password: _, ...safeUser } = user;
+    console.log('Login successful:', user.full_name);
     res.json({ success: true, token, user: safeUser });
   } catch (err) { next(err); }
 };
@@ -842,6 +896,9 @@ exports.me = async (req, res, next) => {
     res.json({ success: true, user: rows[0] });
   } catch (err) { next(err); }
 };
+
+
+
 
 
 // ═══════════════════════════════════════════════════════════

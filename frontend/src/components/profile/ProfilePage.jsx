@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../lib/i18n';
-import { userApi, dependantApi, ministryApi, committeeApi } from '../../lib/api';
+import { userApi, dependantApi, groupApi } from '../../lib/api';
 import R2UploadService from '../../lib/r2UploadService';
 import { JUMUIYA_LIST } from '../../lib/constants';
 
@@ -176,7 +176,7 @@ function ProgressRing({ percent, size = 64 }) {
 
 // ════════════════════════════════════════════════════════════════════════════
 export default function ProfilePage() {
-  
+
 
   // ── Language toggle ───────────────────────────────────────────────────────
  const { user: authUser, lang, switchLang } = useAuth();
@@ -239,10 +239,8 @@ const { t } = useTranslation(lang);
 
   const spiritualFetched = useRef(false);
 
-  const [ministries,       setMinistries]  = useState([]);
-  const [memberMinistries, setMemberMin]   = useState([]);
-  const [committees,       setCommittees]  = useState([]);
-  const [memberCommittees, setMemberCom]   = useState([]);
+  const [spiritualGroups,  setSpiritualGroups] = useState({ ministries: [], committees: [] });
+  const [memberGroupIds,   setMemberGroupIds]  = useState([]);
   const [minLoading,       setMinLoading]  = useState(false);
 
   const [dependants, setDependants] = useState([]);
@@ -265,27 +263,26 @@ const { t } = useTranslation(lang);
 
 useEffect(() => {
   if (!authUser?.id || activeTab !== 'spiritual') return;
-  if (spiritualFetched.current) return; // already loaded
+  if (spiritualFetched.current) return;
   spiritualFetched.current = true;
 
   setMinLoading(true);
   Promise.all([
-    ministryApi.getAll(),
-    ministryApi.getMemberMinistries(authUser.id),
-    committeeApi.getAll(),
-    committeeApi.getMemberCommittees(authUser.id),
+    groupApi.getAll({ types: 'huduma,kwaya,idara,kamati' }),
+    groupApi.getMemberGroups(authUser.id),
   ])
-  .then(([minCat, minMem, comCat, comMem]) => {
-  setMinistries(minCat.data.data ?? []);
-  setMemberMin(
-    (minMem.data.data ?? []).map(m => Number(m.ministry_id ?? m.id))
-  );
-  setCommittees(comCat.data.data ?? []);
-  setMemberCom(
-    (comMem.data.data ?? []).map(c => Number(c.committee_id ?? c.id))
-  );
-})
-    .catch(() => { spiritualFetched.current = false; }) // allow retry on error
+    .then(([allGroups, memberGroups]) => {
+      const groups = allGroups.data.data ?? [];
+      const ministryTypes = ['huduma', 'kwaya', 'idara'];
+      setSpiritualGroups({
+        ministries: groups.filter(g => ministryTypes.includes(g.type)),
+        committees: groups.filter(g => g.type === 'kamati'),
+      });
+      setMemberGroupIds(
+        (memberGroups.data.data ?? []).map(m => Number(m.group_id ?? m.id))
+      );
+    })
+    .catch(() => { spiritualFetched.current = false; })
     .finally(() => setMinLoading(false));
 }, [authUser?.id, activeTab]);
 
@@ -411,12 +408,11 @@ useEffect(() => {
     try {
       await Promise.all([
         userApi.update(authUser.id, {
-          baptism_date: profile.baptism_date,
+          baptism_date:      profile.baptism_date,
           confirmation_date: profile.confirmation_date,
-          takes_communion: profile.takes_communion,
+          takes_communion:   profile.takes_communion,
         }),
-        ministryApi.syncMemberMinistries(authUser.id, memberMinistries),
-        committeeApi.syncMemberCommittees(authUser.id, memberCommittees),
+        groupApi.syncMemberGroups(authUser.id, memberGroupIds),
       ]);
       setSaved('spiritual', true);
       setTimeout(() => setSaved('spiritual', false), 2500);
@@ -449,16 +445,9 @@ useEffect(() => {
     }
   };
 
-const toggleMinistry = (id) => {
+const toggleGroup = (id) => {
   const nid = Number(id);
-  setMemberMin(prev =>
-    prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid]
-  );
-};
-
-const toggleCommittee = (id) => {
-  const nid = Number(id);
-  setMemberCom(prev =>
+  setMemberGroupIds(prev =>
     prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid]
   );
 };
@@ -486,10 +475,10 @@ const toggleCommittee = (id) => {
   const isMarried    = ['Ameoa', 'Ameolewa'].includes(profile?.marital_status);
   const isCohabiting = profile?.marital_status === 'Anaishi na mtu';
 
-  const ministryGroups = ministries.reduce((acc, m) => {
-    const cat = m.category ?? 'General';
+  const ministryGroups = spiritualGroups.ministries.reduce((acc, g) => {
+    const cat = g.type === 'kwaya' ? 'Choir' : g.type === 'idara' ? 'Umoja' : 'Spiritual';
     if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(m);
+    acc[cat].push(g);
     return acc;
   }, {});
 
@@ -514,7 +503,7 @@ const toggleCommittee = (id) => {
             <h1 className="text-lg font-semibold text-stone-900">{t('profile_my_profile')}</h1>
             <p className="text-xs text-stone-400 mt-0.5">{profile.email}</p>
           </div>
-       
+
         </div>
       </div>
 
@@ -775,9 +764,9 @@ const toggleCommittee = (id) => {
           <Section icon={icons.mapPin} title={t('profile_address_title')}>
             <SubHeading>{t('profile_address_general')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-          
-           
-           
+
+
+
             <Field label={t('profile_jumuiya')}>
   <Select value={profile.jumuiya ?? ''} onChange={e => setField('jumuiya', e.target.value)}>
     <option value="">{t('profile_select')}</option>
@@ -786,10 +775,10 @@ const toggleCommittee = (id) => {
     ))}
   </Select>
 </Field>
-            
-             
-         
-             
+
+
+
+
             </div>
             <SubHeading>{t('profile_church_history')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -865,7 +854,7 @@ const toggleCommittee = (id) => {
             ) : (
               <>
                 <SubHeading>{t('profile_ministries')}</SubHeading>
-                {ministries.length === 0 ? (
+                {spiritualGroups.ministries.length === 0 ? (
                   <p className="text-sm text-stone-400 mb-6">{t('profile_no_ministries')}</p>
                 ) : (
                   <div className="space-y-5 mb-8">
@@ -873,10 +862,10 @@ const toggleCommittee = (id) => {
                       <div key={cat}>
                         <p className="text-xs font-medium text-stone-400 mb-2">{cat}</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {items.map(m => (
-                            <ServiceCheck key={m.id} label={m.name}
-                              checked={memberMinistries.includes(Number(m.id))}
-                              onChange={() => toggleMinistry(m.id)} />
+                          {items.map(g => (
+                            <ServiceCheck key={g.id} label={g.name}
+                              checked={memberGroupIds.includes(Number(g.id))}
+                              onChange={() => toggleGroup(g.id)} />
                           ))}
                         </div>
                       </div>
@@ -884,14 +873,14 @@ const toggleCommittee = (id) => {
                   </div>
                 )}
                 <SubHeading>{t('profile_committees')}</SubHeading>
-                {committees.length === 0 ? (
+                {spiritualGroups.committees.length === 0 ? (
                   <p className="text-sm text-stone-400">{t('profile_no_committees')}</p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {committees.map(c => (
-                      <ServiceCheck key={c.id} label={c.name}
-                       checked={memberCommittees.includes(Number(c.id))}
-                        onChange={() => toggleCommittee(c.id)} />
+                    {spiritualGroups.committees.map(g => (
+                      <ServiceCheck key={g.id} label={g.name}
+                        checked={memberGroupIds.includes(Number(g.id))}
+                        onChange={() => toggleGroup(g.id)} />
                     ))}
                   </div>
                 )}

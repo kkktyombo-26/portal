@@ -110,6 +110,8 @@ export const groupApi = {
   create:       (data)     => api.post('/groups', data),
   update:       (id, data) => api.put(`/groups/${id}`, data),
   archive:      (id)       => api.put(`/groups/${id}/archive`),
+  getMemberGroups: (userId) => api.get(`/groups/member/${userId}`),
+syncMemberGroups: (userId, groupIds) => api.put(`/groups/member/${userId}/sync`, { groupIds }),
   delete:       (id)       => api.delete(`/groups/${id}`),
   getMembers: (id, params = {}) => {
     const qs = new URLSearchParams(
