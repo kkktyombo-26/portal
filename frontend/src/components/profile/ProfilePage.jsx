@@ -237,6 +237,8 @@ const { t } = useTranslation(lang);
   const [cvError,    setCvError]    = useState(null);
   const cvInputRef = useRef(null);
 
+  const spiritualFetched = useRef(false);
+
   const [ministries,       setMinistries]  = useState([]);
   const [memberMinistries, setMemberMin]   = useState([]);
   const [committees,       setCommittees]  = useState([]);
@@ -261,25 +263,27 @@ const { t } = useTranslation(lang);
       .finally(() => setLoading(false));
   }, [authUser?.id]);
 
-  useEffect(() => {
-    if (!authUser?.id || activeTab !== 'spiritual') return;
-    
-    setMinLoading(true);
-    Promise.all([
-      ministryApi.getAll(),
-      ministryApi.getMemberMinistries(authUser.id),
-      committeeApi.getAll(),
-      committeeApi.getMemberCommittees(authUser.id),
-    ])
-      .then(([minCat, minMem, comCat, comMem]) => {
-        setMinistries(minCat.data.data ?? []);
-        setMemberMin((minMem.data.data ?? []).map(m => m.ministry_id ?? m.id));
-        setCommittees(comCat.data.data ?? []);
-        setMemberCom((comMem.data.data ?? []).map(c => c.committee_id ?? c.id));
-      })
-      .catch(() => {})
-      .finally(() => setMinLoading(false));
-  }, [authUser?.id, activeTab]);
+useEffect(() => {
+  if (!authUser?.id || activeTab !== 'spiritual') return;
+  if (spiritualFetched.current) return; // already loaded
+  spiritualFetched.current = true;
+
+  setMinLoading(true);
+  Promise.all([
+    ministryApi.getAll(),
+    ministryApi.getMemberMinistries(authUser.id),
+    committeeApi.getAll(),
+    committeeApi.getMemberCommittees(authUser.id),
+  ])
+    .then(([minCat, minMem, comCat, comMem]) => {
+      setMinistries(minCat.data.data ?? []);
+      setMemberMin((minMem.data.data ?? []).map(m => m.ministry_id ?? m.id));
+      setCommittees(comCat.data.data ?? []);
+      setMemberCom((comMem.data.data ?? []).map(c => c.committee_id ?? c.id));
+    })
+    .catch(() => { spiritualFetched.current = false; }) // allow retry on error
+    .finally(() => setMinLoading(false));
+}, [authUser?.id, activeTab]);
 
   useEffect(() => {
     if (!authUser?.id || activeTab !== 'dependants') return;
@@ -497,17 +501,7 @@ const { t } = useTranslation(lang);
             <h1 className="text-lg font-semibold text-stone-900">{t('profile_my_profile')}</h1>
             <p className="text-xs text-stone-400 mt-0.5">{profile.email}</p>
           </div>
-          {/* Language toggle */}
-          <button
-            onClick={() => setLang(l => l === 'en' ? 'sw' : 'en')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200
-              text-xs font-semibold text-stone-600 hover:border-amber-400 hover:text-amber-600
-              bg-white transition select-none"
-          >
-            <span className={lang === 'en' ? 'text-amber-500' : 'text-stone-400'}>EN</span>
-            <span className="text-stone-300">/</span>
-            <span className={lang === 'sw' ? 'text-amber-500' : 'text-stone-400'}>SW</span>
-          </button>
+       
         </div>
       </div>
 
