@@ -13,35 +13,76 @@ function formatLocal(digits) {
   return d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6);
 }
 
+// ─── Identifier helpers ───────────────────────────────────────────────────────
+
+/**
+ * Auto-detect what the user is typing:
+ *   'phone'  — empty, starts with digit or +, no @
+ *   'email'  — contains @
+ *   'ahadi'  — starts with a letter (but no @), e.g. "AH-001"
+ */
+function detectIdMode(val) {
+  const v = val.trim();
+  if (v.includes('@')) return 'email';
+  if (v && !/^[+0-9]/.test(v)) return 'ahadi';
+  return 'phone';
+}
+
+/**
+ * Extract the 9-digit local subscriber number from any phone-shaped input.
+ * "+255712345678", "0712345678", "712345678" → "712345678"
+ */
+function extractDigits(val) {
+  let d = val.replace(/\D/g, '');
+  if (d.startsWith('255') && d.length > 9) d = d.slice(3);
+  if (d.startsWith('0')   && d.length > 9) d = d.slice(1);
+  return d.slice(0, 9);
+}
+
 export default function LoginPage() {
   const { login, lang } = useAuth();
   const { t }           = useTranslation(lang);
   const router          = useRouter();
   const sw              = lang === 'sw';
 
-  const [localDigits, setLocalDigits] = useState('');
-  const [password,    setPassword]    = useState('');
-  const [showPass,    setShowPass]    = useState(false);
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState(null);
+  const [inputVal, setInputVal] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState(null);
 
-  // The full identifier sent to the backend: 255 + 9 local digits
-  const fullPhone = localDigits.length === 9 ? '255' + localDigits : '';
+  // ── Derived identifier state ───────────────────────────────────────────────
+  const idMode      = detectIdMode(inputVal);
+  const localDigits = idMode === 'phone' ? extractDigits(inputVal) : '';
 
-  const handleLocalInput = (raw) => {
-    let stripped = raw.replace(/\D/g, '');
-    if (stripped.startsWith('255')) stripped = stripped.slice(3);
-    if (stripped.startsWith('0'))   stripped = stripped.slice(1);
-    setLocalDigits(stripped.slice(0, 9));
+  // Value sent to the backend
+  const identifier = idMode === 'phone'
+    ? (localDigits.length === 9 ? '255' + localDigits : '')
+    : inputVal.trim();
+
+  // Is the identifier fully valid?
+  const isIdComplete = idMode === 'phone'
+    ? localDigits.length === 9
+    : inputVal.trim().length >= 2;
+
+  // ── Input handler ──────────────────────────────────────────────────────────
+  const handleIdChange = (raw) => {
     setError(null);
+    if (detectIdMode(raw) === 'phone') {
+      // Keep only digits, strip country prefix, format with spaces
+      setInputVal(formatLocal(extractDigits(raw)));
+    } else {
+      setInputVal(raw);
+    }
   };
 
+  // ── Login handler ──────────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      await login(fullPhone, password);
+      await login(identifier, password);
       router.replace('/dashboard');
     } catch (err) {
       setError(err.message);
@@ -50,7 +91,29 @@ export default function LoginPage() {
     }
   };
 
-  // ─── cross watermark ──────────────────────────────────────────────────────
+  // ── Mode metadata ──────────────────────────────────────────────────────────
+  const idLabel = idMode === 'phone'
+    ? (sw ? 'Nambari ya Simu'  : 'Phone Number')
+    : idMode === 'email'
+    ? (sw ? 'Barua Pepe'       : 'Email Address')
+    : (sw ? 'Namba ya Ahadi'   : 'Ahadi Number');
+
+  const idPlaceholder = idMode === 'phone'
+    ? '712 345 678'
+    : idMode === 'email'
+    ? (sw ? 'mfano@barua.com'  : 'you@example.com')
+    : (sw ? 'namba ya ahadi'   : 'ahadi number');
+
+  const idInputType  = idMode === 'email' ? 'email' : idMode === 'ahadi' ? 'text' : 'tel';
+  const idInputMode  = idMode === 'phone' ? 'numeric' : idMode === 'email' ? 'email' : 'text';
+  const idAutoComplete = idMode === 'phone' ? 'tel-national' : idMode === 'email' ? 'email' : 'off';
+
+  // Green dot: complete / orange dot: in-progress
+  const dotColor = isIdComplete
+    ? '#16A34A'
+    : (inputVal.length > 0 ? '#E5E7EB' : null);
+
+  // ── Cross watermark ────────────────────────────────────────────────────────
   const CrossWatermark = () => (
     <div aria-hidden style={{
       position: 'absolute', top: 0, right: 0,
@@ -70,25 +133,55 @@ export default function LoginPage() {
       <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         {error && <ErrorBanner msg={error} />}
 
-        {/* ── Phone number ── */}
+        {/* ── Identifier — phone / email / ahadi ── */}
         <div>
-          <label style={styles.label}>
-            {sw ? 'Nambari ya Simu' : 'Phone Number'}
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <label style={{ ...styles.label, margin: 0 }}>
+              {idLabel}
+            </label>
+            {/* Subtle hint showing all three are accepted */}
+            <span style={{ fontSize: 10, color: '#B0B7C3', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              {sw ? 'Simu · Email · Ahadi' : 'Phone · Email · Ahadi'}
+            </span>
+          </div>
+
           <div style={styles.phoneWrap}>
+            {/* ── Left badge — adapts by mode ── */}
             <div style={styles.countryBadge}>
-              <span style={{ fontSize: 15, lineHeight: 1 }}>🇹🇿</span>
-              <span style={styles.countryCode}>+255</span>
+              {idMode === 'phone' ? (
+                <>
+                  <span style={{ fontSize: 15, lineHeight: 1 }}>🇹🇿</span>
+                  <span style={styles.countryCode}>+255</span>
+                </>
+              ) : idMode === 'email' ? (
+                // Envelope icon
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="#6B7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="M2 7l10 7L22 7" />
+                </svg>
+              ) : (
+                // Hash / ID icon
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="#6B7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="4" y1="9"  x2="20" y2="9"  />
+                  <line x1="4" y1="15" x2="20" y2="15" />
+                  <line x1="10" y1="3" x2="8"  y2="21" />
+                  <line x1="16" y1="3" x2="14" y2="21" />
+                </svg>
+              )}
             </div>
+
             <div style={styles.phoneDivider} />
+
             <input
-              type="tel"
-              inputMode="numeric"
-              value={formatLocal(localDigits)}
-              onChange={e => handleLocalInput(e.target.value)}
-              placeholder="712 345 678"
+              type={idInputType}
+              inputMode={idInputMode}
+              value={inputVal}
+              onChange={e => handleIdChange(e.target.value)}
+              placeholder={idPlaceholder}
               autoFocus
-              autoComplete="tel-national"
+              autoComplete={idAutoComplete}
               required
               style={{
                 border: 'none', background: 'transparent', flex: 1,
@@ -96,15 +189,19 @@ export default function LoginPage() {
                 color: '#111827', outline: 'none', letterSpacing: '0.03em', height: '100%',
               }}
             />
-            {localDigits.length > 0 && (
+
+            {/* Completion dot */}
+            {dotColor && (
               <div style={{
                 width: 7, height: 7, borderRadius: '50%', marginRight: 14, flexShrink: 0,
-                background: localDigits.length === 9 ? '#16A34A' : '#E5E7EB',
+                background: dotColor,
                 transition: 'background 200ms ease',
               }} />
             )}
           </div>
-          {localDigits.length > 0 && localDigits.length < 9 && (
+
+          {/* Phone-mode digit countdown */}
+          {idMode === 'phone' && localDigits.length > 0 && localDigits.length < 9 && (
             <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9CA3AF' }}>
               {sw
                 ? `Tarakimu ${9 - localDigits.length} zaidi zinahitajika`
@@ -144,7 +241,7 @@ export default function LoginPage() {
 
         <button
           type="submit"
-          disabled={loading || localDigits.length !== 9 || !password}
+          disabled={loading || !isIdComplete || !password}
           className="btn-primary w-full justify-center"
           style={{ marginTop: 2 }}
         >
@@ -188,7 +285,11 @@ export default function LoginPage() {
               <button
                 key={digits}
                 type="button"
-                onClick={() => { setLocalDigits(digits); setPassword(pass); }}
+                onClick={() => {
+                  // Set as a formatted phone number — clears any email/ahadi input
+                  setInputVal(formatLocal(digits));
+                  setPassword(pass);
+                }}
                 style={{
                   display: 'grid', gridTemplateColumns: '1fr auto auto',
                   gap: 8, alignItems: 'center',

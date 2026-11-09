@@ -745,13 +745,14 @@ exports.login = async (req, res, next) => {
     const phoneParts = variants.map(() => 'phone = ?').join(' OR ');
     const phoneVals  = variants;
 
-    const [rows] = await db.execute(
-      `SELECT * FROM users
-       WHERE email = ?
-          OR namba_ya_usharika = ?
-          OR (${phoneParts})`,
-      [identifier, identifier, ...phoneVals]
-    );
+  const [rows] = await db.execute(
+  `SELECT * FROM users
+   WHERE email = ?
+      OR namba_ya_usharika = ?
+      OR ahadi_number = ?
+      OR (${phoneParts})`,
+  [identifier, identifier, identifier, ...phoneVals]
+);
 
     if (rows.length === 0) {
       console.log(`Login failed: no user found for identifier "${identifier}" (tried phone variants: ${variants.join(', ')})`);
@@ -778,6 +779,7 @@ exports.login = async (req, res, next) => {
     await db.execute('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
 
     const token = generateToken(user);
+
     const { password: _, ...safeUser } = user;
     console.log('Login successful:', user.full_name);
     res.json({ success: true, token, user: safeUser });
