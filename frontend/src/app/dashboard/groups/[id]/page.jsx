@@ -25,7 +25,7 @@ const MEMBER_ROLE_LABELS = {
 };
 
 const ROLE_IN_GROUP_OPTIONS = [
-  { value: 'member',    en: 'Member',    sw: 'Mwanachama' },
+  { value: 'member',    en: 'Member',    sw: 'Msharika' },
   { value: 'leader',    en: 'Leader',    sw: 'Kiongozi'   },
   { value: 'secretary', en: 'Secretary', sw: 'Katibu'     },
   { value: 'treasurer', en: 'Treasurer', sw: 'Mweka Hazina' },
@@ -281,7 +281,7 @@ function MembersStats({ members, lang }) {
   const withPhone = active.filter(m => m.phone).length;
 
   const stats = [
-    { value: total,     label: lang === 'sw' ? 'Wanachama'  : 'Members' },
+    { value: total,     label: lang === 'sw' ? 'Waharika'  : 'Members' },
     { value: male,      label: lang === 'sw' ? 'Wanaume'    : 'Male'    },
     { value: female,    label: lang === 'sw' ? 'Wanawake'   : 'Female'  },
     { value: leaders,   label: lang === 'sw' ? 'Viongozi'   : 'Leaders' },
@@ -334,7 +334,7 @@ function SearchBar({ value, onChange, lang }) {
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder={lang === 'sw' ? 'Tafuta mwanachama…' : 'Search members…'}
+        placeholder={lang === 'sw' ? 'Tafuta Msharika…' : 'Search members…'}
         style={{
           width: '100%', paddingLeft: 30, paddingRight: 10,
           height: 34, borderRadius: 7, border: '1px solid #E5E5E8',
@@ -465,7 +465,7 @@ export default function GroupDetailPage() {
         role_in_group: addForm.role_in_group || 'member',
         joined_date:   addForm.joined_date  || null,
       });
-      showToast(lang === 'sw' ? 'Mwanachama ameongezwa' : 'Member added');
+      showToast(lang === 'sw' ? 'Msharika ameongezwa' : 'Member added');
       setAddOpen(false);
       setAddForm({ user_id: '', year: CURRENT_YEAR, role_in_group: 'member', joined_date: '' });
       fetchMembers();
@@ -481,7 +481,7 @@ export default function GroupDetailPage() {
     if (!removeTarget) return;
     try {
       await groupApi.removeMember(id, removeTarget.membershipId);
-      showToast(lang === 'sw' ? 'Mwanachama ameondolewa' : 'Member removed');
+      showToast(lang === 'sw' ? 'Msharika ameondolewa' : 'Member removed');
       setRemoveTarget(null);
       fetchMembers();
       fetchGroup();
@@ -561,7 +561,7 @@ export default function GroupDetailPage() {
             )}
             <span className="text-ink-faint">·</span>
             <span className="font-mono text-xs text-ink-faint">
-              {activeMemberCount} {lang === 'sw' ? 'wanachama' : 'active members'}
+              {activeMemberCount} {lang === 'sw' ? 'washarika' : 'active members'}
             </span>
             {group.is_archived && (
               <>
@@ -577,7 +577,7 @@ export default function GroupDetailPage() {
           <div className="flex items-center gap-2">
             {!group.is_archived && (
               <button onClick={() => setAddOpen(true)} className="btn-secondary text-sm">
-                + {lang === 'sw' ? 'Ongeza Mwanachama' : 'Add Member'}
+                + {lang === 'sw' ? 'Ongeza Msharika' : 'Add Member'}
               </button>
             )}
             <button onClick={() => setEditOpen(true)} className="btn-primary text-sm">
@@ -592,7 +592,7 @@ export default function GroupDetailPage() {
         {/* ── Tabs ────────────────────────────────────────────────────────── */}
         <div className="flex gap-0 border-b border-hairline mb-6">
           {[
-            { id: 'members', en: 'Members',   sw: 'Wanachama' },
+            { id: 'members', en: 'Members',   sw: 'Washarika' },
             { id: 'history', en: 'History',   sw: 'Historia'  },
             { id: 'info',    en: 'Info',       sw: 'Maelezo'   },
           ].map(tab => (
@@ -670,7 +670,7 @@ export default function GroupDetailPage() {
                 <p style={{ fontSize: 13, color: '#8A8A8E' }}>
                   {search
                     ? (lang === 'sw' ? 'Hakuna matokeo' : 'No results found')
-                    : (lang === 'sw' ? 'Hakuna wanachama' : 'No members found')}
+                    : (lang === 'sw' ? 'Hakuna washarika' : 'No members found')}
                 </p>
               </div>
             ) : (
@@ -697,7 +697,7 @@ export default function GroupDetailPage() {
 
             {filteredMembers.length > 0 && (
               <p style={{ fontSize: 11, color: '#AEADB3', marginTop: 10, textAlign: 'right' }}>
-                {filteredMembers.length} {lang === 'sw' ? 'wanachama wanaonyeshwa' : 'members shown'}
+                {filteredMembers.length} {lang === 'sw' ? 'washarika wanaonyeshwa' : 'members shown'}
               </p>
             )}
           </div>
@@ -819,7 +819,7 @@ export default function GroupDetailPage() {
       </Modal>
 
       {/* ── Add Member Modal ──────────────────────────────────────────────── */}
-      <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Ongeza Mwanachama' : 'Add Member'}>
+      <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Ongeza Msharika' : 'Add Member'}>
         <div className="space-y-4">
           <div>
             <label className="field-label">{lang === 'sw' ? 'Chagua Mtu' : 'Select Person'}</label>
@@ -864,7 +864,7 @@ export default function GroupDetailPage() {
       </Modal>
 
       {/* ── Remove Member Confirm ─────────────────────────────────────────── */}
-      <Modal isOpen={!!removeTarget} onClose={() => setRemoveTarget(null)} title={lang === 'sw' ? 'Ondoa Mwanachama?' : 'Remove Member?'}>
+      <Modal isOpen={!!removeTarget} onClose={() => setRemoveTarget(null)} title={lang === 'sw' ? 'Ondoa Msharika?' : 'Remove Member?'}>
         <p className="text-sm text-ink-muted">
           {lang === 'sw'
             ? `${removeTarget?.name} ataondolewa kwenye kikundi hiki. Historia yake itabaki.`

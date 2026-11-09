@@ -415,25 +415,25 @@ useEffect(() => {
     elder_name: profile.elder_name, elder_phone: profile.elder_phone,
   });
 
-  const saveSpiritual = async () => {
-    setSaving('spiritual', true);
-    try {
-      await Promise.all([
-        userApi.update(authUser.id, {
-          baptism_date:      profile.baptism_date,
-          confirmation_date: profile.confirmation_date,
-          takes_communion:   profile.takes_communion,
-        }),
-        groupApi.syncMemberGroups(authUser.id, memberGroupIds),
-      ]);
-      setSaved('spiritual', true);
-      setTimeout(() => setSaved('spiritual', false), 2500);
-    } catch (err) {
-      alert(err?.response?.data?.message ?? 'Save failed. Please try again.');
-    } finally {
-      setSaving('spiritual', false);
-    }
-  };
+ const saveSpiritual = async () => {
+  setSaving('spiritual', true);
+  try {
+    await Promise.all([
+      userApi.update(authUser.id, {
+        ...(profile.baptism_date      ? { baptism_date:      profile.baptism_date }      : { baptism_date: null }),
+        ...(profile.confirmation_date ? { confirmation_date: profile.confirmation_date } : { confirmation_date: null }),
+        takes_communion: profile.takes_communion ?? false,
+      }),
+      groupApi.syncMemberGroups(authUser.id, memberGroupIds),
+    ]);
+    setSaved('spiritual', true);
+    setTimeout(() => setSaved('spiritual', false), 2500);
+  } catch (err) {
+    alert(err?.response?.data?.message ?? 'Save failed. Please try again.');
+  } finally {
+    setSaving('spiritual', false);
+  }
+};
 
   const addDependant = async () => {
     if (!depForm.full_name.trim()) { setDepError(t('profile_dep_name_placeholder')); return; }

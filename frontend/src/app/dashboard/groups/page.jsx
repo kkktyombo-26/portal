@@ -247,7 +247,7 @@ function GroupCard({ g, lang, isManager, onArchive, onDelete }) {
               {activeCount}
             </span>
             <span style={{ fontSize: 11, color: '#AEADB3', fontWeight: 500 }}>
-              {lang === 'sw' ? 'wanachama' : 'members'}
+              {lang === 'sw' ? 'washarika' : 'members'}
               {totalCount > activeCount && (
                 <span style={{ color: '#D5D5D8', marginLeft: 3 }}>/ {totalCount} {lang === 'sw' ? 'jumla' : 'total'}</span>
               )}
@@ -275,7 +275,7 @@ function SummaryBar({ groups, lang }) {
   const stats = [
     { value: total,   label: lang === 'sw' ? 'Vikundi vyote' : 'Total groups' },
     { value: active,  label: lang === 'sw' ? 'Vya sasa'      : 'Active' },
-    { value: members, label: lang === 'sw' ? 'Wanachama'     : 'Total members' },
+    { value: members, label: lang === 'sw' ? 'Washarika'     : 'Total members' },
     {
       value: topType ? GROUP_TYPE_ICONS[topType] + ' ' + (GROUP_TYPE_LABELS[lang]?.[topType] || topType) : '—',
       label: lang === 'sw' ? 'Kubwa zaidi' : 'Largest type',
@@ -605,7 +605,7 @@ export default function GroupsPage() {
       <Modal isOpen={!!archiveId} onClose={() => setArchiveId(null)} title={lang === 'sw' ? 'Hifadhi Kikundi?' : 'Archive Group?'}>
         <p className="text-sm text-ink-muted">
           {lang === 'sw'
-            ? 'Kikundi kitahifadhiwa. Wanachama na historia vitabaki salama.'
+            ? 'Kikundi kitahifadhiwa. Washarika na historia vitabaki salama.'
             : 'The group will be archived. Members and history will be preserved.'}
         </p>
         <div className="hairline mt-5 mb-4" />
