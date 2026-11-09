@@ -145,16 +145,24 @@ function SubHeading({ children }) {
 
 function ServiceCheck({ label, checked, onChange }) {
   return (
-    <label className="flex items-center gap-2.5 cursor-pointer group">
-      <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition
-        ${checked ? 'bg-amber-500 border-amber-500' : 'border-stone-300 bg-white group-hover:border-amber-400'}`}>
+    <label
+      className="flex items-center gap-2.5 cursor-pointer select-none"
+      onClick={onChange}
+    >
+      <span style={{
+        width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: checked ? '2px solid #f59e0b' : '1.5px solid #d6d3d1',
+        backgroundColor: checked ? '#f59e0b' : '#ffffff',
+        transition: 'all 0.15s',
+      }}>
         {checked && (
           <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-            <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5"
+              strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         )}
       </span>
-      <input type="checkbox" className="sr-only" checked={checked} onChange={onChange} />
       <span className="text-sm text-stone-700">{label}</span>
     </label>
   );
@@ -269,9 +277,10 @@ useEffect(() => {
   setMinLoading(true);
   Promise.all([
     groupApi.getAll({ types: 'huduma,kwaya,idara,kamati' }),
-    groupApi.getMemberGroups(authUser.id),
+    groupApi.getMemberGroups(authUser.id),  // ← plain, no .then()
   ])
     .then(([allGroups, memberGroups]) => {
+      console.log('member groups raw:', memberGroups.data.data); // log here instead
       const groups = allGroups.data.data ?? [];
       const ministryTypes = ['huduma', 'kwaya', 'idara'];
       setSpiritualGroups({
@@ -282,7 +291,10 @@ useEffect(() => {
         (memberGroups.data.data ?? []).map(m => Number(m.group_id ?? m.id))
       );
     })
-    .catch(() => { spiritualFetched.current = false; })
+    .catch((err) => {
+      console.error('spiritual fetch error:', err); // ← don't silently swallow!
+      spiritualFetched.current = false;
+    })
     .finally(() => setMinLoading(false));
 }, [authUser?.id, activeTab]);
 
@@ -446,6 +458,7 @@ useEffect(() => {
   };
 
 const toggleGroup = (id) => {
+   console.log('toggleGroup called:', id); // ← add this
   const nid = Number(id);
   setMemberGroupIds(prev =>
     prev.includes(nid) ? prev.filter(x => x !== nid) : [...prev, nid]
@@ -816,6 +829,7 @@ const toggleGroup = (id) => {
         {/* ── SPIRITUAL ── */}
         {activeTab === 'spiritual' && (
           <Section icon={icons.cross} title={t('profile_spiritual_title')}>
+       
             <SubHeading>{t('profile_sacraments')}</SubHeading>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <Field label={t('profile_baptism_date')}>

@@ -9,11 +9,30 @@ const pool = mysql.createPool({
   user:     process.env.DB_USER     || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME     || 'church_portal',
+
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  connectionLimit:    10,
+  queueLimit:         0,
+
+  // ── Add these ──────────────────────────────────────
+  enableKeepAlive:       true,
+  keepAliveInitialDelay: 0,
+  connectTimeout:        30000,
+  idleTimeout:           600000,  // 10 min — matches MySQL's default wait_timeout
+
   ...(isProduction && { ssl: { rejectUnauthorized: false } }),
 });
+
+// ── Ping pool every 5 minutes to prevent stale connections ──
+setInterval(async () => {
+  try {
+    const conn = await pool.getConnection();
+    await conn.ping();
+    conn.release();
+  } catch (err) {
+    console.error('⚠️  DB keep-alive ping failed:', err.message);
+  }
+}, 5 * 60 * 1000);
 
 pool.getConnection()
   .then(conn => {

@@ -25,9 +25,10 @@
 
 const db = require('../config/db');
 
-const VALID_TYPES   = ['jumuiya', 'ministry', 'administrative', 'other'];
-const MANAGERS      = ['pastor', 'elder'];
-const ALL_MANAGERS  = ['pastor', 'elder', 'group_leader'];
+// At the top — add the missing types
+const VALID_TYPES  = ['jumuiya', 'huduma', 'kwaya', 'idara', 'kamati', 'vingine'];
+const MANAGERS     = ['pastor', 'elder'];
+const ALL_MANAGERS = ['pastor', 'elder', 'group_leader'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared SELECT fragment — used in getGroups + getGroup
@@ -51,15 +52,28 @@ const GROUP_SELECT = `
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── GET /api/groups ───────────────────────────────────────────────────────────
-// Query params: ?type=jumuiya  ?year=2008  ?is_archived=0|1
 exports.getGroups = async (req, res, next) => {
   try {
-    const { type, year, is_archived } = req.query;
+    const { type, types, year, is_archived } = req.query;
 
     const conditions = [];
     const params     = [];
 
-    if (type) {
+    if (types) {
+      // ?types=huduma,kwaya,idara,kamati  (comma-separated)
+      const typeList = types.split(',').map(t => t.trim()).filter(Boolean);
+      const invalid  = typeList.filter(t => !VALID_TYPES.includes(t));
+      if (invalid.length) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid types: ${invalid.join(', ')}. Must be: ${VALID_TYPES.join(', ')}`,
+        });
+      }
+      const ph = typeList.map(() => '?').join(', ');
+      conditions.push(`g.type IN (${ph})`);
+      params.push(...typeList);
+    } else if (type) {
+      // ?type=huduma  (single)
       if (!VALID_TYPES.includes(type)) {
         return res.status(400).json({
           success: false,
@@ -75,7 +89,6 @@ exports.getGroups = async (req, res, next) => {
       params.push(year);
     }
 
-    // Default: hide archived groups unless explicitly requested
     if (is_archived !== undefined && is_archived !== '') {
       conditions.push('g.is_archived = ?');
       params.push(Number(is_archived));

@@ -53,8 +53,8 @@ const {
   syncMemberGroups,
 } = require('../controllers/groupController');
 
-const VALID_TYPES = ['jumuiya', 'ministry', 'administrative', 'other',
-                     'huduma', 'kwaya', 'idara', 'kamati'];
+// At the top of groupRoutes.js — replace VALID_TYPES
+const VALID_TYPES = ['jumuiya', 'huduma', 'kwaya', 'idara', 'kamati', 'vingine'];
 
 // ── All routes require authentication ─────────────────────────────────────────
 router.use(authenticate);
