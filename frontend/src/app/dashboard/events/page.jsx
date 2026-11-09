@@ -19,6 +19,79 @@ function formatTime(t) {
   return `${hour % 12 || 12}:${m} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
+// ─── Events tab panel (mobile dashboard) ─────────────────────────────────────
+const MONTHS_ABBR = {
+  en: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+  sw: ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ago','Sep','Okt','Nov','Des'],
+};
+function EventsTabPanel({ events, lang, loading }) {
+  if (loading) {
+    return (
+      <div style={{ padding: '32px 16px', textAlign: 'center' }}>
+        <span style={{ fontSize: 12, color: '#AEADB3' }}>…</span>
+      </div>
+    );
+  }
+  if (!events || !events.length) {
+    return (
+      <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 12, color: '#AEADB3' }}>
+        {lang === 'sw' ? 'Hakuna matukio yanayokuja' : 'No upcoming events'}
+      </div>
+    );
+  }
+  return (
+    <div style={{ padding: '16px' }}>
+      <div style={{ border: '1px solid #EBEBEC', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px 10px' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A8A8E' }}>
+            {lang === 'sw' ? 'Ratiba' : 'Schedule'}
+          </span>
+          <Link href="/dashboard/events" style={{ fontSize: 10, fontWeight: 600, color: '#C8A84B', textDecoration: 'none' }}>
+            {lang === 'sw' ? 'Zote →' : 'See all →'}
+          </Link>
+        </div>
+        <div style={{ height: 1, background: '#EBEBEC' }} />
+        {events.slice(0, 5).map((ev, i) => {
+          const dateStr = ev.event_date?.split('T')[0] || ev.event_date;
+          const d       = new Date(dateStr + 'T00:00:00');
+          const title   = lang === 'sw' ? ev.title_sw : ev.title_en;
+          const isLast  = i === Math.min(events.length, 5) - 1;
+          return (
+            <div key={ev.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
+                <div style={{
+                  flexShrink: 0, width: 40, textAlign: 'center',
+                  background: '#F0F4FB', borderRadius: 8, padding: '6px 4px',
+                }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#0F1F3D', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                    {String(d.getDate()).padStart(2, '0')}
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B70', marginTop: 2 }}>
+                    {MONTHS_ABBR[lang][d.getMonth()]}
+                  </div>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1E', lineHeight: 1.3, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {title}
+                  </p>
+                  {(ev.start_time || ev.location) && (
+                    <p style={{ fontSize: 11, color: '#8A8A8E' }}>
+                      {ev.start_time && formatTime(ev.start_time)}
+                      {ev.start_time && ev.location && ' · '}
+                      {ev.location}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {!isLast && <div style={{ height: 1, background: '#F0F0F2', marginLeft: 66 }} />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function formatDate(dateStr, lang) {
   const d = new Date(dateStr + 'T00:00:00');
   return `${DAYS[lang][d.getDay()]}, ${d.getDate()} ${MONTHS[lang][d.getMonth()]} ${d.getFullYear()}`;
