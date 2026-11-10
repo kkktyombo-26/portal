@@ -178,11 +178,10 @@ exports.updateUser = async (req, res, next) => {
     params.push(targetId);
     await db.execute(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, params);
 
-   const [rows] = await db.execute(
-  `SELECT id, full_name, email, role, phone,
-          avatar, profile_photo_url, is_active, member_status,
-          cv_url
-   FROM users WHERE id = ?`,
+const [rows] = await db.execute(
+  `SELECT ${PASTOR_COLUMNS}, u.group_id
+   FROM users u LEFT JOIN \`groups\` g ON u.group_id = g.id
+   WHERE u.id = ?`,
   [targetId]
 );
     res.json({ success: true, data: rows[0], message: 'User updated.' });

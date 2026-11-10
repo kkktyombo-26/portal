@@ -25,7 +25,8 @@
     "node-cache": "^5.1.2",
     "nodemailer": "^8.0.4",
     "socket.io": "^4.8.3",
-    "twilio": "^5.13.1"
+    "twilio": "^5.13.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
