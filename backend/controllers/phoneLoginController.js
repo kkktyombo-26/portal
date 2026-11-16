@@ -22,7 +22,9 @@
  *     1. Fetch latest unused, unexpired OTP for the phone
  *     2. Check attempt count (max 5)
  *     3. bcrypt.compare the submitted code
- *     4. Mark OTP used, fetch user, issue JWT
+ *     4. Mark OTP used, issue verifiedToken (registration) or JWT (login)
+ *     5. If user exists and is active → login path (JWT)
+ *        If no user found → registration path (verifiedToken only)
  *
  * Security:
  *   • OTP stored as bcrypt hash — never plain text
@@ -31,6 +33,7 @@
  *   • Max 3 OTP requests per phone per 10 minutes
  *   • IP-level rate limiting at the route layer (express-rate-limit)
  *   • Password stored as bcrypt hash — plain text only appears in SMS
+ *   • verifiedToken is a 32-byte random hex, expires in 15 minutes
  *
  * Supported input formats (all resolve to 255XXXXXXXXX internally):
  *   +255 617 833 806   → 255617833806
@@ -40,6 +43,11 @@
  *   0617833806         → 255617833806
  *   0617 833 806       → 255617833806
  *   617833806          → 255617833806
+ *
+ * DB requirement — phone_login_otps must have:
+ *   verified_token   VARCHAR(64)  NULL
+ *   token_expires_at DATETIME     NULL
+ *   UNIQUE INDEX on verified_token
  */
 
 const bcrypt = require('bcryptjs');
@@ -49,12 +57,13 @@ const db     = require('../config/db');
 const { sendSMS } = require('../services/smsService');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const OTP_LENGTH      = 6;
-const OTP_TTL_MINUTES = 5;
-const MAX_ATTEMPTS    = 5;
-const MAX_REQUESTS    = 3;      // per phone per 10 minutes
-const REQUEST_WINDOW  = 10;     // minutes
-const LOGIN_URL       = 'www.kkktdmpyombo.org/auth/login';
+const OTP_LENGTH            = 6;
+const OTP_TTL_MINUTES       = 5;
+const VERIFIED_TOKEN_MINUTES = 15;   // how long the registration token is valid
+const MAX_ATTEMPTS          = 5;
+const MAX_REQUESTS          = 3;     // per phone per REQUEST_WINDOW minutes
+const REQUEST_WINDOW        = 10;    // minutes
+const LOGIN_URL             = 'www.kkktdmpyombo.org/auth/login';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -69,8 +78,6 @@ function generateOTP() {
  * Produces a memorable but reasonably secure 10-character password.
  * Character set deliberately avoids visually ambiguous characters
  * (0/O, 1/l/I) so the SMS recipient can type it accurately.
- *
- * Example output: "mK4#vP9!rX"
  */
 function generatePassword() {
   const lower   = 'abcdefghjkmnpqrstuvwxyz';
@@ -78,8 +85,7 @@ function generatePassword() {
   const digits  = '23456789';
   const symbols = '!@#';
 
-  // Guarantee at least one of each class, then fill the rest randomly
-  const all = lower + upper + digits + symbols;
+  const all  = lower + upper + digits + symbols;
   const pick = (set) => set[crypto.randomInt(0, set.length)];
 
   const chars = [
@@ -87,11 +93,9 @@ function generatePassword() {
     pick(upper),
     pick(digits),
     pick(symbols),
-    // Remaining 6 chars from the full set
     ...Array.from({ length: 6 }, () => pick(all)),
   ];
 
-  // Shuffle so the guaranteed chars aren't always in fixed positions
   for (let i = chars.length - 1; i > 0; i--) {
     const j = crypto.randomInt(0, i + 1);
     [chars[i], chars[j]] = [chars[j], chars[i]];
@@ -119,20 +123,10 @@ function generateToken(user) {
  * Strips all whitespace, dashes, parentheses, then converts any
  * Tanzanian phone format to the canonical 255XXXXXXXXX form used
  * by NextSMS and stored in the database.
- *
- * Handled patterns:
- *   +255 617 833 806  →  255617833806
- *   +255617833806     →  255617833806
- *   255 617 833 806   →  255617833806
- *   255617833806      →  255617833806
- *   0617 833 806      →  255617833806
- *   0617833806        →  255617833806
- *   617833806         →  255617833806   (bare 9-digit)
  */
 function normalisePhone(raw) {
   if (!raw) return null;
 
-  // Remove ALL spaces, dashes, parentheses, dots
   let p = String(raw).replace(/[\s\-().]/g, '');
 
   if (p.startsWith('+255')) return p.slice(1);         // +255... → 255...
@@ -146,17 +140,12 @@ function normalisePhone(raw) {
  * phoneVariants
  * ─────────────
  * Returns every format the same number might be stored as in the DB.
- * This handles legacy data where numbers were saved in different formats
- * before normalisation was enforced.
- *
- * Example for 255617833806:
- *   ['255617833806', '+255617833806', '0617833806', '617833806']
+ * Handles legacy data where numbers were saved in different formats.
  */
 function phoneVariants(canonical) {
-  // canonical is always 255XXXXXXXXX (12 digits)
-  const local    = canonical.slice(3);          // 9-digit: 617833806
-  const withZero = '0' + local;                 // 0617833806
-  const withPlus = '+' + canonical;             // +255617833806
+  const local    = canonical.slice(3);  // 9-digit: 617833806
+  const withZero = '0' + local;         // 0617833806
+  const withPlus = '+' + canonical;     // +255617833806
 
   return [canonical, withPlus, withZero, local];
 }
@@ -181,7 +170,8 @@ exports.requestPhoneOTP = async (req, res, next) => {
     const variants = phoneVariants(phone);
 
     // ── 1. Look up user — match against all stored formats ───────────────────
-    // Build  WHERE phone IN (?, ?, ?, ?)  dynamically
+    // A missing user is NOT an error here — the phone may belong to a new
+    // registrant. We still send the OTP; the verify step decides the path.
     const placeholders = variants.map(() => '?').join(', ');
 
     const [rows] = await db.execute(
@@ -192,22 +182,25 @@ exports.requestPhoneOTP = async (req, res, next) => {
       variants
     );
 
-    if (rows.length === 0 || !rows[0].is_active) {
-      console.log(`[PhoneOTP] Request for unknown/inactive phone: ${phone} (variants: ${variants.join(', ')})`);
-      return res.status(404).json({
+    const existingUser = rows[0] ?? null;
+
+    // If a user exists but their account is inactive (pending approval),
+    // block the OTP request so they can't bypass the approval gate.
+    if (existingUser && !existingUser.is_active) {
+      console.log(`[PhoneOTP] Request for inactive account: ${phone}`);
+      return res.status(403).json({
         success: false,
-        code:    'PHONE_NOT_FOUND',
+        code:    'ACCOUNT_PENDING',
         message:
-          'Nambari hii haijasajiliwa. Tafadhali wasiliana na ofisi ya parokia kupata usaidizi. ' +
-          '/ This number is not registered. Please contact the parish office for assistance.',
+          'Akaunti yako bado haikuidhinishwa. Tafadhali subiri idhini ya kiongozi. ' +
+          '/ Your account is pending approval. Please wait for a leader to approve it.',
       });
     }
 
-    const user = rows[0];
-
-    // Use the canonical form of the phone as stored in DB for all subsequent
-    // operations so OTP table rows stay consistent regardless of input format
-    const canonicalPhone = normalisePhone(user.phone);
+    // Use the canonical form of the stored phone (or the input if new user)
+    const canonicalPhone = existingUser
+      ? normalisePhone(existingUser.phone)
+      : phone;
 
     // ── 2. Rate-limit: max 3 OTP requests per phone per 10 minutes ──────────
     const [[{ recentCount }]] = await db.execute(
@@ -246,45 +239,56 @@ exports.requestPhoneOTP = async (req, res, next) => {
       [canonicalPhone, otpHash, expiresAt]
     );
 
-    // ── 5. Generate a new plain-text password, hash it, save to users ────────
-    // A fresh password is issued every time an OTP is requested.
-    // The plain text is included in the SMS below and never stored.
-    const plainPassword  = generatePassword();
-    const hashedPassword = await bcrypt.hash(plainPassword, 12);
+    // ── 5. Build SMS ──────────────────────────────────────────────────────────
+    // For existing users: include a refreshed password (original behaviour).
+    // For new registrants: OTP only — they'll set their password in the form.
+    let message;
 
-    await db.execute(
-      `UPDATE users SET password = ? WHERE id = ?`,
-      [hashedPassword, user.id]
-    );
+    if (existingUser) {
+      // Regenerate password for existing user (keeps original login-via-SMS UX)
+      const plainPassword  = generatePassword();
+      const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
-    // ── 6. Build Swahili SMS containing OTP + login credentials ──────────────
-    const firstName = user.full_name.split(' ')[0];
+      await db.execute(
+        `UPDATE users SET password = ? WHERE id = ?`,
+        [hashedPassword, existingUser.id]
+      );
 
-    const message =
-      `Habari ${firstName},\n` +
-      `Nambari yako ya uthibitisho (OTP): ${otp}\n` +
-      `Inaisha baada ya dakika ${OTP_TTL_MINUTES}.\n\n` +
-      `Unaweza pia kuingia kwa nambari yako ya simu na nenosiri hili:\n` +
-      `Simu: ${canonicalPhone}\n` +
-      `Nenosiri: ${plainPassword}\n` +
-      `Tovuti: ${LOGIN_URL}\n\n` +
-      `Usimwambie mtu yeyote nenosiri hili.`;
+      const firstName = existingUser.full_name.split(' ')[0];
+      message =
+        `Habari ${firstName},\n` +
+        `Nambari yako ya uthibitisho (OTP): ${otp}\n` +
+        `Inaisha baada ya dakika ${OTP_TTL_MINUTES}.\n\n` +
+        `Unaweza pia kuingia kwa nambari yako ya simu na nenosiri hili:\n` +
+        `Simu: ${canonicalPhone}\n` +
+        `Nenosiri: ${plainPassword}\n` +
+        `Tovuti: ${LOGIN_URL}\n\n` +
+        `Usimwambie mtu yeyote nenosiri hili.`;
+    } else {
+      // New registrant — OTP only
+      message =
+        `Habari,\n` +
+        `Nambari yako ya uthibitisho (OTP) kwa ajili ya usajili: ${otp}\n` +
+        `Inaisha baada ya dakika ${OTP_TTL_MINUTES}.\n\n` +
+        `KKKT Yombo DMP — ${LOGIN_URL}`;
+    }
 
-    // ── 7. Send via NextSMS ──────────────────────────────────────────────────
+    // ── 6. Send via NextSMS ──────────────────────────────────────────────────
     await sendSMS(canonicalPhone, message);
 
-    console.log(`[PhoneOTP] OTP + password sent → userId=${user.id} phone=${canonicalPhone}`);
+    console.log(
+      `[PhoneOTP] OTP sent → phone=${canonicalPhone} ` +
+      `(${existingUser ? `userId=${existingUser.id}` : 'new registrant'})`
+    );
 
     return res.json({
       success: true,
       message:
-        'OTP na nenosiri vimetumwa kwa nambari yako ya simu. OTP itaisha baada ya dakika 5. ' +
-        '/ OTP and password sent to your phone number. OTP expires in 5 minutes.',
+        'OTP imetumwa kwa nambari yako ya simu. Itaisha baada ya dakika 5. ' +
+        '/ OTP sent to your phone number. It expires in 5 minutes.',
     });
 
   } catch (err) {
-
-    // Surface NextSMS delivery errors cleanly (don't leak internals)
     if (err.message?.startsWith('NextSMS')) {
       console.log(`[PhoneOTP] SMS delivery failed: ${err.message}`);
       return res.status(502).json({
@@ -302,6 +306,13 @@ exports.requestPhoneOTP = async (req, res, next) => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // POST /api/auth/phone-login/verify
+//
+// Two outcomes depending on whether a user account exists for the phone:
+//
+//   isRegistration: true  — no account found; return verifiedToken so the
+//                           frontend can proceed to /api/auth/register
+//
+//   isRegistration: false — existing active account; return JWT (normal login)
 // ═══════════════════════════════════════════════════════════════════════════
 exports.verifyPhoneOTP = async (req, res, next) => {
   try {
@@ -329,7 +340,6 @@ exports.verifyPhoneOTP = async (req, res, next) => {
     };
 
     // ── 1. Fetch latest unused, unexpired OTP ────────────────────────────────
-    // Try canonical form first, then variants (handles legacy stored formats)
     const placeholders = variants.map(() => '?').join(', ');
 
     const [otpRows] = await db.execute(
@@ -400,13 +410,28 @@ exports.verifyPhoneOTP = async (req, res, next) => {
       });
     }
 
-    // ── 4. Mark OTP as used ──────────────────────────────────────────────────
+    // ── 4. Mark OTP used ─────────────────────────────────────────────────────
     await db.execute(
       `UPDATE phone_login_otps SET used = 1 WHERE id = ?`,
       [record.id]
     );
 
-    // ── 5. Fetch the user — match all variants ───────────────────────────────
+    // ── 4b. Generate and store a short-lived verified token ──────────────────
+    // This token is carried by the frontend into POST /api/auth/register.
+    // It proves the phone was verified without needing the full OTP flow again.
+    const verifiedToken  = crypto.randomBytes(32).toString('hex');
+    const tokenExpiresAt = new Date(Date.now() + VERIFIED_TOKEN_MINUTES * 60 * 1000);
+
+    await db.execute(
+      `UPDATE phone_login_otps
+          SET verified_token   = ?,
+              expires_at = ?
+        WHERE id = ?`,
+      [verifiedToken, tokenExpiresAt, record.id]
+    );
+    
+
+    // ── 5. Check whether a user account exists for this phone ────────────────
     const [userRows] = await db.execute(
       `SELECT id, full_name, email, role, group_id, phone,
               namba_ya_usharika, profile_photo_url,
@@ -417,34 +442,49 @@ exports.verifyPhoneOTP = async (req, res, next) => {
       variants
     );
 
-    if (userRows.length === 0 || !userRows[0].is_active) {
-      console.log(`[PhoneOTP] User not found or inactive: ${phone}`);
-      return res.status(403).json({
-        success: false,
-        code:    'ACCOUNT_INACTIVE',
-        message:
-          'Akaunti haikupatikana au bado haikuidhinishwa. ' +
-          '/ Account not found or not yet activated.',
+    // ── Registration path — phone verified but no account yet ────────────────
+    if (userRows.length === 0) {
+      console.log(`[PhoneOTP] ✅ Phone verified (new registrant) — phone=${phone}`);
+      return res.json({
+        success:        true,
+        isRegistration: true,
+        verifiedToken,          // carry this into POST /api/auth/register
+        phone,                  // canonical form — frontend pre-fills the field
       });
     }
 
     const user = userRows[0];
 
-    // ── 6. Update last_login ─────────────────────────────────────────────────
+    // Inactive (pending) accounts — block login
+    if (!user.is_active) {
+      console.log(`[PhoneOTP] Account inactive: ${phone}`);
+      return res.status(403).json({
+        success: false,
+        code:    'ACCOUNT_INACTIVE',
+        message:
+          'Akaunti yako bado haikuidhinishwa. Tafadhali subiri idhini ya kiongozi. ' +
+          '/ Your account has not been approved yet. Please wait for a leader to approve it.',
+      });
+    }
+
+    // ── Login path — existing active user ────────────────────────────────────
     await db.execute(
       `UPDATE users SET last_login = NOW() WHERE id = ?`,
       [user.id]
     );
 
-    // ── 7. Issue JWT and respond ─────────────────────────────────────────────
     const token = generateToken(user);
 
     console.log(`[PhoneOTP] ✅ Login success — userId=${user.id} phone=${normalisePhone(user.phone)}`);
 
     return res.json({
-      success: true,
+      success:        true,
+      isRegistration: false,
       token,
       user,
+      // verifiedToken is also returned here in case the client ever needs it,
+      // but for a login it should be ignored.
+      verifiedToken,
     });
 
   } catch (err) { next(err); }

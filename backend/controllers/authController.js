@@ -27,14 +27,12 @@ function toBit(val) {
 }
 
 // ── Helper: sync ministry memberships for a user ─────────────────────────────
-// ministryIds: number[] — the full desired set (replaces existing)
 async function syncMinistries(userId, ministryIds) {
   if (!Array.isArray(ministryIds) || ministryIds.length === 0) return;
 
   const ids = ministryIds.map(Number).filter(Boolean);
   if (ids.length === 0) return;
 
-  // Delete all existing memberships for this user, then re-insert
   await db.execute(
     'DELETE FROM member_ministries WHERE member_id = ?',
     [userId]
@@ -49,10 +47,32 @@ async function syncMinistries(userId, ministryIds) {
   );
 }
 
+// ── Helper: return all phone format variants for a canonical 255XXXXXXXXX ────
+function phoneVariants(canonical) {
+  if (!canonical) return [];
+  const digits = String(canonical).replace(/\D/g, '');
+  // Derive the 9-digit local part regardless of input format
+  let local;
+  if (digits.startsWith('255') && digits.length === 12) local = digits.slice(3);
+  else if (digits.startsWith('0') && digits.length === 10) local = digits.slice(1);
+  else if (digits.length === 9) local = digits;
+  else return [canonical]; // unknown format — just try as-is
+
+  return [
+    `0${local}`,
+    `255${local}`,
+    `+255${local}`,
+  ];
+}
+
 
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/register
-// Self-registration — OTP verified, account pending approval.
+// Self-registration — phone OTP verified, account pending approval.
+//
+// Accepts a verifiedToken from either:
+//   • POST /api/auth/phone-login/verify  (phone OTP — primary flow)
+//   • POST /api/auth/verify-email-otp   (email OTP — legacy / fallback)
 // ═══════════════════════════════════════════════════════════
 exports.register = async (req, res, next) => {
   try {
@@ -83,43 +103,90 @@ exports.register = async (req, res, next) => {
       slp,
     } = req.body;
 
-    // ── OTP gate ─────────────────────────────────────────────
+    // ── Verification gate ─────────────────────────────────────────────────────
+    // Require at least one verified identity — phone or email.
     if (!verifiedToken) {
       return res.status(400).json({
         success: false,
-        code:    'EMAIL_NOT_VERIFIED',
-        message: 'Email verification is required before registering.',
+        code:    'NOT_VERIFIED',
+        message: 'Phone or email verification is required before registering.',
       });
     }
 
-    const [tokenRows] = await db.execute(
-      `SELECT id FROM email_verification_otps
-        WHERE email = ? AND verified_token = ? AND token_expires_at > NOW()
+    // Try phone_login_otps first (primary flow), then email_verification_otps (legacy)
+    const [phoneTokenRows] = await db.execute(
+      `SELECT id FROM phone_login_otps
+        WHERE verified_token   = ?
+          AND expires_at > NOW()
+          AND used             = 1
         ORDER BY created_at DESC LIMIT 1`,
-      [email, verifiedToken]
+      [verifiedToken]
     );
 
-    if (tokenRows.length === 0) {
+    const [emailTokenRows] = await db.execute(
+      `SELECT id FROM email_verification_otps
+        WHERE email            = ?
+          AND verified_token   = ?
+          AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 1`,
+      [email || '', verifiedToken]
+    );
+
+    if (phoneTokenRows.length === 0 && emailTokenRows.length === 0) {
       return res.status(400).json({
         success: false,
         code:    'INVALID_VERIFICATION_TOKEN',
-        message: 'Email verification token is invalid or has expired. Please verify your email again.',
+        message: 'Verification token is invalid or has expired. Please verify your phone again.',
       });
     }
 
-    await db.execute(
-      'UPDATE email_verification_otps SET verified_token = NULL WHERE id = ?',
-      [tokenRows[0].id]
-    );
+    // Invalidate whichever token was matched so it cannot be reused
+    if (phoneTokenRows.length > 0) {
+      await db.execute(
+        'UPDATE phone_login_otps SET verified_token = NULL WHERE id = ?',
+        [phoneTokenRows[0].id]
+      );
+    }
+    if (emailTokenRows.length > 0) {
+      await db.execute(
+        'UPDATE email_verification_otps SET verified_token = NULL WHERE id = ?',
+        [emailTokenRows[0].id]
+      );
+    }
 
-    // ── Duplicate guard ───────────────────────────────────────
-    const [existing] = await db.execute(
-      'SELECT id FROM users WHERE email = ?', [email]
-    );
-    if (existing.length > 0) {
-      return res.status(409).json({
+    // ── Duplicate guards ──────────────────────────────────────────────────────
+    if (email) {
+      const [existing] = await db.execute(
+        'SELECT id FROM users WHERE email = ?', [email]
+      );
+      if (existing.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: 'Email already registered.',
+        });
+      }
+    }
+
+    if (phone) {
+      const variants = phoneVariants(phone);
+      const phonePlaceholders = variants.map(() => '?').join(', ');
+      const [existingPhone] = await db.execute(
+        `SELECT id FROM users WHERE phone IN (${phonePlaceholders})`,
+        variants
+      );
+      if (existingPhone.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: 'Phone number already registered.',
+        });
+      }
+    }
+
+    // At least one identifier is required
+    if (!email && !phone) {
+      return res.status(400).json({
         success: false,
-        message: 'Email already registered.',
+        message: 'A phone number or email address is required.',
       });
     }
 
@@ -143,7 +210,7 @@ exports.register = async (req, res, next) => {
       )`,
       [
         full_name,
-        email,
+        email             || null,
         hashed,
         role,
         group_id          || null,
@@ -189,7 +256,7 @@ exports.register = async (req, res, next) => {
     sendNotification(adminEmail, {
       title:        'Maombi Mapya ya Kujiunga',
       titleSwahili: 'New Member Application',
-      message:      `${full_name} (${email}) ameomba kujiunga na kanisa. Tafadhali kagua na ukubali au ukatae ombi hili kwenye dashibodi.`,
+      message:      `${full_name} (${email || phone}) ameomba kujiunga na kanisa. Tafadhali kagua na ukubali au ukatae ombi hili kwenye dashibodi.`,
       type:         'info',
       ctaLabel:     'Kagua Maombi',
       ctaUrl:       `${process.env.FRONTEND_URL}/dashboard/members/pending`,
@@ -263,9 +330,7 @@ exports.adminCreateUser = async (req, res, next) => {
       takes_communion,
 
       // ── Relations ────────────────────────────────────────
-      // Array of { full_name, date_of_birth?, relationship? }
       dependants  = [],
-      // Array of ministry IDs (number[])
       ministries  = [],
     } = req.body;
 
@@ -456,10 +521,6 @@ exports.adminCreateUser = async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════
 // POST /api/auth/admin-bulk-create  — pastor / elder only
 // ═══════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════
-// POST /api/auth/admin-bulk-create  — pastor / elder only
-// ═══════════════════════════════════════════════════════════
 exports.adminBulkCreateUsers = async (req, res, next) => {
   try {
     const { users } = req.body;
@@ -479,7 +540,6 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
 
     const results = [];
 
-    // ── Pre-flight: catch duplicates within the batch itself ──
     const seenPhones  = new Set();
     const seenAhadis  = new Set();
     const seenNames   = new Set();
@@ -499,7 +559,6 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
         password: suppliedPassword,
       } = users[i];
 
-      // ── Basic validation ────────────────────────────────────
       if (!full_name || !String(full_name).trim()) {
         results.push({ row, status: 'skipped', reason: 'Missing full_name.' });
         continue;
@@ -516,55 +575,30 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
 
       const cleanName = String(full_name).trim();
 
-      // ── Intra-batch duplicate checks ────────────────────────
       if (phone && seenPhones.has(phone)) {
-        results.push({
-          row,
-          status: 'skipped',
-          name:   cleanName,
-          reason: `Duplicate phone in batch: "${phone}".`,
-        });
+        results.push({ row, status: 'skipped', name: cleanName, reason: `Duplicate phone in batch: "${phone}".` });
         continue;
       }
-
       if (ahadi_number && seenAhadis.has(ahadi_number)) {
-        results.push({
-          row,
-          status: 'skipped',
-          name:   cleanName,
-          reason: `Duplicate ahadi_number in batch: "${ahadi_number}".`,
-        });
+        results.push({ row, status: 'skipped', name: cleanName, reason: `Duplicate ahadi_number in batch: "${ahadi_number}".` });
         continue;
       }
-
       if (seenNames.has(cleanName.toLowerCase())) {
-        results.push({
-          row,
-          status: 'skipped',
-          name:   cleanName,
-          reason: `Duplicate full_name in batch: "${cleanName}".`,
-        });
+        results.push({ row, status: 'skipped', name: cleanName, reason: `Duplicate full_name in batch: "${cleanName}".` });
         continue;
       }
 
-      // Track seen values before attempting DB insert
       if (phone)        seenPhones.add(phone);
       if (ahadi_number) seenAhadis.add(ahadi_number);
       seenNames.add(cleanName.toLowerCase());
 
       try {
-        // ── Database duplicate checks ───────────────────────
         if (phone) {
           const [dupPhone] = await db.execute(
             'SELECT id FROM users WHERE phone = ?', [phone]
           );
           if (dupPhone.length > 0) {
-            results.push({
-              row,
-              status: 'skipped',
-              name:   cleanName,
-              reason: `Phone "${phone}" already exists in database.`,
-            });
+            results.push({ row, status: 'skipped', name: cleanName, reason: `Phone "${phone}" already exists in database.` });
             continue;
           }
         }
@@ -574,37 +608,24 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
             'SELECT id FROM users WHERE ahadi_number = ?', [ahadi_number]
           );
           if (dupAhadi.length > 0) {
-            results.push({
-              row,
-              status: 'skipped',
-              name:   cleanName,
-              reason: `Ahadi number "${ahadi_number}" already exists in database.`,
-            });
+            results.push({ row, status: 'skipped', name: cleanName, reason: `Ahadi number "${ahadi_number}" already exists in database.` });
             continue;
           }
         }
 
-        // Check full_name against the database as well
         const [dupName] = await db.execute(
           'SELECT id FROM users WHERE LOWER(full_name) = LOWER(?) AND role = ?',
           [cleanName, role]
         );
         if (dupName.length > 0) {
-          results.push({
-            row,
-            status: 'skipped',
-            name:   cleanName,
-            reason: `A member named "${cleanName}" already exists in database.`,
-          });
+          results.push({ row, status: 'skipped', name: cleanName, reason: `A member named "${cleanName}" already exists in database.` });
           continue;
         }
 
-        // ── Password ──────────────────────────────────────────
         const isGenerated = !suppliedPassword;
         const rawPassword = suppliedPassword || generateTempPassword();
         const hashed      = await bcrypt.hash(rawPassword, 12);
 
-        // ── INSERT ────────────────────────────────────────────
         const [result] = await db.execute(
           `INSERT INTO users (
             full_name, phone, ahadi_number,
@@ -647,7 +668,6 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
       }
     }
 
-    // ── Summary ───────────────────────────────────────────────
     const created = results.filter(r => r.status === 'created');
     const skipped = results.filter(r => r.status === 'skipped');
     const errored = results.filter(r => r.status === 'error');
@@ -683,52 +703,10 @@ exports.adminBulkCreateUsers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Drop this helper near the top of authController.js (alongside toBit, etc.)
-// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Given any phone-like string, return all reasonable stored variants so the
- * login query can match regardless of how the number was saved at registration.
- *
- * Examples (all resolve to the same set):
- *   "255617833806"   → ["255617833806",  "+255617833806",  "0617833806"]
- *   "+255617833806"  → ["+255617833806", "255617833806",   "0617833806"]
- *   "0617833806"     → ["0617833806",    "255617833806",   "+255617833806"]
- */
-function phoneVariants(raw) {
-  // Strip everything that isn't a digit or a leading +
-  const cleaned = raw.trim();
-  const digits  = cleaned.replace(/\D/g, '');
-
-  // Not phone-shaped — return as-is and let the query try email/namba
-  if (digits.length < 9) return [cleaned];
-
-  let local; // last 9 digits (Tanzanian subscriber number)
-
-  if (digits.startsWith('255') && digits.length === 12) {
-    local = digits.slice(3);                    // "617833806"
-  } else if (digits.startsWith('0') && digits.length === 10) {
-    local = digits.slice(1);                    // "617833806"
-  } else if (digits.length === 9) {
-    local = digits;                             // already bare
-  } else {
-    // Unknown format — just return cleaned variants
-    return [cleaned, `+${digits}`, digits];
-  }
-
-  return [
-    `0${local}`,          // "0617833806"
-    `255${local}`,        // "255617833806"
-    `+255${local}`,       // "+255617833806"
-  ];
-}
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Replace the existing exports.login with this version
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ═══════════════════════════════════════════════════════════
+// POST /api/auth/login
+// ═══════════════════════════════════════════════════════════
 exports.login = async (req, res, next) => {
   try {
     const { identifier, password } = req.body;
@@ -740,22 +718,21 @@ exports.login = async (req, res, next) => {
       });
     }
 
-    // Build phone variants so "+255…", "255…", and "0…" all match
     const variants   = phoneVariants(identifier);
     const phoneParts = variants.map(() => 'phone = ?').join(' OR ');
     const phoneVals  = variants;
 
-  const [rows] = await db.execute(
-  `SELECT * FROM users
-   WHERE email = ?
-      OR namba_ya_usharika = ?
-      OR ahadi_number = ?
-      OR (${phoneParts})`,
-  [identifier, identifier, identifier, ...phoneVals]
-);
+    const [rows] = await db.execute(
+      `SELECT * FROM users
+       WHERE email = ?
+          OR namba_ya_usharika = ?
+          OR ahadi_number = ?
+          OR (${phoneParts})`,
+      [identifier, identifier, identifier, ...phoneVals]
+    );
 
     if (rows.length === 0) {
-      console.log(`Login failed: no user found for identifier "${identifier}" (tried phone variants: ${variants.join(', ')})`);
+      console.log(`Login failed: no user found for identifier "${identifier}"`);
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
@@ -785,7 +762,6 @@ exports.login = async (req, res, next) => {
     res.json({ success: true, token, user: safeUser });
   } catch (err) { next(err); }
 };
-
 
 
 // ═══════════════════════════════════════════════════════════
@@ -901,37 +877,16 @@ exports.me = async (req, res, next) => {
 };
 
 
-
-
-
 // ═══════════════════════════════════════════════════════════
 // GET /api/auth/members          — pastor / elder only
-//
-// Query params (all optional, combinable):
-//   sortBy        — full_name | jumuiya | gender | marital_status |
-//                   occupation | created_at | member_since | date_of_birth
-//                   (default: full_name)
-//   order         — asc | desc  (default: asc)
-//   jumuiya       — filter by exact jumuiya name
-//   ministry      — filter by ministry ID (active memberships only)
-//   gender        — Male | Female
-//   marital_status
-//   member_status — hai | amehamia | amefariki
-//   group_id      — filter by group
-//   search        — partial match on full_name, phone, ahadi_number,
-//                   namba_ya_usharika, email, occupation, jumuiya
-//   page          — page number (default: 1)
-//   limit         — rows per page, max 500 (default: 100)
 // ═══════════════════════════════════════════════════════════
 exports.getMembers = async (req, res, next) => {
   try {
-    // ── Allowed sort columns (whitelist — prevents SQL injection) ──
     const SORTABLE = new Set([
       'full_name', 'jumuiya', 'gender', 'marital_status',
       'occupation', 'created_at', 'member_since', 'date_of_birth',
     ]);
 
-    // ── Parse & sanitise query params ──────────────────────────────
     const sortBy   = SORTABLE.has(req.query.sortBy) ? req.query.sortBy : 'full_name';
     const order    = req.query.order === 'desc' ? 'DESC' : 'ASC';
     const page     = Math.max(1, parseInt(req.query.page)  || 1);
@@ -946,9 +901,6 @@ exports.getMembers = async (req, res, next) => {
     const filterGroupId      = parseInt(req.query.group_id) || null;
     const search             = req.query.search         || null;
 
-    // ── Build WHERE conditions ──────────────────────────────────────
-    // Note: ministry filtering is handled via INNER JOIN (see below),
-    // not a WHERE condition, so it is NOT added to conditions[].
     const conditions  = [];
     const whereParams = [];
 
@@ -990,9 +942,6 @@ exports.getMembers = async (req, res, next) => {
       ? `WHERE ${conditions.join(' AND ')}`
       : '';
 
-    // ── Ministry INNER JOIN (param comes BEFORE whereParams) ────────
-    // Using a JOIN rather than a subquery so COUNT(DISTINCT) works
-    // correctly and the query remains sargable.
     const ministryJoin = filterMinistry
       ? `INNER JOIN member_ministries mm_filter
            ON  mm_filter.member_id  = u.id
@@ -1000,13 +949,11 @@ exports.getMembers = async (req, res, next) => {
            AND mm_filter.status      = 'active'`
       : '';
 
-    // Final param arrays — ministry param must come before WHERE params
     const allParams = [
       ...(filterMinistry ? [filterMinistry] : []),
       ...whereParams,
     ];
 
-    // ── COUNT (for pagination meta) ─────────────────────────────────
     const [[{ total }]] = await db.execute(
       `SELECT COUNT(DISTINCT u.id) AS total
        FROM   users u
@@ -1015,43 +962,17 @@ exports.getMembers = async (req, res, next) => {
       allParams
     );
 
-    // ── Fetch page ──────────────────────────────────────────────────
     const [members] = await db.execute(
       `SELECT
-         u.id,
-         u.full_name,
-         u.email,
-         u.phone,
-         u.ahadi_number,
-         u.namba_ya_usharika,
-         u.role,
-         u.gender,
-         u.date_of_birth,
-         u.place_of_birth,
-         u.member_status,
-         u.marital_status,
-         u.marriage_type,
-         u.occupation,
-         u.profession,
-         u.education,
-         u.workplace,
-         u.jumuiya,
-         u.block_no,
-         u.area_name,
-         u.slp,
-         u.profile_photo_url,
-         u.willing_to_volunteer,
-         u.member_since,
-         u.baptism_date,
-         u.confirmation_date,
-         u.takes_communion,
-         u.is_active,
-         u.last_login,
-         u.created_at,
+         u.id, u.full_name, u.email, u.phone, u.ahadi_number,
+         u.namba_ya_usharika, u.role, u.gender, u.date_of_birth,
+         u.place_of_birth, u.member_status, u.marital_status,
+         u.marriage_type, u.occupation, u.profession, u.education,
+         u.workplace, u.jumuiya, u.block_no, u.area_name, u.slp,
+         u.profile_photo_url, u.willing_to_volunteer, u.member_since,
+         u.baptism_date, u.confirmation_date, u.takes_communion,
+         u.is_active, u.last_login, u.created_at,
          g.name AS group_name,
-
-         -- Ministries as a JSON array — { id, name, category }
-         -- status = 'active' guard ensures we don't return former memberships
          (
            SELECT JSON_ARRAYAGG(
              JSON_OBJECT(
@@ -1066,14 +987,11 @@ exports.getMembers = async (req, res, next) => {
            WHERE  mm2.member_id = u.id
              AND  mm2.status    = 'active'
          ) AS ministries,
-
-         -- Dependants count (avoids loading full dependant rows in list view)
          (
            SELECT COUNT(*)
            FROM   member_dependants md
            WHERE  md.member_id = u.id
          ) AS dependants_count
-
        FROM  users u
        LEFT  JOIN \`groups\` g ON g.id = u.group_id
        ${ministryJoin}
@@ -1084,7 +1002,6 @@ exports.getMembers = async (req, res, next) => {
       [...allParams, limit, offset]
     );
 
-    // ── Parse JSON_ARRAYAGG (MySQL returns it as a string) ──────────
     const parsed = members.map(m => ({
       ...m,
       ministries: m.ministries
@@ -1094,7 +1011,6 @@ exports.getMembers = async (req, res, next) => {
         : [],
     }));
 
-    // ── Distinct jumuiya list (for filter dropdowns) ────────────────
     const [jumuiyaRows] = await db.execute(
       `SELECT DISTINCT jumuiya
        FROM   users
@@ -1102,7 +1018,6 @@ exports.getMembers = async (req, res, next) => {
        ORDER  BY jumuiya ASC`
     );
 
-    // ── Response ────────────────────────────────────────────────────
     return res.json({
       success: true,
       meta: {
@@ -1127,7 +1042,3 @@ exports.getMembers = async (req, res, next) => {
     });
   } catch (err) { next(err); }
 };
-
-
-
-

@@ -107,7 +107,6 @@ function PhotoPicker({ previewUrl, onFile, uploading, uploadProgress, sw }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-      {/* Avatar ring */}
       <div
         onClick={() => !uploading && fileRef.current?.click()}
         style={{
@@ -130,8 +129,6 @@ function PhotoPicker({ previewUrl, onFile, uploading, uploadProgress, sw }) {
             </p>
           </div>
         )}
-
-        {/* Upload progress overlay */}
         {uploading && (
           <div style={{
             position: 'absolute', inset: 0,
@@ -176,15 +173,15 @@ function PhotoPicker({ previewUrl, onFile, uploading, uploadProgress, sw }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main page — Steps: 'email' → 'otp' → 'photo' → 'form' → 'pending'
+// Main page — Steps: 'phone' → 'otp' → 'photo' → 'form' → 'pending'
 // ─────────────────────────────────────────────────────────────────────────────
 export default function RegisterPage() {
   const { lang } = useAuth();
   const sw = lang === 'sw';
   const router = useRouter();
 
-  const [step,           setStep]           = useState('email');
-  const [email,          setEmail]          = useState('');
+  const [step,           setStep]           = useState('phone');
+  const [phone,          setPhone]          = useState('');
   const [otpValue,       setOtpValue]       = useState('');
   const [verifiedToken,  setVerifiedToken]  = useState('');
   const [otpExpired,     setOtpExpired]     = useState(false);
@@ -192,7 +189,9 @@ export default function RegisterPage() {
   const [photoUrl,       setPhotoUrl]       = useState('');
   const [uploading,      setUploading]      = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [form,           setForm]           = useState({ full_name: '', password: '', phone: '', namba_ya_usharika: '' });
+  const [form,           setForm]           = useState({
+    full_name: '', email: '', phone: '', password: '', namba_ya_usharika: '',
+  });
   const [showPass,       setShowPass]       = useState(false);
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState(null);
@@ -201,13 +200,13 @@ export default function RegisterPage() {
 
   useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview); }, [photoPreview]);
 
-  // ── Step 1: send OTP ──────────────────────────────────────────────────────
+  // ── Step 1: request phone OTP ─────────────────────────────────────────────
   async function handleSendOtp(e) {
     e?.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      await apiFetch('/auth/send-verification-otp', { email });
+      await apiFetch('/auth/phone-login/request', { phone });
       setOtpExpired(false);
       setOtpValue('');
       setStep('otp');
@@ -218,15 +217,25 @@ export default function RegisterPage() {
     }
   }
 
-  // ── Step 2: verify OTP ────────────────────────────────────────────────────
+  // ── Step 2: verify phone OTP ──────────────────────────────────────────────
   async function handleVerifyOtp(e) {
     e?.preventDefault();
     if (otpValue.length < 6) return;
     setError(null);
     setLoading(true);
     try {
-      const data = await apiFetch('/auth/verify-email-otp', { email, otp: otpValue });
+      const data = await apiFetch('/auth/phone-login/verify', { phone, otp: otpValue });
+
+      // Existing active user — log them in directly, skip registration
+      if (!data.isRegistration) {
+        setAuth(data.token, data.user);
+        router.push('/dashboard');
+        return;
+      }
+
+      // New user — carry verifiedToken and pre-filled phone into the form
       setVerifiedToken(data.verifiedToken);
+      setForm(f => ({ ...f, phone: data.phone }));
       setStep('photo');
     } catch (err) {
       setError(err.message);
@@ -236,6 +245,7 @@ export default function RegisterPage() {
     }
   }
 
+  // Auto-submit when all 6 digits are entered
   useEffect(() => {
     if (step === 'otp' && otpValue.length === 6 && !loading) handleVerifyOtp();
   }, [otpValue]);
@@ -281,7 +291,6 @@ export default function RegisterPage() {
     try {
       const res = await authApi.register({
         ...form,
-        email,
         role: 'member',
         verifiedToken,
         profile_photo_url: photoUrl || null,
@@ -289,10 +298,12 @@ export default function RegisterPage() {
       setAuth(res.data.token, res.data.user);
       setStep('pending');
     } catch (err) {
-      if (err.message?.includes('verification token')) {
+      if (err.message?.includes('verification token') || err.message?.includes('expired')) {
         setVerifiedToken('');
-        setStep('email');
-        setError(sw ? 'Muda wa uthibitisho umekwisha. Tafadhali anza tena.' : 'Verification expired. Please start again.');
+        setStep('phone');
+        setError(sw
+          ? 'Muda wa uthibitisho umekwisha. Tafadhali anza tena.'
+          : 'Verification expired. Please start again.');
       } else {
         setError(err.message);
       }
@@ -309,7 +320,7 @@ export default function RegisterPage() {
     </div>
   );
 
-  const STEPS = ['email', 'otp', 'photo', 'form'];
+  const STEPS = ['phone', 'otp', 'photo', 'form'];
   const stepIdx = STEPS.indexOf(step);
   const StepDots = () => (
     <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 28 }}>
@@ -345,7 +356,7 @@ export default function RegisterPage() {
             {sw ? 'Hatua Zinazofuata' : 'What Happens Next'}
           </p>
           {[
-            sw ? '✅  Barua pepe yako imethibitishwa'          : '✅  Your email has been verified',
+            sw ? '✅  Nambari yako ya simu imethibitishwa'      : '✅  Your phone number has been verified',
             sw ? '📷  Picha yako imepakiwa kwa uthibitisho'    : '📷  Your photo has been submitted for verification',
             sw ? '👤  Kiongozi ataangalia maombi yako'         : '👤  A leader will review your request',
             sw ? '🔔  Utaarifu ukikubaliwa'                    : '🔔  You\'ll be notified once approved',
@@ -359,10 +370,10 @@ export default function RegisterPage() {
             {sw ? 'Taarifa Ulizoweka' : 'Registered Details'}
           </p>
           {[
-            [sw ? 'Jina' : 'Name',  form.full_name],
-            ['Email',               email],
-            ...(form.phone             ? [[sw ? 'Simu'  : 'Phone',      form.phone]]             : []),
-            ...(form.namba_ya_usharika ? [[sw ? 'Namba' : 'Member No.', form.namba_ya_usharika]] : []),
+            [sw ? 'Jina'  : 'Name',       form.full_name],
+            [sw ? 'Simu'  : 'Phone',      form.phone],
+            ...(form.email             ? [['Email',                        form.email]]             : []),
+            ...(form.namba_ya_usharika ? [[sw ? 'Namba' : 'Member No.',   form.namba_ya_usharika]] : []),
           ].map(([label, value]) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
               <span style={{ fontSize: 12, color: '#6B7280' }}>{label}</span>
@@ -378,8 +389,8 @@ export default function RegisterPage() {
     );
   }
 
-  // ── EMAIL ─────────────────────────────────────────────────────────────────
-  if (step === 'email') {
+  // ── PHONE ─────────────────────────────────────────────────────────────────
+  if (step === 'phone') {
     return (
       <PageShell>
         <CrossWatermark />
@@ -387,19 +398,28 @@ export default function RegisterPage() {
         <StepDots />
         <div style={{ marginBottom: 22 }}>
           <h2 style={{ margin: '0 0 3px', fontSize: 19, fontWeight: 700, color: '#111827' }}>
-            {sw ? 'Thibitisha Barua Pepe' : 'Verify Your Email'}
+            {sw ? 'Thibitisha Nambari ya Simu' : 'Verify Your Phone'}
           </h2>
           <p style={{ margin: 0, fontSize: 13, color: '#6B7280' }}>
-            {sw ? 'Tutakutumia nambari ya uthibitisho' : "We'll send you a verification code first"}
+            {sw ? 'Tutakutumia nambari ya uthibitisho kwa SMS' : "We'll send you a 6-digit code by SMS"}
           </p>
         </div>
         <form onSubmit={handleSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {error && <ErrorBanner msg={error} />}
           <div>
-            <label style={labelStyle}>{sw ? 'Barua Pepe' : 'Email Address'}</label>
-            <input className="field-input" type="email" value={email} onChange={e => { setEmail(e.target.value); setError(null); }} placeholder="you@church.com" required autoFocus autoComplete="email" />
+            <label style={labelStyle}>{sw ? 'Nambari ya Simu' : 'Phone Number'}</label>
+            <input
+              className="field-input"
+              type="tel"
+              value={phone}
+              onChange={e => { setPhone(e.target.value); setError(null); }}
+              placeholder="+255 700 000 000"
+              required
+              autoFocus
+              autoComplete="tel"
+            />
           </div>
-          <button type="submit" disabled={loading || !email} className="btn-primary w-full justify-center" style={{ marginTop: 4 }}>
+          <button type="submit" disabled={loading || !phone} className="btn-primary w-full justify-center" style={{ marginTop: 4 }}>
             {loading ? <Spinner label={sw ? 'Inatuma...' : 'Sending…'} /> : (sw ? 'Tuma Nambari' : 'Send Code')}
           </button>
         </form>
@@ -422,13 +442,13 @@ export default function RegisterPage() {
         <LogoBlock sw={sw} />
         <StepDots />
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#EAF0F8', border: '2px solid #C5D5EA', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 12 }}>✉️</div>
+          <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#EAF0F8', border: '2px solid #C5D5EA', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: 12 }}>📱</div>
           <h2 style={{ margin: '0 0 6px', fontSize: 19, fontWeight: 700, color: '#111827' }}>
             {sw ? 'Ingiza Nambari ya Uthibitisho' : 'Enter Verification Code'}
           </h2>
           <p style={{ margin: 0, fontSize: 13, color: '#6B7280', lineHeight: 1.6 }}>
-            {sw ? 'Tumekutumia nambari ya tarakimu 6 kwenda' : 'We sent a 6-digit code to'}{' '}
-            <strong style={{ color: '#1B3A6B' }}>{email}</strong>
+            {sw ? 'Tumekutumia SMS yenye nambari ya tarakimu 6 kwenda' : 'We sent a 6-digit SMS code to'}{' '}
+            <strong style={{ color: '#1B3A6B' }}>{phone}</strong>
           </p>
         </div>
         {error && <div style={{ marginBottom: 12 }}><ErrorBanner msg={error} /></div>}
@@ -437,7 +457,7 @@ export default function RegisterPage() {
         </div>
         {!otpExpired ? (
           <p style={{ textAlign: 'center', fontSize: 13, color: '#6B7280', margin: '0 0 20px' }}>
-            {sw ? 'Inakwisha baada ya' : 'Expires in'}{' '}<Countdown seconds={600} onExpire={() => setOtpExpired(true)} />
+            {sw ? 'Inakwisha baada ya' : 'Expires in'}{' '}<Countdown seconds={300} onExpire={() => setOtpExpired(true)} />
           </p>
         ) : (
           <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: 20, textAlign: 'center' }}>
@@ -452,8 +472,8 @@ export default function RegisterPage() {
             {sw ? 'Tuma tena nambari' : 'Resend code'}
           </button>
         </div>
-        <button onClick={() => { setStep('email'); setError(null); setOtpValue(''); }} style={{ display: 'block', width: '100%', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9CA3AF', marginTop: 16, padding: 0 }}>
-          ← {sw ? 'Badilisha barua pepe' : 'Change email'}
+        <button onClick={() => { setStep('phone'); setError(null); setOtpValue(''); }} style={{ display: 'block', width: '100%', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#9CA3AF', marginTop: 16, padding: 0 }}>
+          ← {sw ? 'Badilisha nambari ya simu' : 'Change phone number'}
         </button>
       </PageShell>
     );
@@ -516,7 +536,7 @@ export default function RegisterPage() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 20, padding: '5px 12px' }}>
           <span style={{ fontSize: 12 }}>✅</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#166534' }}>{email}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#166534' }}>{form.phone}</span>
         </div>
         {photoUrl ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 20, padding: '4px 10px' }}>
@@ -542,27 +562,43 @@ export default function RegisterPage() {
 
       <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {error && <ErrorBanner msg={error} />}
+
         <div>
           <label style={labelStyle}>{sw ? 'Jina Kamili' : 'Full Name'}</label>
           <input className="field-input" value={form.full_name} onChange={set('full_name')} placeholder={sw ? 'mfano: Yohana Mwangi' : 'e.g. John Mwangi'} required autoFocus />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div>
-            <label style={labelStyle}>{sw ? 'Simu' : 'Phone'}</label>
-            <input className="field-input" value={form.phone} onChange={set('phone')} placeholder="+255 712…" inputMode="tel" />
-          </div>
-          <div>
-            <label style={labelStyle}>{sw ? 'Namba ya Usharika' : 'Member No.'}</label>
-            <input className="field-input" value={form.namba_ya_usharika} onChange={set('namba_ya_usharika')} placeholder="KKKT-001" />
-          </div>
+
+        <div>
+          <label style={labelStyle}>{sw ? 'Barua Pepe (si lazima)' : 'Email (optional)'}</label>
+          <input
+            className="field-input"
+            type="email"
+            value={form.email}
+            onChange={set('email')}
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
         </div>
-        <p style={{ margin: '-8px 0 0', fontSize: 11, color: '#9CA3AF' }}>
-          {sw ? 'Namba ya usharika si lazima.' : 'Member number is optional.'}
-        </p>
+
+        <div>
+          <label style={labelStyle}>{sw ? 'Namba ya Usharika (si lazima)' : 'Member No. (optional)'}</label>
+          <input className="field-input" value={form.namba_ya_usharika} onChange={set('namba_ya_usharika')} placeholder="KKKT-001" />
+        </div>
+
         <div>
           <label style={labelStyle}>{sw ? 'Nenosiri' : 'Password'}</label>
           <div style={{ position: 'relative' }}>
-            <input className="field-input" type={showPass ? 'text' : 'password'} value={form.password} onChange={set('password')} placeholder="••••••••" required minLength={6} autoComplete="new-password" style={{ paddingRight: 44 }} />
+            <input
+              className="field-input"
+              type={showPass ? 'text' : 'password'}
+              value={form.password}
+              onChange={set('password')}
+              placeholder="••••••••"
+              required
+              minLength={6}
+              autoComplete="new-password"
+              style={{ paddingRight: 44 }}
+            />
             <button type="button" onClick={() => setShowPass(p => !p)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#9CA3AF', fontSize: 16, lineHeight: 1 }}>
               {showPass ? '🙈' : '👁️'}
             </button>
@@ -573,6 +609,7 @@ export default function RegisterPage() {
             </p>
           )}
         </div>
+
         <button type="submit" disabled={loading || !form.full_name || !form.password} className="btn-primary w-full justify-center" style={{ marginTop: 4 }}>
           {loading ? <Spinner label={sw ? 'Inasajili...' : 'Creating account…'} /> : (sw ? 'Kamilisha Usajili' : 'Create Account')}
         </button>
@@ -590,7 +627,10 @@ export default function RegisterPage() {
 }
 
 // ─── style constants ──────────────────────────────────────────────────────────
-const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 };
+const labelStyle = {
+  display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280',
+  textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6,
+};
 
 // ─── shared sub-components ────────────────────────────────────────────────────
 function PageShell({ children }) {
