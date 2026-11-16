@@ -654,6 +654,43 @@ exports.updateMemberPledge = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+
+exports.getPendingPayments = async (req, res, next) => {
+  try {
+    const { limit = 50, campaign_id } = req.query;
+
+    let sql = `
+      SELECT
+        pp.id,
+        pp.amount,
+        pp.payment_date,
+        pp.payment_method,
+        pp.receipt_number  AS reference_number,
+        pp.notes,
+        pp.created_at,
+        u.full_name        AS member_name,
+        pc.name            AS campaign_name
+      FROM pledge_payments pp
+      JOIN member_pledges mp ON mp.id = pp.pledge_id
+      JOIN users          u  ON u.id  = mp.member_id
+      LEFT JOIN pledge_campaigns pc ON pc.id = mp.campaign_id
+      WHERE pp.status = 'pending_confirmation'
+    `;
+    const params = [];
+
+    if (campaign_id) {
+      sql += ' AND mp.campaign_id = ?';
+      params.push(campaign_id);
+    }
+
+    sql += ' ORDER BY pp.created_at ASC LIMIT ?';
+    params.push(Number(limit));
+
+    const [rows] = await db.execute(sql, params);
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
 // ── DELETE /api/pledges/member-pledges/:pledgeId ──────────────────────────────
 // Hard delete — removes the pledge AND all its payments. Pastor/elder only.
 exports.deleteMemberPledge = async (req, res, next) => {

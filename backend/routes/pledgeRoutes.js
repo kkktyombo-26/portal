@@ -242,6 +242,19 @@ router.put(
   ctrl.updateMemberPledge
 );
 
+
+// GET /api/pledges/payments/pending — list all pending_confirmation payments [managers]
+router.get(
+  '/payments/pending',
+  authorize('pastor', 'elder', 'group_leader'),
+  [
+    query('limit').optional().isInt({ min: 1, max: 200 }).withMessage('limit must be 1–200'),
+    query('campaign_id').optional().isInt({ min: 1 }),
+  ],
+  validate,
+  ctrl.getPendingPayments
+);
+
 router.delete(
   '/member-pledges/:pledgeId',
   authorize('pastor', 'elder'),

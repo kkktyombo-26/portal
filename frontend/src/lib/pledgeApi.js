@@ -45,6 +45,10 @@ const toggleCampaign = (campaignId) =>
 const deleteCampaign = (campaignId) =>
   api.delete(`/pledges/campaigns/${campaignId}`);
 
+/** GET /pledges/payments/pending — list pending_confirmation payments (managers only) */
+const getPendingPayments = (params = {}) =>
+  api.get('/pledges/payments/pending', { params });
+
 // ─── Member Pledges ───────────────────────────────────────────────────────────
 
 /**
@@ -165,7 +169,8 @@ export const pledgeApi = {
   getPayments,
   addPayment,
   updatePayment,
-  deletePayment,
+  deletePayment,   
+  getPendingPayments,
 
   // reports
   getReport,
