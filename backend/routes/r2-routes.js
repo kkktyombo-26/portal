@@ -17,8 +17,7 @@ const upload = require("../middleware/upload");
 // ── CHANGED: was `authenticateToken` from a different import path ─────────────
 const { authenticate } = require("../middleware/auth");
 
-// Multer — store to disk temporarily
-const upload = multer({ dest: "uploads/" });
+
 
 // ── Images ────────────────────────────────────────────────────────────────────
 
@@ -27,7 +26,7 @@ const uploadCover = upload.single("coverImage");
 
 // POST /api/projects/presign
 // body: { name, type }  — generates one presigned URL for the cover image
-router.post("/presign", protect, express.json(), async (req, res, next) => {
+router.post("/presign", express.json(), async (req, res, next) => {
   try {
     const { name, type } = req.body;
     const result = await createPresignedUploadUrl("projects/covers", name, type);
