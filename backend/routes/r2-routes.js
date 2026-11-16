@@ -12,6 +12,7 @@ const {
   deleteVideosFromR2,
   createPresignedUploadUrl,
 } = require("../utils/r2");
+const upload = require("../middleware/upload");
 
 // ── CHANGED: was `authenticateToken` from a different import path ─────────────
 const { authenticate } = require("../middleware/auth");
@@ -20,6 +21,21 @@ const { authenticate } = require("../middleware/auth");
 const upload = multer({ dest: "uploads/" });
 
 // ── Images ────────────────────────────────────────────────────────────────────
+
+// Single cover-image field (reuses your existing multer instance)
+const uploadCover = upload.single("coverImage");
+
+// POST /api/projects/presign
+// body: { name, type }  — generates one presigned URL for the cover image
+router.post("/presign", protect, express.json(), async (req, res, next) => {
+  try {
+    const { name, type } = req.body;
+    const result = await createPresignedUploadUrl("projects/covers", name, type);
+    res.json(result); // { url, key, publicUrl }
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.post(
   "/images/upload",
