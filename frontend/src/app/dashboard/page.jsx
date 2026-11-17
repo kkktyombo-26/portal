@@ -347,7 +347,7 @@ function AnnouncementCard({ a, lang, t }) {
 // ─── Campaign progress row ────────────────────────────────────────────────────
 function CampaignRow({ c, lang, showPending = false }) {
   const pledged   = Number(c.total_pledged    ?? c.target_amount    ?? 0);
-  const confirmed = Number(c.confirmed_amount ?? c.collected_amount ?? 0);
+  const confirmed = Number(c.total_paid ?? c.confirmed_amount ?? c.collected_amount ?? 0);
   const pending   = Number(c.pending_amount   ?? 0);
   const balance   = Number(c.balance_due      ?? Math.max(0, pledged - confirmed));
   const pct       = pledged ? Math.round((confirmed / pledged) * 100) : 0;
@@ -364,7 +364,7 @@ function CampaignRow({ c, lang, showPending = false }) {
           <div style={{ minWidth: 0 }}>
             <p style={{ fontSize: 13, fontWeight: 600, color: T.ink, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</p>
             <p style={{ fontSize: 11, color: T.inkMuted, marginTop: 1 }}>
-              {c.member_count ?? '—'} {lang === 'sw' ? 'washrika' : 'members'}
+             {c.subscriber_count ?? c.member_count ?? '—'} {lang === 'sw' ? 'washrika' : 'members'}
               {c.end_date ? ` · ${lang === 'sw' ? 'Mwisho' : 'ends'} ${fmtDate(c.end_date)}` : ''}
             </p>
           </div>

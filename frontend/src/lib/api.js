@@ -1,7 +1,3 @@
-
-
-
-
 import axios from 'axios';
 
 const api = axios.create({
@@ -110,21 +106,21 @@ export const groupApi = {
     ).toString();
     return api.get(`/groups${qs ? `?${qs}` : ''}`);
   },
-  getById:      (id)       => api.get(`/groups/${id}`),
-  create:       (data)     => api.post('/groups', data),
-  update:       (id, data) => api.put(`/groups/${id}`, data),
-  archive:      (id)       => api.put(`/groups/${id}/archive`),
-  getMemberGroups: (userId) => api.get(`/groups/member/${userId}`),
-syncMemberGroups: (userId, groupIds) => api.put(`/groups/member/${userId}/sync`, { groupIds }),
-  delete:       (id)       => api.delete(`/groups/${id}`),
+  getById:         (id)       => api.get(`/groups/${id}`),
+  create:          (data)     => api.post('/groups', data),
+  update:          (id, data) => api.put(`/groups/${id}`, data),
+  archive:         (id)       => api.put(`/groups/${id}/archive`),
+  getMemberGroups: (userId)   => api.get(`/groups/member/${userId}`),
+  syncMemberGroups:(userId, groupIds) => api.put(`/groups/member/${userId}/sync`, { groupIds }),
+  delete:          (id)       => api.delete(`/groups/${id}`),
   getMembers: (id, params = {}) => {
     const qs = new URLSearchParams(
       Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null))
     ).toString();
     return api.get(`/groups/${id}/members${qs ? `?${qs}` : ''}`);
   },
-  addMember:    (id, data)              => api.post(`/groups/${id}/members`, data),
-  removeMember: (id, membershipId)      => api.delete(`/groups/${id}/members/${membershipId}`),
+  addMember:    (id, data)         => api.post(`/groups/${id}/members`, data),
+  removeMember: (id, membershipId) => api.delete(`/groups/${id}/members/${membershipId}`),
 };
 
 export const eventApi = {
@@ -161,6 +157,201 @@ export const dependantApi = {
   add:    (userId, data)        => api.post(`/users/${userId}/dependants`, data),
   update: (userId, depId, data) => api.patch(`/users/${userId}/dependants/${depId}`, data),
   remove: (userId, depId)       => api.delete(`/users/${userId}/dependants/${depId}`),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Meetings & Resolutions (Vikao na Maazimio)
+// Ref: BSS-KKKT-2026-006
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Shared query-string builder — strips empty/null/undefined values */
+const qs = (params = {}) => {
+  const str = new URLSearchParams(
+    Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null)
+    )
+  ).toString();
+  return str ? `?${str}` : '';
+};
+
+export const meetingApi = {
+
+  // ── Meeting Types (catalogue) ─────────────────────────────────────────────
+
+  /**
+   * GET /api/meetings/types
+   * @param {Object} params
+   * @param {string} params.scope — church | group | both
+   */
+  getTypes: (params = {}) => api.get(`/meetings/types${qs(params)}`),
+
+  // ── Meetings CRUD ─────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/meetings
+   * @param {Object} params
+   * @param {number}  params.group_id  — filter to one group (omit = all accessible)
+   * @param {string}  params.scope     — 'church' (group_id IS NULL) | 'group' (group_id NOT NULL)
+   * @param {string}  params.status    — scheduled | held | cancelled | postponed
+   * @param {string}  params.from      — YYYY-MM-DD  meeting_date range start
+   * @param {string}  params.to        — YYYY-MM-DD  meeting_date range end
+   * @param {1|'1'}   params.upcoming  — shortcut: status=scheduled AND date >= today
+   */
+  getAll: (params = {}) => api.get(`/meetings${qs(params)}`),
+
+  /** GET /api/meetings/:id */
+  getById: (id) => api.get(`/meetings/${id}`),
+
+  /**
+   * POST /api/meetings
+   * @param {Object} data
+   * @param {number|null} data.group_id          — null = church-level
+   * @param {number}      data.meeting_type_id
+   * @param {string}      data.title
+   * @param {string}      data.meeting_date      — YYYY-MM-DD
+   * @param {string}      [data.start_time]      — HH:MM
+   * @param {string}      [data.end_time]        — HH:MM
+   * @param {string}      [data.venue]
+   * @param {number}      [data.convened_by_id]
+   * @param {number}      [data.secretary_id]
+   * @param {boolean}     [data.quorum_met]
+   * @param {number}      [data.total_attendees]
+   * @param {string}      [data.agenda]
+   * @param {string}      [data.summary]
+   * @param {string}      [data.status]          — default 'scheduled'
+   * @param {string}      [data.cancellation_reason]
+   */
+  create: (data) => api.post('/meetings', data),
+
+  /** PUT /api/meetings/:id */
+  update: (id, data) => api.put(`/meetings/${id}`, data),
+
+  /** DELETE /api/meetings/:id  — pastor/elder only */
+  delete: (id) => api.delete(`/meetings/${id}`),
+
+  // ── Attendees ─────────────────────────────────────────────────────────────
+
+  /** GET /api/meetings/:id/attendees */
+  getAttendees: (id) => api.get(`/meetings/${id}/attendees`),
+
+  /**
+   * POST /api/meetings/:id/attendees
+   * @param {number} id  — meeting id
+   * @param {Object} data
+   * @param {number} data.member_id
+   * @param {string} [data.attendance_type]  — present | apology | absent  (default: present)
+   * @param {string} [data.role_in_meeting]  — Mwenyekiti | Katibu | …
+   * @param {string} [data.notes]
+   */
+  addAttendee: (id, data) => api.post(`/meetings/${id}/attendees`, data),
+
+  /**
+   * POST /api/meetings/:id/attendees/bulk
+   * Replaces the entire attendee list atomically.
+   * @param {number}   id
+   * @param {Object[]} attendees  — [{ member_id, attendance_type?, role_in_meeting?, notes? }]
+   */
+  bulkSyncAttendees: (id, attendees) =>
+    api.post(`/meetings/${id}/attendees/bulk`, { attendees }),
+
+  /**
+   * PUT /api/meetings/:id/attendees/:attendanceId
+   * @param {number} id
+   * @param {number} attendanceId
+   * @param {Object} data  — { attendance_type?, role_in_meeting?, notes? }
+   */
+  updateAttendee: (id, attendanceId, data) =>
+    api.put(`/meetings/${id}/attendees/${attendanceId}`, data),
+
+  /** DELETE /api/meetings/:id/attendees/:attendanceId */
+  removeAttendee: (id, attendanceId) =>
+    api.delete(`/meetings/${id}/attendees/${attendanceId}`),
+
+  // ── Resolutions (Maamuzi) ─────────────────────────────────────────────────
+
+  /**
+   * GET /api/meetings/:id/resolutions
+   * @param {number} id
+   * @param {Object} params
+   * @param {string} params.status — pending | in_progress | completed | cancelled | deferred
+   */
+  getResolutions: (id, params = {}) =>
+    api.get(`/meetings/${id}/resolutions${qs(params)}`),
+
+  /**
+   * POST /api/meetings/:id/resolutions
+   * @param {number} id  — meeting id
+   * @param {Object} data
+   * @param {string}  data.description
+   * @param {number}  [data.resolution_number]       — auto-incremented if omitted
+   * @param {number}  [data.responsible_member_id]
+   * @param {string}  [data.responsible_note]        — free-text if not a system user
+   * @param {string}  [data.deadline]                — YYYY-MM-DD
+   * @param {string}  [data.implementation_status]   — default 'pending'
+   * @param {string}  [data.progress_notes]
+   */
+  addResolution: (id, data) => api.post(`/meetings/${id}/resolutions`, data),
+
+  /**
+   * PUT /api/meetings/:id/resolutions/:resolutionId
+   * Same fields as addResolution. Also accepts completion_date.
+   * Setting implementation_status='completed' auto-sets completion_date if not provided.
+   */
+  updateResolution: (id, resolutionId, data) =>
+    api.put(`/meetings/${id}/resolutions/${resolutionId}`, data),
+
+  /** DELETE /api/meetings/:id/resolutions/:resolutionId — pastor/elder only */
+  deleteResolution: (id, resolutionId) =>
+    api.delete(`/meetings/${id}/resolutions/${resolutionId}`),
+
+  // ── Documents (Minutes PDFs & attachments) ────────────────────────────────
+
+  /** GET /api/meetings/:id/documents */
+  getDocuments: (id) => api.get(`/meetings/${id}/documents`),
+
+  /**
+   * POST /api/meetings/:id/documents
+   * Multipart upload — use FormData.
+   * @param {number}   id
+   * @param {FormData} formData  — fields: file (required), document_type?, title?
+   *
+   * @example
+   *   const fd = new FormData();
+   *   fd.append('file', fileObject);
+   *   fd.append('document_type', 'minutes');
+   *   fd.append('title', 'Kumbukumbu za Mkutano wa Kamati – Aprili 2026');
+   *   meetingApi.uploadDocument(meetingId, fd);
+   */
+  uploadDocument: (id, formData) =>
+    api.post(`/meetings/${id}/documents`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+
+  /** DELETE /api/meetings/:id/documents/:documentId */
+  deleteDocument: (id, documentId) =>
+    api.delete(`/meetings/${id}/documents/${documentId}`),
+
+  // ── Dashboard ─────────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/meetings/dashboard/open-resolutions
+   * Returns pending/in_progress resolutions tagged with urgency.
+   * Powers the "Maazimio ambayo hayajakamilika" dashboard card.
+   * @param {Object} params
+   * @param {1|'1'}  params.overdue   — only resolutions past their deadline
+   * @param {number} params.group_id  — scope to one group
+   */
+  getOpenResolutions: (params = {}) =>
+    api.get(`/meetings/dashboard/open-resolutions${qs(params)}`),
+
+  /**
+   * GET /api/meetings/dashboard/upcoming
+   * Next N scheduled meetings the user has access to.
+   * @param {Object} params
+   * @param {number} params.limit  — default 5, max 20
+   */
+  getUpcomingMeetings: (params = {}) =>
+    api.get(`/meetings/dashboard/upcoming${qs(params)}`),
 };
 
 export default api;

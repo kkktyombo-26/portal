@@ -20,6 +20,7 @@ const pledgeRoutes = require('./routes/pledgeRoutes');
 const ministriesRouter    = require('./routes/ministries');
 const committeesRouter    = require('./routes/committee');
 const errorHandler        = require('./middleware/errorHandler');
+const meetingRoutes = require('./routes/meetingsRoutes');
 
 const r2Routes = require('./routes/r2-routes');
 
@@ -51,6 +52,7 @@ app.use('/api/committees',     committeesRouter);
 app.use('/api/r2', r2Routes);
 app.use('/api/pledges', pledgeRoutes);
 app.use('/api/auth', phoneLoginRoutes); 
+app.use('/api/meetings', meetingRoutes);
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
 app.use(errorHandler);

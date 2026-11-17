@@ -72,7 +72,7 @@ export function AuthProvider({ children }) {
     clearAuth();
     setUser(null);
     setToken(null);
-    window.location.href = '/get-account';
+    window.location.href = '/auth/login';
   };
 
   const switchLang = (l) => {

@@ -80,6 +80,21 @@ const ICONS = {
       <path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8l-1.5-1.5a1.5 1.5 0 0 0-2 2.2l3.5 3.8A6 6 0 0 0 8 21h8a6 6 0 0 0 6-6v-4a2 2 0 0 0-4 0"/>
     </svg>
   ),
+  // ── NEW: Meetings ──────────────────────────────────────────────────────────
+  meetings: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 11v6M20 14h6"/>
+    </svg>
+  ),
+  // ── NEW: Resolutions / open action items ───────────────────────────────────
+  resolutions: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4"/>
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+    </svg>
+  ),
   logout: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -119,6 +134,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
   const canManagePledges = (role) =>
     ['pastor', 'elder', 'group_leader'].includes(role);
 
+  // pastor + elder can see the cross-group open-resolutions view
+  const canManageResolutions = (role) =>
+    ['pastor', 'elder'].includes(role);
+
   const navSections = [
     {
       labelEn: 'Overview', labelSw: 'Jumla',
@@ -142,23 +161,43 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         { href: '/dashboard/events',        labelEn: 'Schedule',      labelSw: 'Ratiba',    icon: ICONS.schedule     },
       ],
     },
-  {
-  labelEn: 'Finance', labelSw: 'Fedha',
-  items: [
-    canManagePledges(user.role) && {
-      href:    '/dashboard/pledges',
-      labelEn: 'Pledges',
-      labelSw: 'Ahadi Washarika',
-      icon:    ICONS.pledges,
+    // ── NEW: Church governance ────────────────────────────────────────────────
+    {
+      labelEn: 'Church', labelSw: 'Kanisa',
+      items: [
+        // All roles: see meetings scoped to what they can access
+        {
+          href:    '/dashboard/meetings',
+          labelEn: 'Meetings',
+          labelSw: 'Vikao',
+          icon:    ICONS.meetings,
+        },
+        // pastor / elder only: cross-group open-resolutions accountability view
+        canManageResolutions(user.role) && {
+          href:    '/dashboard/meetings/resolutions',
+          labelEn: 'Open Resolutions',
+          labelSw: 'Maazimio Wazi',
+          icon:    ICONS.resolutions,
+        },
+      ].filter(Boolean),
     },
     {
-      href:    '/dashboard/my-pledges',
-      labelEn: 'My Pledges',
-      labelSw: 'Ahadi Zangu',
-      icon:    ICONS.pledges,
+      labelEn: 'Finance', labelSw: 'Fedha',
+      items: [
+        canManagePledges(user.role) && {
+          href:    '/dashboard/pledges',
+          labelEn: 'Pledges',
+          labelSw: 'Ahadi Washarika',
+          icon:    ICONS.pledges,
+        },
+        {
+          href:    '/dashboard/my-pledges',
+          labelEn: 'My Pledges',
+          labelSw: 'Ahadi Zangu',
+          icon:    ICONS.pledges,
+        },
+      ].filter(Boolean),
     },
-  ].filter(Boolean),
-},
     {
       labelEn: 'IT Desk', labelSw: 'Dawati la IT',
       items: [
@@ -217,11 +256,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
           'md:translate-x-0',
         ].join(' ')}
-        style={{
-          // On mobile we want the sidebar to start at top:0 so it overlays
-          // the mobile topbar too (consistent with the right panel behaviour).
-          // On desktop the CSS class already sets top: var(--topbar-h).
-        }}
       >
         {/* ── Wordmark ──────────────────────────────────────────── */}
         <div style={{ borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>

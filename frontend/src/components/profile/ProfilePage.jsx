@@ -681,12 +681,12 @@ const toggleGroup = (id) => {
                 {cvStage === 'idle' && cvFileName && (
                   <span className="text-xs text-stone-500 truncate max-w-[180px]">{cvFileName}</span>
                 )}
-                {profile.cv_url && cvStage === 'idle' && (
-                  <a href={profile.cv_url} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-1.5 text-xs text-amber-600 hover:underline ml-auto">
-                    <Icon path={icons.file} size={13} />{t('profile_cv_view')}
-                  </a>
-                )}
+              {profile.cv_url && cvStage === 'idle' && (
+  <a href="/dashboard/profile/cv"
+    className="flex items-center gap-1.5 text-xs text-amber-600 hover:underline ml-auto">
+    <Icon path={icons.file} size={13} />{t('profile_cv_view')}
+  </a>
+)}
               </div>
               {cvError && <p className="mt-2 text-xs text-red-500">{cvError}</p>}
               {cvStage === 'idle' && !cvError && (

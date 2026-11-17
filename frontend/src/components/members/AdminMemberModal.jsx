@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { authApi } from '../../lib/api';
 import * as XLSX from 'xlsx';
 import { JUMUIYA_LIST } from '../../lib/constants';
+import { R2UploadService } from '../../lib/r2UploadService'; 
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 const Icon = ({ path, size = 16, className = '' }) => (
@@ -981,6 +982,27 @@ export default function AdminAddMemberModal({ onClose, onAdded }) {
                       <option value="false">No — Hapana</option>
                     </SelectInput>
                   </Field>
+
+                  <div className="divider" />
+<SectionLabel>Curriculum Vitae (CV)</SectionLabel>
+<div className="card card-body">
+  {form.cv_url ? (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <Icon path={ICONS.briefcase} size={14} className="text-[var(--success)]" />
+        <span className="text-sm text-[var(--text-secondary)]">CV imepakiwa</span>
+      </div>
+      <a
+        href="/dashboard/profile/cv"
+        className="btn btn-ghost btn-sm text-[var(--gold)] hover:underline"
+      >
+        <Icon path={ICONS.file} size={12} /> Soma CV
+      </a>
+    </div>
+  ) : (
+    <p className="text-sm text-[var(--text-tertiary)]">Hakuna CV iliyopakiwa.</p>
+  )}
+</div>
                 </>
               )}
 
