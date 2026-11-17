@@ -352,6 +352,58 @@ export const meetingApi = {
    */
   getUpcomingMeetings: (params = {}) =>
     api.get(`/meetings/dashboard/upcoming${qs(params)}`),
+
+  // ── RSVP Workflow ─────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/meetings/:id/rsvp-summary
+ * Returns invite + RSVP breakdown for the detail page strip.
+ */
+getRsvpSummary: (id) => api.get(`/meetings/${id}/rsvp-summary`),
+
+/**
+ * POST /api/meetings/:id/send-invites
+ * Manager sends WhatsApp attendance links to selected members.
+ *
+ * @param {number}   id
+ * @param {Object}   data
+ * @param {number[]} [data.member_ids]   — explicit list of user IDs
+ * @param {string}   [data.scope]        — 'group' | 'church' | 'jumuiya'
+ * @param {string}   [data.jumuiya_name] — required when scope = 'jumuiya'
+ * @param {boolean}  [data.resend]       — re-send to already-invited members
+ */
+sendInvites: (id, data) => api.post(`/meetings/${id}/send-invites`, data),
+
+/**
+ * GET /api/meetings/:id/my-rsvp
+ * Returns the logged-in member's current RSVP + meeting info.
+ * Used to populate the /attend/[meetingId] page.
+ */
+getMyRsvp: (id) => api.get(`/meetings/${id}/my-rsvp`),
+
+/**
+ * POST /api/meetings/:id/rsvp
+ * Authenticated member submits their RSVP.
+ * @param {number} id
+ * @param {string} response — 'rsvp_yes' | 'rsvp_apology' | 'rsvp_no'
+ */
+submitRsvp: (id, response) => api.post(`/meetings/${id}/rsvp`, { response }),
+
+/**
+ * PATCH /api/meetings/:id/attendees/:attendanceId/confirm
+ * Manager confirms actual attendance for one member.
+ * @param {number} id
+ * @param {number} attendanceId
+ * @param {string} attendance_type — 'present' | 'apology' | 'absent'
+ */
+confirmAttendee: (id, attendanceId, attendance_type) =>
+  api.patch(`/meetings/${id}/attendees/${attendanceId}/confirm`, { attendance_type }),
+
+/**
+ * PATCH /api/meetings/:id/attendees/confirm-all
+ * Bulk confirm: convert all rsvp_yes rows → present.
+ */
+confirmAll: (id) => api.patch(`/meetings/${id}/attendees/confirm-all`),
 };
 
 export default api;

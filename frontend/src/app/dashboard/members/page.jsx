@@ -445,22 +445,49 @@ function ProfileModal({ member, user, lang, onClose, onSaved }) {
           )}
 
           {/* ── PROFESSIONAL ── */}
-          {tab === 'professional' && (
-            <div>
-              <SectionDivider title="Employment" />
-              <Grid2>
-                <FieldInput label="Occupation" value={form.occupation} onChange={set('occupation')} placeholder="e.g. Teacher, Nurse" />
-                <FieldInput label="Workplace" value={form.workplace} onChange={set('workplace')} placeholder="Employer / Company" />
-              </Grid2>
-              <SectionDivider title="Education & Skills" />
-              <Grid2>
-                <FieldInput label="Education Level" value={form.education} onChange={set('education')} placeholder="e.g. Bachelor's, Form 4" />
-                <FieldInput label="Profession / Skill" value={form.profession} onChange={set('profession')} placeholder="e.g. Engineer, Accountant" />
-              </Grid2>
-              <SectionDivider title="Church Volunteering" />
-              <FieldCheckbox label="Willing to volunteer in church ministry" checked={form.willing_to_volunteer} onChange={setCheck('willing_to_volunteer')} />
-            </div>
-          )}
+     {/* ── PROFESSIONAL ── */}
+{tab === 'professional' && (
+  <div>
+    <SectionDivider title="Employment" />
+    <Grid2>
+      <FieldInput label="Occupation" value={form.occupation} onChange={set('occupation')} placeholder="e.g. Teacher, Nurse" />
+      <FieldInput label="Workplace" value={form.workplace} onChange={set('workplace')} placeholder="Employer / Company" />
+    </Grid2>
+
+    <SectionDivider title="Education & Skills" />
+    <Grid2>
+      <FieldInput label="Education Level" value={form.education} onChange={set('education')} placeholder="e.g. Bachelor's, Form 4" />
+      <FieldInput label="Profession / Skill" value={form.profession} onChange={set('profession')} placeholder="e.g. Engineer, Accountant" />
+    </Grid2>
+
+    <SectionDivider title="Church Volunteering" />
+    <FieldCheckbox label="Willing to volunteer in church ministry" checked={form.willing_to_volunteer} onChange={setCheck('willing_to_volunteer')} />
+
+    <SectionDivider title="Curriculum Vitae (CV)" />
+    <div className="card card-body" style={{ padding: '12px 14px' }}>
+      {form.cv_url ? (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span style={{ fontSize: 14, color: 'var(--success)' }}>📄</span>
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>CV imepakiwa</span>
+          </div>
+          <a
+            href={`/dashboard/profile/cv?url=${encodeURIComponent(form.cv_url)}`}
+            className="btn btn-ghost btn-sm"
+            style={{ color: 'var(--gold)' }}
+          >
+            Soma CV →
+          </a>
+        </div>
+      ) : (
+        <p className="text-sm" style={{ color: 'var(--text-tertiary)', margin: 0 }}>
+          Hakuna CV iliyopakiwa.
+        </p>
+      )}
+    </div>
+  </div>
+)}
+
 
           {/* ── RESIDENCE ── */}
           {tab === 'residence' && (

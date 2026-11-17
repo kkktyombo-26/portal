@@ -1,27 +1,17 @@
 /**
- * meetingController.js
- * ─────────────────────
+ * meetingsController.js
+ * ──────────────────────
  * Vikao na Maazimio — Meetings & Resolutions module
- * Ref: BSS-KKKT-2026-006
+ * Ref: BSS-KKKT-2026-006 + BSS-KKKT-2026-007
  *
- * Scope model (matches migrate-meetings.js):
- *   meetings.group_id IS NULL     → Church-level  (Mkutano Mkuu, Baraza la Usharika …)
- *   meetings.group_id IS NOT NULL → Group-scoped  (Kamati, Kwaya, Umoja session …)
+ * Scope model:
+ *   meetings.group_id IS NULL     → Church-level
+ *   meetings.group_id IS NOT NULL → Group-scoped
  *
  * Access model:
- *   pastor / elder     — full CRUD on all meetings (church + all groups)
+ *   pastor / elder     — full CRUD on all meetings
  *   group_leader       — full CRUD on their own group's meetings only
  *   member             — read-only on church-level + their own groups' meetings
- *
- * Document uploads use the existing R2 infrastructure (uploadFileStreamToR2).
- *
- * Sections:
- *   1. Meeting Types  (catalogue — read-only for most, seeded at migration)
- *   2. Meetings       (CRUD + scope filtering)
- *   3. Attendees      (per-meeting attendance)
- *   4. Resolutions    (maamuzi — per-meeting decisions with status tracking)
- *   5. Documents      (minutes PDF + other file attachments via R2)
- *   6. Dashboard      (open resolutions, upcoming meetings)
  */
 
 const db  = require('../config/db');
@@ -36,6 +26,9 @@ const VALID_STATUSES      = ['scheduled', 'held', 'cancelled', 'postponed'];
 const VALID_ATTENDANCE    = ['present', 'apology', 'absent'];
 const VALID_RESOLUTION_ST = ['pending', 'in_progress', 'completed', 'cancelled', 'deferred'];
 const VALID_DOC_TYPES     = ['minutes', 'agenda', 'report', 'photo', 'other'];
+
+// ── CLIENT_URL — used when building RSVP / attend links ──────────────────────
+const CLIENT_URL = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 // ── Shared SELECT fragment ────────────────────────────────────────────────────
 
@@ -54,18 +47,15 @@ const MEETING_SELECT = `
     SUM(mr.implementation_status IN ('pending','in_progress'))
                                   AS open_resolution_count
   FROM meetings m
-  LEFT JOIN \`groups\`     g    ON g.id  = m.group_id
-  LEFT JOIN meeting_types  mt   ON mt.id = m.meeting_type_id
-  LEFT JOIN users          conv ON conv.id = m.convened_by_id
-  LEFT JOIN users          sec  ON sec.id  = m.secretary_id
-  LEFT JOIN meeting_attendees ma ON ma.meeting_id = m.id
+  LEFT JOIN \`groups\`       g    ON g.id    = m.group_id
+  LEFT JOIN meeting_types    mt   ON mt.id   = m.meeting_type_id
+  LEFT JOIN users            conv ON conv.id = m.convened_by_id
+  LEFT JOIN users            sec  ON sec.id  = m.secretary_id
+  LEFT JOIN meeting_attendees ma  ON ma.meeting_id = m.id
   LEFT JOIN meeting_resolutions mr ON mr.meeting_id = m.id
 `;
 
-// ── Helper: check whether a user may manage a specific meeting ────────────────
-// Returns true if the user is pastor/elder, or is group_leader for the
-// meeting's group. For church-level meetings (group_id = null) only
-// pastor/elder may manage.
+// ── Helper: may a user manage this meeting? ───────────────────────────────────
 function canManageMeeting(user, meeting) {
   if (MANAGERS.includes(user.role)) return true;
   if (user.role === 'group_leader' && meeting.group_id) {
@@ -74,10 +64,7 @@ function canManageMeeting(user, meeting) {
   return false;
 }
 
-// ── Helper: build the scope WHERE clause for a given user ─────────────────────
-// pastor/elder → all meetings
-// group_leader → church-level + their group's meetings
-// member       → church-level + groups they belong to
+// ── Helper: build scope WHERE clause for a user ───────────────────────────────
 async function buildScopeCondition(user) {
   if (MANAGERS.includes(user.role)) {
     return { condition: '1=1', params: [] };
@@ -90,7 +77,7 @@ async function buildScopeCondition(user) {
     };
   }
 
-  // Regular member — church-level + groups they're active in
+  // Regular member — church-level + groups they belong to
   const [memberships] = await db.execute(
     `SELECT DISTINCT group_id FROM group_members
      WHERE member_id = ? AND status = 'active'`,
@@ -109,16 +96,35 @@ async function buildScopeCondition(user) {
   };
 }
 
+// ── Helper: build WhatsApp invite message ─────────────────────────────────────
+function buildWaMessage(member, meeting, groupName) {
+  const scope   = groupName ? `Kikao cha ${groupName}` : 'Kikao cha Kanisa';
+  const dateStr = new Date(meeting.meeting_date).toLocaleDateString('sw-TZ', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const timeStr = meeting.start_time ? ` saa ${meeting.start_time.slice(0, 5)}` : '';
+  const venue   = meeting.venue ? ` — ${meeting.venue}` : '';
+  const link    = `${CLIENT_URL}/dashboard/attend/${meeting.id}`;
+
+  return (
+    `Habari ${member.full_name.split(' ')[0]},\n\n` +
+    `Unaalikwa kuhudhuria *${scope}*:\n\n` +
+    `📋 *${meeting.title}*\n` +
+    `📅 ${dateStr}${timeStr}${venue}\n\n` +
+    `Tafadhali thibitisha uhudhuria wako kupitia kiungo hiki:\n` +
+    `${link}\n\n` +
+    `_KKKT Yombo_`
+  );
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 1 — MEETING TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── GET /api/meetings/types ───────────────────────────────────────────────────
 exports.getMeetingTypes = async (req, res, next) => {
   try {
-    const { scope } = req.query; // ?scope=church|group|both
-
+    const { scope } = req.query;
     const conditions = ['is_active = 1'];
     const params     = [];
 
@@ -128,9 +134,7 @@ exports.getMeetingTypes = async (req, res, next) => {
     }
 
     const [rows] = await db.execute(
-      `SELECT * FROM meeting_types
-       WHERE ${conditions.join(' AND ')}
-       ORDER BY sort_order, name_sw`,
+      `SELECT * FROM meeting_types WHERE ${conditions.join(' AND ')} ORDER BY sort_order, name_sw`,
       params
     );
 
@@ -143,17 +147,8 @@ exports.getMeetingTypes = async (req, res, next) => {
 // SECTION 2 — MEETINGS CRUD
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── GET /api/meetings ─────────────────────────────────────────────────────────
-// Query params:
-//   ?group_id=<id>       filter to a specific group (omit = all accessible)
-//   ?scope=church|group  'church' = group_id IS NULL only; 'group' = group_id NOT NULL only
-//   ?status=scheduled|held|cancelled|postponed
-//   ?from=YYYY-MM-DD     meeting_date range start
-//   ?to=YYYY-MM-DD       meeting_date range end
-//   ?upcoming=1          shortcut: status=scheduled AND meeting_date >= today
 exports.getMeetings = async (req, res, next) => {
   try {
-    console.log('req.user →', req.user);
     const { group_id, scope, status, from, to, upcoming } = req.query;
 
     const { condition: scopeCond, params: scopeParams } =
@@ -190,11 +185,9 @@ exports.getMeetings = async (req, res, next) => {
     if (from) { conditions.push('m.meeting_date >= ?'); params.push(from); }
     if (to)   { conditions.push('m.meeting_date <= ?'); params.push(to);   }
 
-    const where = `WHERE ${conditions.join(' AND ')}`;
-
     const [rows] = await db.execute(
       `${MEETING_SELECT}
-       ${where}
+       WHERE ${conditions.join(' AND ')}
        GROUP BY m.id
        ORDER BY m.meeting_date DESC, m.start_time DESC`,
       params
@@ -204,13 +197,10 @@ exports.getMeetings = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── GET /api/meetings/:id ─────────────────────────────────────────────────────
 exports.getMeeting = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
-      `${MEETING_SELECT}
-       WHERE m.id = ?
-       GROUP BY m.id`,
+      `${MEETING_SELECT} WHERE m.id = ? GROUP BY m.id`,
       [req.params.id]
     );
 
@@ -218,11 +208,10 @@ exports.getMeeting = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Meeting not found.' });
     }
 
-    // Check read access
     const meeting = rows[0];
+
     if (!MANAGERS.includes(req.user.role)) {
       const { condition, params } = await buildScopeCondition(req.user);
-      // Quick check: if meeting is in scope
       const [check] = await db.execute(
         `SELECT id FROM meetings m WHERE m.id = ? AND (${condition})`,
         [req.params.id, ...params]
@@ -236,7 +225,6 @@ exports.getMeeting = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── POST /api/meetings ────────────────────────────────────────────────────────
 exports.createMeeting = async (req, res, next) => {
   try {
     const { role } = req.user;
@@ -246,24 +234,15 @@ exports.createMeeting = async (req, res, next) => {
     }
 
     const {
-      group_id,
-      meeting_type_id,
-      title,
-      meeting_date,
-      start_time,
-      end_time,
-      venue,
-      convened_by_id,
-      secretary_id,
-      quorum_met,
-      total_attendees,
-      agenda,
-      summary,
+      group_id, meeting_type_id, title, meeting_date,
+      start_time, end_time, venue,
+      convened_by_id, secretary_id,
+      quorum_met, total_attendees,
+      agenda, summary,
       status = 'scheduled',
       cancellation_reason,
     } = req.body;
 
-    // Validation
     if (!meeting_type_id) {
       return res.status(400).json({ success: false, message: 'meeting_type_id is required.' });
     }
@@ -280,7 +259,6 @@ exports.createMeeting = async (req, res, next) => {
       });
     }
 
-    // group_leader can only create meetings for their own group
     if (role === 'group_leader') {
       if (!group_id) {
         return res.status(403).json({
@@ -296,7 +274,6 @@ exports.createMeeting = async (req, res, next) => {
       }
     }
 
-    // Verify meeting_type exists
     const [typeRows] = await db.execute(
       'SELECT id FROM meeting_types WHERE id = ? AND is_active = 1',
       [meeting_type_id]
@@ -305,7 +282,6 @@ exports.createMeeting = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid meeting_type_id.' });
     }
 
-    // Verify group exists (if scoped)
     if (group_id) {
       const [grpRows] = await db.execute(
         'SELECT id FROM `groups` WHERE id = ? AND is_archived = 0',
@@ -355,17 +331,14 @@ exports.createMeeting = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── PUT /api/meetings/:id ─────────────────────────────────────────────────────
 exports.updateMeeting = async (req, res, next) => {
   try {
     const [existing] = await db.execute(
-      'SELECT * FROM meetings WHERE id = ?',
-      [req.params.id]
+      'SELECT * FROM meetings WHERE id = ?', [req.params.id]
     );
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Meeting not found.' });
     }
-
     if (!canManageMeeting(req.user, existing[0])) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
@@ -388,19 +361,19 @@ exports.updateMeeting = async (req, res, next) => {
 
     const fields = [], params = [];
 
-    if (meeting_type_id  !== undefined) { fields.push('meeting_type_id = ?');   params.push(meeting_type_id  || null); }
-    if (title            !== undefined) { fields.push('title = ?');             params.push(String(title).trim()); }
-    if (meeting_date     !== undefined) { fields.push('meeting_date = ?');      params.push(meeting_date     || null); }
-    if (start_time       !== undefined) { fields.push('start_time = ?');        params.push(start_time       || null); }
-    if (end_time         !== undefined) { fields.push('end_time = ?');          params.push(end_time         || null); }
-    if (venue            !== undefined) { fields.push('venue = ?');             params.push(venue            || null); }
-    if (convened_by_id   !== undefined) { fields.push('convened_by_id = ?');    params.push(convened_by_id   || null); }
-    if (secretary_id     !== undefined) { fields.push('secretary_id = ?');      params.push(secretary_id     || null); }
-    if (quorum_met       !== undefined) { fields.push('quorum_met = ?');        params.push(quorum_met != null ? (quorum_met ? 1 : 0) : null); }
-    if (total_attendees  !== undefined) { fields.push('total_attendees = ?');   params.push(total_attendees  || null); }
-    if (agenda           !== undefined) { fields.push('agenda = ?');            params.push(agenda           || null); }
-    if (summary          !== undefined) { fields.push('summary = ?');           params.push(summary          || null); }
-    if (status           !== undefined) { fields.push('status = ?');            params.push(status); }
+    if (meeting_type_id  !== undefined) { fields.push('meeting_type_id = ?');       params.push(meeting_type_id  || null); }
+    if (title            !== undefined) { fields.push('title = ?');                 params.push(String(title).trim()); }
+    if (meeting_date     !== undefined) { fields.push('meeting_date = ?');          params.push(meeting_date     || null); }
+    if (start_time       !== undefined) { fields.push('start_time = ?');            params.push(start_time       || null); }
+    if (end_time         !== undefined) { fields.push('end_time = ?');              params.push(end_time         || null); }
+    if (venue            !== undefined) { fields.push('venue = ?');                 params.push(venue            || null); }
+    if (convened_by_id   !== undefined) { fields.push('convened_by_id = ?');        params.push(convened_by_id   || null); }
+    if (secretary_id     !== undefined) { fields.push('secretary_id = ?');          params.push(secretary_id     || null); }
+    if (quorum_met       !== undefined) { fields.push('quorum_met = ?');            params.push(quorum_met != null ? (quorum_met ? 1 : 0) : null); }
+    if (total_attendees  !== undefined) { fields.push('total_attendees = ?');       params.push(total_attendees  || null); }
+    if (agenda           !== undefined) { fields.push('agenda = ?');                params.push(agenda           || null); }
+    if (summary          !== undefined) { fields.push('summary = ?');               params.push(summary          || null); }
+    if (status           !== undefined) { fields.push('status = ?');                params.push(status); }
     if (cancellation_reason !== undefined) { fields.push('cancellation_reason = ?'); params.push(cancellation_reason || null); }
 
     if (!fields.length) {
@@ -408,10 +381,7 @@ exports.updateMeeting = async (req, res, next) => {
     }
 
     params.push(req.params.id);
-    await db.execute(
-      `UPDATE meetings SET ${fields.join(', ')} WHERE id = ?`,
-      params
-    );
+    await db.execute(`UPDATE meetings SET ${fields.join(', ')} WHERE id = ?`, params);
 
     const [rows] = await db.execute(
       `${MEETING_SELECT} WHERE m.id = ? GROUP BY m.id`,
@@ -422,9 +392,6 @@ exports.updateMeeting = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── DELETE /api/meetings/:id ──────────────────────────────────────────────────
-// Cascades: attendees, resolutions, documents are deleted by FK cascade.
-// Hard delete — pastor/elder only.
 exports.deleteMeeting = async (req, res, next) => {
   try {
     if (!MANAGERS.includes(req.user.role)) {
@@ -432,22 +399,18 @@ exports.deleteMeeting = async (req, res, next) => {
     }
 
     const [existing] = await db.execute(
-      'SELECT id, title FROM meetings WHERE id = ?',
-      [req.params.id]
+      'SELECT id, title FROM meetings WHERE id = ?', [req.params.id]
     );
     if (!existing.length) {
       return res.status(404).json({ success: false, message: 'Meeting not found.' });
     }
 
-    // Fetch document URLs before cascade-delete so we can clean R2
     const [docs] = await db.execute(
-      'SELECT file_url FROM meeting_documents WHERE meeting_id = ?',
-      [req.params.id]
+      'SELECT file_url FROM meeting_documents WHERE meeting_id = ?', [req.params.id]
     );
 
     await db.execute('DELETE FROM meetings WHERE id = ?', [req.params.id]);
 
-    // Best-effort R2 cleanup (don't block on failure)
     for (const doc of docs) {
       deleteImageFromR2(doc.file_url).catch(e =>
         console.error(`R2 cleanup failed for ${doc.file_url}:`, e.message)
@@ -467,25 +430,29 @@ exports.deleteMeeting = async (req, res, next) => {
 // SECTION 3 — ATTENDEES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── GET /api/meetings/:id/attendees ───────────────────────────────────────────
 exports.getAttendees = async (req, res, next) => {
   try {
     const [rows] = await db.execute(`
       SELECT
-        ma.id             AS attendance_id,
+        ma.id               AS attendance_id,
         ma.member_id,
         ma.attendance_type,
         ma.role_in_meeting,
         ma.notes,
+        ma.rsvp_at,
+        ma.confirmed_at,
+        ma.confirmed_by_id,
         ma.created_at,
         u.full_name,
         u.phone,
         u.gender,
         u.avatar,
         u.profile_photo_url,
-        u.role            AS system_role
+        u.role              AS system_role,
+        cb.full_name        AS confirmed_by_name
       FROM meeting_attendees ma
-      JOIN users u ON u.id = ma.member_id
+      JOIN users u  ON u.id  = ma.member_id
+      LEFT JOIN users cb ON cb.id = ma.confirmed_by_id
       WHERE ma.meeting_id = ?
       ORDER BY
         ma.role_in_meeting IS NOT NULL DESC,
@@ -493,19 +460,26 @@ exports.getAttendees = async (req, res, next) => {
         u.full_name
     `, [req.params.id]);
 
+    // Summary counts cover all attendance_type variants
     const summary = {
-      total:   rows.length,
-      present: rows.filter(r => r.attendance_type === 'present').length,
-      apology: rows.filter(r => r.attendance_type === 'apology').length,
-      absent:  rows.filter(r => r.attendance_type === 'absent').length,
+      total:            rows.length,
+      // RSVP (self-reported)
+      rsvp_yes:         rows.filter(r => r.attendance_type === 'rsvp_yes').length,
+      rsvp_apology:     rows.filter(r => r.attendance_type === 'rsvp_apology').length,
+      rsvp_no:          rows.filter(r => r.attendance_type === 'rsvp_no').length,
+      // Manager-confirmed
+      present:          rows.filter(r => r.attendance_type === 'present').length,
+      apology:          rows.filter(r => r.attendance_type === 'apology').length,
+      absent:           rows.filter(r => r.attendance_type === 'absent').length,
+      // Convenience roll-ups
+      confirmed_total:  rows.filter(r => r.confirmed_at).length,
+      awaiting_confirm: rows.filter(r => r.attendance_type.startsWith('rsvp_') && !r.confirmed_at).length,
     };
 
     res.json({ success: true, summary, data: rows });
   } catch (err) { next(err); }
 };
 
-// ── POST /api/meetings/:id/attendees ──────────────────────────────────────────
-// Add a single attendee. For bulk import use /attendees/bulk.
 exports.addAttendee = async (req, res, next) => {
   try {
     const [meeting] = await db.execute(
@@ -537,7 +511,6 @@ exports.addAttendee = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Member not found.' });
     }
 
-    // Check duplicate
     const [dup] = await db.execute(
       'SELECT id FROM meeting_attendees WHERE meeting_id = ? AND member_id = ?',
       [req.params.id, member_id]
@@ -570,10 +543,6 @@ exports.addAttendee = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── POST /api/meetings/:id/attendees/bulk ─────────────────────────────────────
-// Bulk-replace attendee list.
-// Body: { attendees: [{ member_id, attendance_type, role_in_meeting, notes }] }
-// Existing records not in the new list are DELETED.
 exports.bulkSyncAttendees = async (req, res, next) => {
   try {
     const [meeting] = await db.execute(
@@ -594,10 +563,8 @@ exports.bulkSyncAttendees = async (req, res, next) => {
 
     const meetingId = parseInt(req.params.id);
 
-    // Clear existing
     await db.execute('DELETE FROM meeting_attendees WHERE meeting_id = ?', [meetingId]);
 
-    // Insert new
     if (attendees.length > 0) {
       const ph   = attendees.map(() => '(?, ?, ?, ?, ?)').join(', ');
       const flat = attendees.flatMap(a => [
@@ -615,7 +582,6 @@ exports.bulkSyncAttendees = async (req, res, next) => {
       );
     }
 
-    // Update total_attendees on the meeting row
     const presentCount = attendees.filter(
       a => !a.attendance_type || a.attendance_type === 'present'
     ).length;
@@ -632,11 +598,12 @@ exports.bulkSyncAttendees = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── PUT /api/meetings/:id/attendees/:attendanceId ─────────────────────────────
 exports.updateAttendee = async (req, res, next) => {
   try {
     const [existing] = await db.execute(
-      'SELECT ma.*, u.full_name FROM meeting_attendees ma JOIN users u ON u.id = ma.member_id WHERE ma.id = ? AND ma.meeting_id = ?',
+      `SELECT ma.*, u.full_name
+       FROM meeting_attendees ma JOIN users u ON u.id = ma.member_id
+       WHERE ma.id = ? AND ma.meeting_id = ?`,
       [req.params.attendanceId, req.params.id]
     );
     if (!existing.length) {
@@ -660,9 +627,9 @@ exports.updateAttendee = async (req, res, next) => {
     }
 
     const fields = [], params = [];
-    if (attendance_type  !== undefined) { fields.push('attendance_type = ?');  params.push(attendance_type); }
-    if (role_in_meeting  !== undefined) { fields.push('role_in_meeting = ?');  params.push(role_in_meeting || null); }
-    if (notes            !== undefined) { fields.push('notes = ?');            params.push(notes           || null); }
+    if (attendance_type !== undefined) { fields.push('attendance_type = ?'); params.push(attendance_type); }
+    if (role_in_meeting !== undefined) { fields.push('role_in_meeting = ?'); params.push(role_in_meeting || null); }
+    if (notes           !== undefined) { fields.push('notes = ?');           params.push(notes           || null); }
 
     if (!fields.length) {
       return res.status(400).json({ success: false, message: 'No updatable fields provided.' });
@@ -675,11 +642,12 @@ exports.updateAttendee = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── DELETE /api/meetings/:id/attendees/:attendanceId ─────────────────────────
 exports.removeAttendee = async (req, res, next) => {
   try {
     const [existing] = await db.execute(
-      'SELECT ma.*, u.full_name FROM meeting_attendees ma JOIN users u ON u.id = ma.member_id WHERE ma.id = ? AND ma.meeting_id = ?',
+      `SELECT ma.*, u.full_name
+       FROM meeting_attendees ma JOIN users u ON u.id = ma.member_id
+       WHERE ma.id = ? AND ma.meeting_id = ?`,
       [req.params.attendanceId, req.params.id]
     );
     if (!existing.length) {
@@ -695,10 +663,7 @@ exports.removeAttendee = async (req, res, next) => {
 
     await db.execute('DELETE FROM meeting_attendees WHERE id = ?', [req.params.attendanceId]);
 
-    res.json({
-      success: true,
-      message: `${existing[0].full_name} removed from attendees.`,
-    });
+    res.json({ success: true, message: `${existing[0].full_name} removed from attendees.` });
   } catch (err) { next(err); }
 };
 
@@ -707,11 +672,9 @@ exports.removeAttendee = async (req, res, next) => {
 // SECTION 4 — RESOLUTIONS (MAAMUZI)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── GET /api/meetings/:id/resolutions ─────────────────────────────────────────
 exports.getResolutions = async (req, res, next) => {
   try {
     const { status } = req.query;
-
     const conditions = ['mr.meeting_id = ?'];
     const params     = [req.params.id];
 
@@ -727,10 +690,7 @@ exports.getResolutions = async (req, res, next) => {
     }
 
     const [rows] = await db.execute(`
-      SELECT
-        mr.*,
-        u.full_name AS responsible_name,
-        u.phone     AS responsible_phone
+      SELECT mr.*, u.full_name AS responsible_name, u.phone AS responsible_phone
       FROM meeting_resolutions mr
       LEFT JOIN users u ON u.id = mr.responsible_member_id
       WHERE ${conditions.join(' AND ')}
@@ -741,7 +701,6 @@ exports.getResolutions = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── POST /api/meetings/:id/resolutions ────────────────────────────────────────
 exports.addResolution = async (req, res, next) => {
   try {
     const [meeting] = await db.execute(
@@ -755,20 +714,15 @@ exports.addResolution = async (req, res, next) => {
     }
 
     const {
-      resolution_number,
-      description,
-      responsible_member_id,
-      responsible_note,
-      deadline,
-      implementation_status = 'pending',
-      progress_notes,
+      resolution_number, description,
+      responsible_member_id, responsible_note,
+      deadline, implementation_status = 'pending', progress_notes,
     } = req.body;
 
     if (!description || !String(description).trim()) {
       return res.status(400).json({ success: false, message: 'description is required.' });
     }
 
-    // Auto-assign resolution_number if not provided
     let resolvedNumber = resolution_number;
     if (!resolvedNumber) {
       const [[{ max_num }]] = await db.execute(
@@ -778,7 +732,6 @@ exports.addResolution = async (req, res, next) => {
       resolvedNumber = max_num + 1;
     }
 
-    // Check for duplicate number
     const [dup] = await db.execute(
       'SELECT id FROM meeting_resolutions WHERE meeting_id = ? AND resolution_number = ?',
       [req.params.id, resolvedNumber]
@@ -797,14 +750,9 @@ exports.addResolution = async (req, res, next) => {
          deadline, implementation_status, progress_notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      req.params.id,
-      resolvedNumber,
-      String(description).trim(),
-      responsible_member_id || null,
-      responsible_note      || null,
-      deadline              || null,
-      implementation_status,
-      progress_notes        || null,
+      req.params.id, resolvedNumber, String(description).trim(),
+      responsible_member_id || null, responsible_note || null,
+      deadline || null, implementation_status, progress_notes || null,
     ]);
 
     const [rows] = await db.execute(`
@@ -822,7 +770,6 @@ exports.addResolution = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── PUT /api/meetings/:id/resolutions/:resolutionId ───────────────────────────
 exports.updateResolution = async (req, res, next) => {
   try {
     const [existing] = await db.execute(
@@ -853,15 +800,14 @@ exports.updateResolution = async (req, res, next) => {
     }
 
     const fields = [], params = [];
-    if (description            !== undefined) { fields.push('description = ?');              params.push(String(description).trim()); }
-    if (responsible_member_id  !== undefined) { fields.push('responsible_member_id = ?');    params.push(responsible_member_id  || null); }
-    if (responsible_note       !== undefined) { fields.push('responsible_note = ?');         params.push(responsible_note       || null); }
-    if (deadline               !== undefined) { fields.push('deadline = ?');                 params.push(deadline               || null); }
-    if (implementation_status  !== undefined) { fields.push('implementation_status = ?');    params.push(implementation_status); }
-    if (completion_date        !== undefined) { fields.push('completion_date = ?');          params.push(completion_date        || null); }
-    if (progress_notes         !== undefined) { fields.push('progress_notes = ?');           params.push(progress_notes         || null); }
+    if (description           !== undefined) { fields.push('description = ?');             params.push(String(description).trim()); }
+    if (responsible_member_id !== undefined) { fields.push('responsible_member_id = ?');   params.push(responsible_member_id  || null); }
+    if (responsible_note      !== undefined) { fields.push('responsible_note = ?');        params.push(responsible_note       || null); }
+    if (deadline              !== undefined) { fields.push('deadline = ?');                params.push(deadline               || null); }
+    if (implementation_status !== undefined) { fields.push('implementation_status = ?');   params.push(implementation_status); }
+    if (completion_date       !== undefined) { fields.push('completion_date = ?');         params.push(completion_date        || null); }
+    if (progress_notes        !== undefined) { fields.push('progress_notes = ?');          params.push(progress_notes         || null); }
 
-    // Auto-set completion_date when marking complete
     if (implementation_status === 'completed' && !completion_date && !existing[0].completion_date) {
       fields.push('completion_date = ?');
       params.push(new Date().toISOString().slice(0, 10));
@@ -872,10 +818,7 @@ exports.updateResolution = async (req, res, next) => {
     }
 
     params.push(req.params.resolutionId);
-    await db.execute(
-      `UPDATE meeting_resolutions SET ${fields.join(', ')} WHERE id = ?`,
-      params
-    );
+    await db.execute(`UPDATE meeting_resolutions SET ${fields.join(', ')} WHERE id = ?`, params);
 
     const [rows] = await db.execute(`
       SELECT mr.*, u.full_name AS responsible_name
@@ -888,7 +831,6 @@ exports.updateResolution = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── DELETE /api/meetings/:id/resolutions/:resolutionId ────────────────────────
 exports.deleteResolution = async (req, res, next) => {
   try {
     if (!MANAGERS.includes(req.user.role)) {
@@ -905,25 +847,19 @@ exports.deleteResolution = async (req, res, next) => {
 
     await db.execute('DELETE FROM meeting_resolutions WHERE id = ?', [req.params.resolutionId]);
 
-    res.json({
-      success: true,
-      message: `Resolution #${existing[0].resolution_number} deleted.`,
-    });
+    res.json({ success: true, message: `Resolution #${existing[0].resolution_number} deleted.` });
   } catch (err) { next(err); }
 };
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 5 — DOCUMENTS (Minutes PDFs & attachments via R2)
+// SECTION 5 — DOCUMENTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── GET /api/meetings/:id/documents ───────────────────────────────────────────
 exports.getDocuments = async (req, res, next) => {
   try {
     const [rows] = await db.execute(`
-      SELECT
-        md.*,
-        u.full_name AS uploaded_by_name
+      SELECT md.*, u.full_name AS uploaded_by_name
       FROM meeting_documents md
       LEFT JOIN users u ON u.id = md.uploaded_by_id
       WHERE md.meeting_id = ?
@@ -934,9 +870,6 @@ exports.getDocuments = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── POST /api/meetings/:id/documents ──────────────────────────────────────────
-// Expects multipart/form-data with field `file` (PDF, image, Word etc.)
-// Uses uploadFileStreamToR2 with prefix `meetings/documents`.
 exports.uploadDocument = async (req, res, next) => {
   try {
     const [meeting] = await db.execute(
@@ -948,15 +881,11 @@ exports.uploadDocument = async (req, res, next) => {
     if (!canManageMeeting(req.user, meeting[0])) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
-
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
 
-    const {
-      document_type = 'minutes',
-      title,
-    } = req.body;
+    const { document_type = 'minutes', title } = req.body;
 
     if (!VALID_DOC_TYPES.includes(document_type)) {
       return res.status(400).json({
@@ -965,21 +894,12 @@ exports.uploadDocument = async (req, res, next) => {
       });
     }
 
-    // Upload to R2 under meetings/documents/<uuid>.<ext>
-    const fileUrl = await uploadFileStreamToR2(
-      req.file,
-      'meetings/documents',
-      'pdf'
-    );
-
-    const displayTitle = title
-      ? String(title).trim()
-      : req.file.originalname;
+    const fileUrl      = await uploadFileStreamToR2(req.file, 'meetings/documents', 'pdf');
+    const displayTitle = title ? String(title).trim() : req.file.originalname;
 
     const [result] = await db.execute(`
       INSERT INTO meeting_documents
-        (meeting_id, document_type, title, file_url,
-         file_size_kb, mime_type, uploaded_by_id)
+        (meeting_id, document_type, title, file_url, file_size_kb, mime_type, uploaded_by_id)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [
       req.params.id,
@@ -998,15 +918,10 @@ exports.uploadDocument = async (req, res, next) => {
       WHERE md.id = ?
     `, [result.insertId]);
 
-    res.status(201).json({
-      success: true,
-      message: `Document "${displayTitle}" uploaded.`,
-      data:    rows[0],
-    });
+    res.status(201).json({ success: true, message: `Document "${displayTitle}" uploaded.`, data: rows[0] });
   } catch (err) { next(err); }
 };
 
-// ── DELETE /api/meetings/:id/documents/:documentId ────────────────────────────
 exports.deleteDocument = async (req, res, next) => {
   try {
     const [existing] = await db.execute(
@@ -1024,30 +939,21 @@ exports.deleteDocument = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    // Delete from DB first
     await db.execute('DELETE FROM meeting_documents WHERE id = ?', [req.params.documentId]);
 
-    // Best-effort R2 cleanup
     deleteImageFromR2(existing[0].file_url).catch(e =>
       console.error(`R2 cleanup failed for ${existing[0].file_url}:`, e.message)
     );
 
-    res.json({
-      success: true,
-      message: `Document "${existing[0].title}" deleted.`,
-    });
+    res.json({ success: true, message: `Document "${existing[0].title}" deleted.` });
   } catch (err) { next(err); }
 };
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 6 — DASHBOARD QUERIES
+// SECTION 6 — DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── GET /api/meetings/dashboard/open-resolutions ──────────────────────────────
-// Returns all pending/in_progress resolutions the requesting user can see,
-// optionally filtered by overdue (deadline < today).
-// Powers the dashboard card "Maazimio ambayo hayajakamilika".
 exports.getOpenResolutions = async (req, res, next) => {
   try {
     const { overdue, group_id } = req.query;
@@ -1065,7 +971,6 @@ exports.getOpenResolutions = async (req, res, next) => {
       conditions.push('mr.deadline < CURDATE()');
       conditions.push('mr.deadline IS NOT NULL');
     }
-
     if (group_id) {
       conditions.push('m.group_id = ?');
       params.push(group_id);
@@ -1082,23 +987,18 @@ exports.getOpenResolutions = async (req, res, next) => {
         ru.full_name      AS responsible_name,
         ru.phone          AS responsible_phone,
         CASE
-          WHEN mr.deadline IS NULL              THEN 'no_deadline'
-          WHEN mr.deadline < CURDATE()          THEN 'overdue'
-          WHEN mr.deadline <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) THEN 'due_soon'
+          WHEN mr.deadline IS NULL                                       THEN 'no_deadline'
+          WHEN mr.deadline < CURDATE()                                   THEN 'overdue'
+          WHEN mr.deadline <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)       THEN 'due_soon'
           ELSE 'on_track'
-        END               AS urgency
+        END AS urgency
       FROM meeting_resolutions mr
-      JOIN meetings m ON m.id = mr.meeting_id
-      LEFT JOIN \`groups\` g   ON g.id  = m.group_id
-      LEFT JOIN users     ru   ON ru.id = mr.responsible_member_id
+      JOIN meetings m     ON m.id  = mr.meeting_id
+      LEFT JOIN \`groups\` g ON g.id  = m.group_id
+      LEFT JOIN users     ru ON ru.id = mr.responsible_member_id
       WHERE ${conditions.join(' AND ')}
       ORDER BY
-        CASE urgency
-          WHEN 'overdue'    THEN 1
-          WHEN 'due_soon'   THEN 2
-          WHEN 'on_track'   THEN 3
-          ELSE 4
-        END,
+        CASE urgency WHEN 'overdue' THEN 1 WHEN 'due_soon' THEN 2 WHEN 'on_track' THEN 3 ELSE 4 END,
         mr.deadline ASC,
         m.meeting_date DESC
     `, params);
@@ -1115,9 +1015,6 @@ exports.getOpenResolutions = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── GET /api/meetings/dashboard/upcoming ──────────────────────────────────────
-// Next N scheduled meetings the user can see (default: 5).
-
 exports.getUpcomingMeetings = async (req, res, next) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 5, 20);
@@ -1132,10 +1029,422 @@ exports.getUpcomingMeetings = async (req, res, next) => {
          AND m.meeting_date >= CURDATE()
        GROUP BY m.id
        ORDER BY m.meeting_date ASC, m.start_time ASC
-       LIMIT ${limit}`,          // ← inline the integer, don't bind it
-      scopeParams                // ← no limit in params array
+       LIMIT ${limit}`,
+      scopeParams
     );
 
     res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 7 — SEND INVITES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+exports.sendInvites = async (req, res, next) => {
+  try {
+    const { role } = req.user;
+    if (!ALL_MANAGERS.includes(role)) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const meetingId = parseInt(req.params.id);
+
+    const [meetingRows] = await db.execute(
+      `SELECT m.*, g.name AS group_name
+       FROM meetings m
+       LEFT JOIN \`groups\` g ON g.id = m.group_id
+       WHERE m.id = ?`,
+      [meetingId]
+    );
+    if (!meetingRows.length) {
+      return res.status(404).json({ success: false, message: 'Meeting not found.' });
+    }
+    const meeting = meetingRows[0];
+
+    if (role === 'group_leader' && meeting.group_id && meeting.group_id !== req.user.group_id) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const { member_ids, scope, jumuiya_name, resend = false } = req.body;
+
+    let targetMembers = [];
+
+    if (Array.isArray(member_ids) && member_ids.length > 0) {
+      const ph = member_ids.map(() => '?').join(', ');
+      const [rows] = await db.execute(
+        `SELECT id, full_name, phone FROM users WHERE id IN (${ph}) AND member_status = 'hai'`,
+        member_ids
+      );
+      targetMembers = rows;
+    } else if (scope === 'group' && meeting.group_id) {
+      const [rows] = await db.execute(
+        `SELECT u.id, u.full_name, u.phone
+         FROM group_members gm
+         JOIN users u ON u.id = gm.member_id
+         WHERE gm.group_id = ? AND gm.status = 'active' AND u.member_status = 'hai'`,
+        [meeting.group_id]
+      );
+      targetMembers = rows;
+    } else if (scope === 'church') {
+      const [rows] = await db.execute(
+        `SELECT id, full_name, phone FROM users WHERE member_status = 'hai' AND role != 'admin'`
+      );
+      targetMembers = rows;
+    } else if (scope === 'jumuiya' && jumuiya_name) {
+      const [rows] = await db.execute(
+        `SELECT id, full_name, phone FROM users WHERE jumuiya = ? AND member_status = 'hai'`,
+        [jumuiya_name]
+      );
+      targetMembers = rows;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Provide member_ids or a valid scope (group | church | jumuiya).',
+      });
+    }
+
+    if (!targetMembers.length) {
+      return res.status(400).json({ success: false, message: 'No eligible members found.' });
+    }
+
+    let toInvite = targetMembers;
+    if (!resend) {
+      const [alreadyInvited] = await db.execute(
+        `SELECT member_id FROM meeting_attendance_invites WHERE meeting_id = ?`,
+        [meetingId]
+      );
+      const invitedSet = new Set(alreadyInvited.map(r => r.member_id));
+      toInvite = targetMembers.filter(m => !invitedSet.has(m.id));
+    }
+
+    if (!toInvite.length) {
+      return res.status(200).json({
+        success: true,
+        message: 'Wanachama wote wameshainvitiwa tayari. Tumia resend=true kutuma tena.',
+        sent: 0,
+        skipped: targetMembers.length,
+      });
+    }
+
+    const withPhone    = toInvite.filter(m => m.phone);
+    const withoutPhone = toInvite.filter(m => !m.phone);
+
+    let sent = 0, failed = 0;
+    const failedMembers = [];
+
+    let sendWA = null;
+    try {
+      const waUtil = require('../utils/whatsapp');
+      sendWA = waUtil.sendMessage || waUtil.sendWA || waUtil.send || null;
+    } catch { /* WA utility not available — record invites only */ }
+
+    for (const member of withPhone) {
+      const message    = buildWaMessage(member, meeting, meeting.group_name);
+      let dispatched   = false;
+
+      if (sendWA) {
+        try {
+          await sendWA(member.phone, message);
+          dispatched = true;
+        } catch (err) {
+          console.error(`WA send failed for ${member.full_name} (${member.phone}):`, err.message);
+          failed++;
+          failedMembers.push({ id: member.id, name: member.full_name, reason: err.message });
+        }
+      } else {
+        dispatched = true; // record invite; caller handles delivery
+      }
+
+      if (dispatched) {
+        await db.execute(
+          `INSERT INTO meeting_attendance_invites
+             (meeting_id, member_id, channel, sent_by_id, sent_at)
+           VALUES (?, ?, 'wa', ?, NOW())
+           ON DUPLICATE KEY UPDATE sent_at = NOW(), sent_by_id = ?`,
+          [meetingId, member.id, req.user.id, req.user.id]
+        );
+        sent++;
+      }
+    }
+
+    for (const member of withoutPhone) {
+      await db.execute(
+        `INSERT INTO meeting_attendance_invites
+           (meeting_id, member_id, channel, sent_by_id, sent_at)
+         VALUES (?, ?, 'wa', ?, NOW())
+         ON DUPLICATE KEY UPDATE sent_at = NOW(), sent_by_id = ?`,
+        [meetingId, member.id, req.user.id, req.user.id]
+      );
+    }
+
+    res.json({
+      success: true,
+      message: `Mialiko imetumwa kwa ${sent} mwanachama.`,
+      summary: {
+        total_targeted:  toInvite.length,
+        sent,
+        no_phone:        withoutPhone.length,
+        failed,
+        already_invited: targetMembers.length - toInvite.length,
+      },
+      failed_members: failedMembers.length ? failedMembers : undefined,
+      rsvp_link: `${CLIENT_URL}/attend/${meetingId}`,
+    });
+  } catch (err) { next(err); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 8 — RSVP SUMMARY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+exports.getRsvpSummary = async (req, res, next) => {
+  try {
+    const meetingId = req.params.id;
+
+    const [[inviteSummary]] = await db.execute(
+      `SELECT
+         COUNT(*)                          AS total_invited,
+         SUM(responded_at IS NOT NULL)     AS total_responded,
+         SUM(responded_at IS NULL)         AS total_pending
+       FROM meeting_attendance_invites
+       WHERE meeting_id = ?`,
+      [meetingId]
+    );
+
+    const [rsvpBreakdown] = await db.execute(
+      `SELECT attendance_type, COUNT(*) AS cnt
+       FROM meeting_attendees
+       WHERE meeting_id = ?
+       GROUP BY attendance_type`,
+      [meetingId]
+    );
+
+    const breakdown = {
+      rsvp_yes: 0, rsvp_apology: 0, rsvp_no: 0,
+      present:  0, apology:      0, absent:  0,
+    };
+    rsvpBreakdown.forEach(r => {
+      if (r.attendance_type in breakdown) breakdown[r.attendance_type] = r.cnt;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        invited:           inviteSummary.total_invited   || 0,
+        responded:         inviteSummary.total_responded || 0,
+        awaiting_rsvp:     inviteSummary.total_pending   || 0,
+        rsvp_yes:          breakdown.rsvp_yes,
+        rsvp_apology:      breakdown.rsvp_apology,
+        rsvp_no:           breakdown.rsvp_no,
+        confirmed_present: breakdown.present,
+        confirmed_apology: breakdown.apology,
+        confirmed_absent:  breakdown.absent,
+        rsvp_link:         `${CLIENT_URL}/attend/${meetingId}`,
+      },
+    });
+  } catch (err) { next(err); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 9 — MEMBER SELF-RSVP
+// ═══════════════════════════════════════════════════════════════════════════════
+
+exports.getMyRsvp = async (req, res, next) => {
+  try {
+    const meetingId = req.params.id;
+    const memberId  = req.user.id;
+
+    const [meetingRows] = await db.execute(
+      `SELECT id, title, meeting_date, start_time, end_time, venue,
+              group_id, status,
+              (SELECT name     FROM \`groups\`    WHERE id = meetings.group_id)        AS group_name,
+              (SELECT name_sw  FROM meeting_types WHERE id = meetings.meeting_type_id) AS type_name
+       FROM meetings WHERE id = ?`,
+      [meetingId]
+    );
+    if (!meetingRows.length) {
+      return res.status(404).json({ success: false, message: 'Kikao hakikupatikana.' });
+    }
+
+    const [inviteRows] = await db.execute(
+      `SELECT id, sent_at, responded_at
+       FROM meeting_attendance_invites
+       WHERE meeting_id = ? AND member_id = ?`,
+      [meetingId, memberId]
+    );
+
+    const [attendeeRows] = await db.execute(
+      `SELECT id AS attendance_id, attendance_type, role_in_meeting,
+              rsvp_at, confirmed_at
+       FROM meeting_attendees
+       WHERE meeting_id = ? AND member_id = ?`,
+      [meetingId, memberId]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        meeting:   meetingRows[0],
+        invited:   inviteRows.length > 0,
+        invite:    inviteRows[0]   || null,
+        attendee:  attendeeRows[0] || null,
+        rsvp_link: `${CLIENT_URL}/attend/${meetingId}`,
+      },
+    });
+  } catch (err) { next(err); }
+};
+
+exports.submitRsvp = async (req, res, next) => {
+  try {
+    const meetingId = parseInt(req.params.id);
+    const memberId  = req.user.id;
+    const { response } = req.body;
+
+    const VALID_RSVP = ['rsvp_yes', 'rsvp_apology', 'rsvp_no'];
+    if (!VALID_RSVP.includes(response)) {
+      return res.status(400).json({
+        success: false,
+        message: `response lazima iwe moja ya: ${VALID_RSVP.join(', ')}`,
+      });
+    }
+
+    const [meetingRows] = await db.execute(
+      'SELECT id, title, status FROM meetings WHERE id = ?', [meetingId]
+    );
+    if (!meetingRows.length) {
+      return res.status(404).json({ success: false, message: 'Kikao hakikupatikana.' });
+    }
+    if (meetingRows[0].status === 'cancelled') {
+      return res.status(400).json({ success: false, message: 'Kikao hiki kimefutwa.' });
+    }
+
+    const [existing] = await db.execute(
+      'SELECT id, attendance_type, confirmed_at FROM meeting_attendees WHERE meeting_id = ? AND member_id = ?',
+      [meetingId, memberId]
+    );
+
+    if (existing.length && existing[0].confirmed_at) {
+      return res.status(400).json({
+        success: false,
+        message: 'Uhudhuria wako umeshathitishwa na kiongozi. Huwezi kubadilisha tena.',
+        current: existing[0].attendance_type,
+      });
+    }
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    if (existing.length) {
+      await db.execute(
+        `UPDATE meeting_attendees SET attendance_type = ?, rsvp_at = ? WHERE meeting_id = ? AND member_id = ?`,
+        [response, now, meetingId, memberId]
+      );
+    } else {
+      await db.execute(
+        `INSERT INTO meeting_attendees (meeting_id, member_id, attendance_type, rsvp_at) VALUES (?, ?, ?, ?)`,
+        [meetingId, memberId, response, now]
+      );
+    }
+
+    await db.execute(
+      `UPDATE meeting_attendance_invites
+       SET responded_at = ?
+       WHERE meeting_id = ? AND member_id = ? AND responded_at IS NULL`,
+      [now, meetingId, memberId]
+    );
+
+    const labels = { rsvp_yes: 'Nitahudhuria', rsvp_apology: 'Sitatoa Udhuru', rsvp_no: 'Sitahudhuria' };
+
+    res.json({
+      success: true,
+      message: `Jibu lako limehifadhiwa: "${labels[response]}".`,
+      data: { meeting_id: meetingId, member_id: memberId, attendance_type: response, rsvp_at: now },
+    });
+  } catch (err) { next(err); }
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10 — MANAGER CONFIRMATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+exports.confirmAttendee = async (req, res, next) => {
+  try {
+    if (!ALL_MANAGERS.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const meetingId    = parseInt(req.params.id);
+    const attendanceId = parseInt(req.params.attendanceId);
+
+    const [existing] = await db.execute(
+      `SELECT ma.*, u.full_name
+       FROM meeting_attendees ma
+       JOIN users u ON u.id = ma.member_id
+       WHERE ma.id = ? AND ma.meeting_id = ?`,
+      [attendanceId, meetingId]
+    );
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: 'Rekodi ya uhudhuria haikupatikana.' });
+    }
+
+    const { attendance_type } = req.body;
+    const CONFIRMED_TYPES = ['present', 'apology', 'absent'];
+
+    if (!CONFIRMED_TYPES.includes(attendance_type)) {
+      return res.status(400).json({
+        success: false,
+        message: `attendance_type lazima iwe moja ya: ${CONFIRMED_TYPES.join(', ')}`,
+      });
+    }
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    await db.execute(
+      `UPDATE meeting_attendees
+       SET attendance_type = ?, confirmed_at = ?, confirmed_by_id = ?
+       WHERE id = ?`,
+      [attendance_type, now, req.user.id, attendanceId]
+    );
+
+    await db.execute(
+      `UPDATE meeting_attendance_invites
+       SET responded_at = ?
+       WHERE meeting_id = ? AND member_id = ? AND responded_at IS NULL`,
+      [now, meetingId, existing[0].member_id]
+    );
+
+    res.json({
+      success: true,
+      message: `Uhudhuria wa ${existing[0].full_name} umethibitishwa kama "${attendance_type}".`,
+      data: { attendance_id: attendanceId, full_name: existing[0].full_name, attendance_type, confirmed_at: now, confirmed_by_id: req.user.id },
+    });
+  } catch (err) { next(err); }
+};
+
+exports.confirmAll = async (req, res, next) => {
+  try {
+    if (!ALL_MANAGERS.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const meetingId = parseInt(req.params.id);
+    const now       = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    const [result] = await db.execute(
+      `UPDATE meeting_attendees
+       SET attendance_type = 'present', confirmed_at = ?, confirmed_by_id = ?
+       WHERE meeting_id = ? AND attendance_type = 'rsvp_yes' AND confirmed_at IS NULL`,
+      [now, req.user.id, meetingId]
+    );
+
+    res.json({
+      success:   true,
+      message:   `${result.affectedRows} mhudhuria wamethibitishwa kama "present".`,
+      confirmed: result.affectedRows,
+    });
   } catch (err) { next(err); }
 };

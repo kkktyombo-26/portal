@@ -657,7 +657,13 @@ exports.updateMemberPledge = async (req, res, next) => {
 
 exports.getPendingPayments = async (req, res, next) => {
   try {
-    const { limit = 50, campaign_id } = req.query;
+    const { role } = req.user;
+    if (!canManage(role)) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const limit      = Math.min(parseInt(req.query.limit, 10) || 50, 200); // safe integer
+    const campaignId = req.query.campaign_id;
 
     let sql = `
       SELECT
@@ -671,20 +677,20 @@ exports.getPendingPayments = async (req, res, next) => {
         u.full_name        AS member_name,
         pc.name            AS campaign_name
       FROM pledge_payments pp
-      JOIN member_pledges mp ON mp.id = pp.pledge_id
-      JOIN users          u  ON u.id  = mp.member_id
+      JOIN member_pledges  mp ON mp.id  = pp.pledge_id
+      JOIN users           u  ON u.id   = mp.member_id
       LEFT JOIN pledge_campaigns pc ON pc.id = mp.campaign_id
       WHERE pp.status = 'pending_confirmation'
     `;
     const params = [];
 
-    if (campaign_id) {
+    if (campaignId) {
       sql += ' AND mp.campaign_id = ?';
-      params.push(campaign_id);
+      params.push(parseInt(campaignId, 10));
     }
 
-    sql += ' ORDER BY pp.created_at ASC LIMIT ?';
-    params.push(Number(limit));
+    // Inline the limit — avoids mysql2 LIMIT binding issues entirely
+    sql += ` ORDER BY pp.created_at ASC LIMIT ${limit}`;
 
     const [rows] = await db.execute(sql, params);
     res.json({ success: true, data: rows });

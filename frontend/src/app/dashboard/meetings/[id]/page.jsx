@@ -4,6 +4,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '../../../../hooks/useAuth';
 import { meetingApi, userApi } from '../../../../lib/api';
+import {
+  SendInviteModal,
+  IconSend,
+  RsvpSummaryStrip,
+  ConfirmAllButton,
+  AttendeeActions,
+  AttendanceTypeBadge,
+} from '../../../../components/meetings/SendInviteModal';
 
 // ─────────────────────────────────────────────────────────────
 // ICONS
@@ -80,15 +88,6 @@ function urgencyDot(deadline, status) {
   return 'active';
 }
 
-function attendanceConfig(t) {
-  switch (t) {
-    case 'present': return { label: 'Alihudhuia',      cls: 'badge-success' };
-    case 'apology': return { label: 'Alitoa Udhuru',   cls: 'badge-warning' };
-    case 'absent':  return { label: 'Hakuhudhuia',     cls: 'badge-danger'  };
-    default:        return { label: t,                 cls: 'badge-neutral' };
-  }
-}
-
 function docTypeConfig(t) {
   switch (t) {
     case 'minutes': return { label: 'Kumbukumbu', cls: 'badge-navy'    };
@@ -100,7 +99,7 @@ function docTypeConfig(t) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// EDIT MEETING MODAL (reuses same modal pattern from list page)
+// EDIT MEETING MODAL
 // ─────────────────────────────────────────────────────────────
 function EditMeetingModal({ meeting, meetingTypes, onClose, onSave, currentUser }) {
   const [form, setForm] = useState({
@@ -492,7 +491,6 @@ function UploadDocModal({ meetingId, onClose, onSave }) {
                 <span className="text-sm">{error}</span>
               </div>
             )}
-            {/* Drop zone */}
             <div
               onClick={() => fileRef.current?.click()}
               style={{
@@ -630,14 +628,18 @@ export default function MeetingDetailPage() {
   const canEdit   = user && ['pastor','elder','group_leader'].includes(user.role);
 
   // ── Data ─────────────────────────────────────────────────
-  const [meeting,     setMeeting]     = useState(null);
-  const [attendees,   setAttendees]   = useState([]);
-  const [resolutions, setResolutions] = useState([]);
-  const [documents,   setDocuments]   = useState([]);
-  const [meetingTypes,setMeetingTypes]= useState([]);
-  const [allMembers,  setAllMembers]  = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState('');
+  const [meeting,      setMeeting]      = useState(null);
+  const [attendees,    setAttendees]    = useState([]);
+  const [resolutions,  setResolutions]  = useState([]);
+  const [documents,    setDocuments]    = useState([]);
+  const [meetingTypes, setMeetingTypes] = useState([]);
+  const [allMembers,   setAllMembers]   = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState('');
+
+  // ── Step 2: new state for SendInviteModal + RSVP summary ─
+  const [showSendInvite, setShowSendInvite] = useState(false);
+  const [rsvpSummary,    setRsvpSummary]    = useState(null);
 
   // ── UI state ──────────────────────────────────────────────
   const [activeTab,      setActiveTab]      = useState('overview');
@@ -646,7 +648,7 @@ export default function MeetingDetailPage() {
   const [showAddAtt,     setShowAddAtt]     = useState(false);
   const [showUploadDoc,  setShowUploadDoc]  = useState(false);
   const [editResolution, setEditResolution] = useState(null);
-  const [confirmDelete,  setConfirmDelete]  = useState(null); // { type, id, label }
+  const [confirmDelete,  setConfirmDelete]  = useState(null);
   const [attSearch,      setAttSearch]      = useState('');
   const [resSearch,      setResSearch]      = useState('');
   const [resFilter,      setResFilter]      = useState('');
@@ -668,6 +670,10 @@ export default function MeetingDetailPage() {
       setResolutions(rRes.data.data || []);
       setDocuments(dRes.data.data || []);
       setMeetingTypes(tRes.data.data || []);
+
+      // Step 3: load RSVP summary alongside other data
+      const sRes = await meetingApi.getRsvpSummary(id).catch(() => ({ data: { data: null } }));
+      setRsvpSummary(sRes.data.data);
     } catch (err) {
       setError(err.message || 'Imeshindwa kupakia kikao.');
     } finally {
@@ -675,7 +681,6 @@ export default function MeetingDetailPage() {
     }
   }, [id]);
 
-  // Fetch member list once (lazy — only when user opens attendees/resolutions tabs)
   const fetchMembers = useCallback(async () => {
     if (allMembers.length > 0) return;
     try {
@@ -774,7 +779,6 @@ export default function MeetingDetailPage() {
 
   const { label: statusLabel, cls: statusCls } = statusConfig(meeting.status);
 
-  // attendance summary
   const attSummary = {
     total:   attendees.length,
     present: attendees.filter(a => a.attendance_type === 'present').length,
@@ -782,7 +786,6 @@ export default function MeetingDetailPage() {
     absent:  attendees.filter(a => a.attendance_type === 'absent').length,
   };
 
-  // resolution summary
   const resSummary = {
     total:    resolutions.length,
     open:     resolutions.filter(r => ['pending','in_progress'].includes(r.implementation_status)).length,
@@ -914,10 +917,7 @@ export default function MeetingDetailPage() {
         ════════════════════════════════════════════════ */}
         {activeTab === 'overview' && (
           <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1.5fr) minmax(0,1fr)', gap:'1.5rem' }}>
-
-            {/* Left col — agenda + summary */}
             <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem' }}>
-              {/* Agenda */}
               <div className="card">
                 <div className="card-header">
                   <h3 className="card-title">Agenda</h3>
@@ -930,8 +930,6 @@ export default function MeetingDetailPage() {
                   )}
                 </div>
               </div>
-
-              {/* Summary */}
               <div className="card">
                 <div className="card-header">
                   <h3 className="card-title">Muhtasari wa Kikao</h3>
@@ -949,8 +947,6 @@ export default function MeetingDetailPage() {
                   )}
                 </div>
               </div>
-
-              {/* Cancellation reason */}
               {meeting.cancellation_reason && (
                 <div className="banner banner-warning">
                   <IconAlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5"/>
@@ -964,9 +960,7 @@ export default function MeetingDetailPage() {
               )}
             </div>
 
-            {/* Right col — meta + open resolutions preview */}
             <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem' }}>
-              {/* Meeting details */}
               <div className="card">
                 <div className="card-header">
                   <h3 className="card-title">Maelezo ya Kikao</h3>
@@ -994,7 +988,6 @@ export default function MeetingDetailPage() {
                 </div>
               </div>
 
-              {/* Open resolutions preview */}
               {resSummary.open > 0 && (
                 <div className="card">
                   <div className="card-header">
@@ -1034,19 +1027,8 @@ export default function MeetingDetailPage() {
         ════════════════════════════════════════════════ */}
         {activeTab === 'attendees' && (
           <div>
-            {/* Attendance summary strip */}
-            <div style={{ display:'flex', gap:'0.75rem', flexWrap:'wrap', marginBottom:'1.25rem' }}>
-              {[
-                { label:'Waliohudhuria', count: attSummary.present, cls:'badge-success' },
-                { label:'Waliotoa Udhuru', count: attSummary.apology, cls:'badge-warning' },
-                { label:'Hawakuhudhuria', count: attSummary.absent,  cls:'badge-danger'  },
-              ].map(s => (
-                <div key={s.label} className="card" style={{ padding:'0.75rem 1rem', display:'flex', alignItems:'center', gap:'0.75rem' }}>
-                  <span className={`badge ${s.cls}`} style={{ fontSize:'1rem', padding:'0.2rem 0.6rem', fontWeight:700 }}>{s.count}</span>
-                  <span className="text-sm text-navy-700">{s.label}</span>
-                </div>
-              ))}
-            </div>
+            {/* Step 5: RsvpSummaryStrip replaces old attendance summary strip */}
+            <RsvpSummaryStrip rsvpSummary={rsvpSummary} attSummary={attSummary} />
 
             {/* Toolbar */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'0.75rem', flexWrap:'wrap', marginBottom:'0.875rem' }}>
@@ -1055,11 +1037,27 @@ export default function MeetingDetailPage() {
                 <input placeholder="Tafuta mhudhuria…" value={attSearch} onChange={e => setAttSearch(e.target.value)}/>
                 {attSearch && <button onClick={() => setAttSearch('')}><IconX className="w-3.5 h-3.5" style={{ color:'var(--text-tertiary)' }}/></button>}
               </div>
-              {canEdit && (
-                <button className="btn btn-primary btn-sm" onClick={() => setShowAddAtt(true)}>
-                  <IconPlus className="w-3.5 h-3.5"/> Ongeza Mhudhuria
-                </button>
-              )}
+              <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap' }}>
+                {/* Step 7: Confirm All button */}
+                {canEdit && (
+                  <ConfirmAllButton
+                    meetingId={id}
+                    attendees={attendees}
+                    onDone={fetchMeeting}
+                  />
+                )}
+                {/* Step 4: Send Invites button */}
+                {canEdit && (
+                  <button className="btn btn-secondary btn-sm" onClick={() => setShowSendInvite(true)}>
+                    <IconSend className="w-3.5 h-3.5"/> Tuma Mialiko
+                  </button>
+                )}
+                {canEdit && (
+                  <button className="btn btn-primary btn-sm" onClick={() => setShowAddAtt(true)}>
+                    <IconPlus className="w-3.5 h-3.5"/> Ongeza Mhudhuria
+                  </button>
+                )}
+              </div>
             </div>
 
             {filteredAttendees.length === 0 ? (
@@ -1068,7 +1066,7 @@ export default function MeetingDetailPage() {
                   <IconUsers className="empty-state-icon"/>
                   <p className="empty-state-title">{attSearch ? 'Hakuna Matokeo' : 'Hakuna Wahudhuria'}</p>
                   <p className="empty-state-body">
-                    {attSearch ? `Hakuna mhudhuria anayelingana na "${attSearch}".` : 'Bado hakuna wahudhuria waliosajiliwа kwa kikao hiki.'}
+                    {attSearch ? `Hakuna mhudhuria anayelingana na "${attSearch}".` : 'Bado hakuna wahudhuria walisajiliwa kwa kikao hiki.'}
                   </p>
                   {canEdit && !attSearch && (
                     <div className="empty-state-actions">
@@ -1087,59 +1085,59 @@ export default function MeetingDetailPage() {
                       <th>Jina</th>
                       <th className="hidden sm:table-cell">Hali</th>
                       <th className="hidden md:table-cell">Jukumu</th>
-                      {canEdit && <th style={{ width:48 }}></th>}
+                      {canEdit && <th style={{ width:80 }}></th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAttendees.map(a => {
-                      const cfg = attendanceConfig(a.attendance_type);
-                      return (
-                        <tr key={a.attendance_id}>
-                          <td className="py-3 px-4">
-                            <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
-                              <div
-                                className="avatar avatar-sm"
-                                style={{ background:'var(--surface-sunken)', flexShrink:0 }}
-                              >
-                                {a.profile_photo_url || a.avatar ? (
-                                  <img src={a.profile_photo_url || a.avatar} alt={a.full_name} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%' }}/>
-                                ) : (
-                                  <span className="text-xs font-semibold text-navy-500">
-                                    {a.full_name?.split(' ').map(n => n[0]).slice(0,2).join('')}
-                                  </span>
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-navy-900">{a.full_name}</p>
-                                {a.phone && <p className="text-xs text-navy-500">{a.phone}</p>}
-                              </div>
+                    {filteredAttendees.map(a => (
+                      <tr key={a.attendance_id}>
+                        <td className="py-3 px-4">
+                          <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                            <div
+                              className="avatar avatar-sm"
+                              style={{ background:'var(--surface-sunken)', flexShrink:0 }}
+                            >
+                              {a.profile_photo_url || a.avatar ? (
+                                <img src={a.profile_photo_url || a.avatar} alt={a.full_name} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%' }}/>
+                              ) : (
+                                <span className="text-xs font-semibold text-navy-500">
+                                  {a.full_name?.split(' ').map(n => n[0]).slice(0,2).join('')}
+                                </span>
+                              )}
                             </div>
+                            <div>
+                              <p className="text-sm font-medium text-navy-900">{a.full_name}</p>
+                              {a.phone && <p className="text-xs text-navy-500">{a.phone}</p>}
+                            </div>
+                          </div>
+                        </td>
+                        {/* Step 6: AttendanceTypeBadge replaces plain badge */}
+                        <td className="py-3 px-4 hidden sm:table-cell">
+                          <AttendanceTypeBadge attendee={a} />
+                        </td>
+                        <td className="py-3 px-4 hidden md:table-cell">
+                          <span className="text-sm text-navy-700">{a.role_in_meeting || <span className="text-navy-400">—</span>}</span>
+                        </td>
+                        {/* Step 6: AttendeeActions replaces plain delete button */}
+                        {canEdit && (
+                          <td className="py-3 px-4">
+                            <AttendeeActions
+                              meetingId={id}
+                              attendee={a}
+                              canEdit={canEdit}
+                              canManage={canManage}
+                              onConfirmed={fetchMeeting}
+                              onDelete={() => setConfirmDelete({ type:'attendee', id: a.attendance_id, label: a.full_name })}
+                            />
                           </td>
-                          <td className="py-3 px-4 hidden sm:table-cell">
-                            <span className={`badge ${cfg.cls}`}>{cfg.label}</span>
-                          </td>
-                          <td className="py-3 px-4 hidden md:table-cell">
-                            <span className="text-sm text-navy-700">{a.role_in_meeting || <span className="text-navy-400">—</span>}</span>
-                          </td>
-                          {canEdit && (
-                            <td className="py-3 px-4">
-                              <button
-                                className="btn btn-ghost btn-icon btn-sm"
-                                style={{ color:'var(--danger)' }}
-                                onClick={() => setConfirmDelete({ type:'attendee', id: a.attendance_id, label: a.full_name })}
-                              >
-                                <IconX className="w-3.5 h-3.5"/>
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
+                        )}
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
                 <div className="card-footer">
                   <span className="text-xs text-navy-500">
-                    {filteredAttendees.length} waliosajiliwа
+                    {filteredAttendees.length} walisajiliwa
                     {filteredAttendees.length !== attendees.length && ` (kati ya ${attendees.length})`}
                   </span>
                 </div>
@@ -1153,15 +1151,12 @@ export default function MeetingDetailPage() {
         ════════════════════════════════════════════════ */}
         {activeTab === 'resolutions' && (
           <div>
-            {/* Resolution summary badges */}
             {resSummary.overdue > 0 && (
               <div className="banner banner-danger" style={{ marginBottom:'1rem' }}>
                 <IconAlertCircle className="w-4 h-4 flex-shrink-0"/>
                 <span className="text-sm">{resSummary.overdue} uamuzi umepita tarehe ya mwisho bila kukamilika.</span>
               </div>
             )}
-
-            {/* Toolbar */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'0.75rem', flexWrap:'wrap', marginBottom:'0.875rem' }}>
               <div style={{ display:'flex', gap:'0.625rem', flexWrap:'wrap', flex:1 }}>
                 <div className="search-bar" style={{ minWidth:200 }}>
@@ -1191,7 +1186,7 @@ export default function MeetingDetailPage() {
                   <IconCheckCircle className="empty-state-icon"/>
                   <p className="empty-state-title">{resSearch || resFilter ? 'Hakuna Matokeo' : 'Hakuna Maamuzi'}</p>
                   <p className="empty-state-body">
-                    {resSearch || resFilter ? 'Hakuna maamuzi yanayolingana na chujio ulilochagua.' : 'Bado hakuna maamuzi yaliyosajiliwа kwa kikao hiki.'}
+                    {resSearch || resFilter ? 'Hakuna maamuzi yanayolingana na chujio ulilochagua.' : 'Bado hakuna maamuzi yalisajiliwa kwa kikao hiki.'}
                   </p>
                   {canEdit && !resSearch && !resFilter && (
                     <div className="empty-state-actions">
@@ -1204,13 +1199,12 @@ export default function MeetingDetailPage() {
               </div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:'0.5rem' }}>
-                {filteredResolutions.map((r, idx) => {
+                {filteredResolutions.map((r) => {
                   const dot = urgencyDot(r.deadline, r.implementation_status);
                   const sc  = resStatusConfig(r.implementation_status);
                   return (
                     <div key={r.id} className="card" style={{ padding:'1rem 1.25rem' }}>
                       <div style={{ display:'flex', gap:'0.875rem', alignItems:'flex-start' }}>
-                        {/* Number */}
                         <div
                           style={{
                             flexShrink:0, width:28, height:28, borderRadius:'50%',
@@ -1221,11 +1215,9 @@ export default function MeetingDetailPage() {
                         >
                           {r.resolution_number}
                         </div>
-
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'0.5rem', flexWrap:'wrap', marginBottom:'0.375rem' }}>
                             <p className="text-sm font-medium text-navy-900" style={{ lineHeight:1.5 }}>{r.description}</p>
-                            {/* Status picker — inline change for managers */}
                             {canEdit ? (
                               <StatusPicker
                                 currentStatus={r.implementation_status}
@@ -1235,7 +1227,6 @@ export default function MeetingDetailPage() {
                               <span className={`badge ${sc.cls}`}>{sc.label}</span>
                             )}
                           </div>
-
                           <div style={{ display:'flex', gap:'1rem', flexWrap:'wrap', marginTop:'0.375rem' }}>
                             {r.responsible_name && (
                               <span className="text-xs text-navy-500" style={{ display:'flex', alignItems:'center', gap:4 }}>
@@ -1259,13 +1250,10 @@ export default function MeetingDetailPage() {
                               </span>
                             )}
                           </div>
-
                           {r.progress_notes && (
                             <p className="text-xs text-navy-500 mt-1.5 italic" style={{ lineHeight:1.5 }}>{r.progress_notes}</p>
                           )}
                         </div>
-
-                        {/* Actions */}
                         {canEdit && (
                           <div style={{ display:'flex', gap:'0.25rem', flexShrink:0 }}>
                             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setEditResolution(r)}>
@@ -1285,7 +1273,6 @@ export default function MeetingDetailPage() {
               </div>
             )}
 
-            {/* Footer */}
             {filteredResolutions.length > 0 && (
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'0.875rem' }}>
                 <span className="text-xs text-navy-500">
@@ -1307,7 +1294,6 @@ export default function MeetingDetailPage() {
         ════════════════════════════════════════════════ */}
         {activeTab === 'documents' && (
           <div>
-            {/* Upload toolbar */}
             {canEdit && (
               <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:'0.875rem' }}>
                 <button className="btn btn-primary btn-sm" onClick={() => setShowUploadDoc(true)}>
@@ -1315,7 +1301,6 @@ export default function MeetingDetailPage() {
                 </button>
               </div>
             )}
-
             {documents.length === 0 ? (
               <div className="card">
                 <div className="empty-state">
@@ -1360,24 +1345,21 @@ export default function MeetingDetailPage() {
                           </p>
                         </div>
                       </div>
-
                       <div style={{ display:'flex', gap:'0.5rem', marginTop:'0.875rem' }}>
-                     <button
-  className="btn btn-secondary btn-sm"
-  style={{ flex: 1, justifyContent: 'center' }}
-  onClick={() => {
-    if (isPdf) {
-      // Open in the internal reader
-      router.push(`/dashboard/meetings/document/${id}/${doc.id}`);
-    } else {
-      // Non-PDF (images, Word, Excel etc.) — still open in new tab
-      window.open(doc.file_url, '_blank', 'noopener,noreferrer');
-    }
-  }}
->
-  <IconDownload className="w-3.5 h-3.5"/>
-  {isPdf ? 'Angalia PDF' : isImg ? 'Angalia Picha' : 'Pakua'}
-</button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ flex:1, justifyContent:'center' }}
+                          onClick={() => {
+                            if (isPdf) {
+                              router.push(`/dashboard/meetings/document/${id}/${doc.id}`);
+                            } else {
+                              window.open(doc.file_url, '_blank', 'noopener,noreferrer');
+                            }
+                          }}
+                        >
+                          <IconDownload className="w-3.5 h-3.5"/>
+                          {isPdf ? 'Angalia PDF' : isImg ? 'Angalia Picha' : 'Pakua'}
+                        </button>
                         {canEdit && (
                           <button
                             className="btn btn-ghost btn-icon btn-sm"
@@ -1464,6 +1446,15 @@ export default function MeetingDetailPage() {
             if (confirmDelete.type === 'document')   return handleDeleteDocument(confirmDelete.id);
             if (confirmDelete.type === 'attendee')   return handleRemoveAttendee(confirmDelete.id);
           }}
+        />
+      )}
+
+      {/* Step 8: SendInviteModal */}
+      {showSendInvite && (
+        <SendInviteModal
+          meeting={meeting}
+          onClose={() => setShowSendInvite(false)}
+          onSent={() => { setShowSendInvite(false); fetchMeeting(); }}
         />
       )}
     </div>

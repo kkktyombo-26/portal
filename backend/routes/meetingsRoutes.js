@@ -15,6 +15,7 @@ const router  = express.Router();
 
 const { authenticate } = require('../middleware/auth');
 const c = require('../controllers/meetingsController');
+ const ca = require('../controllers/meetingsController');
 
 // Multer — disk storage for R2 stream uploads (same pattern as r2-routes.js)
 const upload = multer({ dest: 'uploads/' });
@@ -54,5 +55,36 @@ router.post('/:id/documents',
   c.uploadDocument
 );
 router.delete('/:id/documents/:documentId',     authenticate, c.deleteDocument);
+
+
+
+/**
+ * meetingRoutes.attendance.js
+ * ────────────────────────────
+ * Append these routes to routes/meetings.js
+ * after importing the new controller functions.
+ *
+ * Updated import line at top of meetingRoutes.js:
+ *
+ *   const c  = require('../controllers/meetingController');
+ *   const ca = require('../controllers/meetingController.attendance');
+ *
+ * Then append:
+ */
+
+// ── RSVP Summary ─────────────────────────────────────────────────────────────
+router.get('/:id/rsvp-summary',   authenticate, ca.getRsvpSummary);
+
+// ── Send Invites ─────────────────────────────────────────────────────────────
+router.post('/:id/send-invites',  authenticate, ca.sendInvites);
+
+// ── Member self-RSVP ─────────────────────────────────────────────────────────
+router.get('/:id/my-rsvp',        authenticate, ca.getMyRsvp);
+router.post('/:id/rsvp',          authenticate, ca.submitRsvp);
+
+// ── Manager confirmation ─────────────────────────────────────────────────────
+router.patch('/:id/attendees/confirm-all',              authenticate, ca.confirmAll);
+router.patch('/:id/attendees/:attendanceId/confirm',    authenticate, ca.confirmAttendee);
+
 
 module.exports = router;
