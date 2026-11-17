@@ -1,1108 +1,631 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useAuth }        from '../../hooks/useAuth';
-import { useTranslation } from '../../lib/i18n';
-import { userApi, announcementApi, groupApi, eventApi } from '../../lib/api';
-import api                from '../../lib/api';
-import { pledgeApi }      from '../../lib/pledgeApi';
+import { useAuth } from '../../../hooks/useAuth';
+import { useTranslation } from '../../../lib/i18n';
+import { groupApi } from '../../../lib/api';
+import PageHeader from '../../../components/ui/PageHeader';
+import Modal from '../../../components/ui/Modal';
+import Toast from '../../../components/ui/Toast';
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
-const T = {
-  navy:        '#1C1917',
-  navyMid:     '#3D3835',
-  gold:        '#F59E0B',
-  goldDark:    '#B45309',
-  goldLight:   '#FCD34D',
-  goldSubtle:  '#FFFBEB',
-  page:        '#F5F4F0',
-  card:        '#FFFFFF',
-  ink:         '#1C1917',
-  inkSub:      '#57534E',
-  inkMuted:    '#A8A29E',
-  border:      '#E7E5E4',
-  borderLight: '#F5F5F4',
-  success:     '#15803D',
-  successBg:   '#F0FDF4',
-  warning:     '#D97706',
-  warningBg:   '#FFFBEB',
-  danger:      '#DC2626',
-  dangerBg:    '#FEF2F2',
+// ─── Types ────────────────────────────────────────────────────────────────────
+const GROUP_TYPES = ['jumuiya', 'huduma', 'kwaya', 'idara', 'kamati', 'vingine'];
+
+const GROUP_TYPE_LABELS = {
+  en: { jumuiya: 'Jumuiya', huduma: 'Huduma', kwaya: 'Kwaya', idara: 'Idara', kamati: 'Kamati', vingine: 'Vingine' },
+  sw: { jumuiya: 'Jumuiya', huduma: 'Huduma', kwaya: 'Kwaya', idara: 'Idara', kamati: 'Kamati', vingine: 'Vingine' },
 };
 
-// ─── Role helpers ─────────────────────────────────────────────────────────────
-const isAdmin   = r => ['pastor', 'katibu'].includes(r);
-const isFinance = r => ['pastor', 'katibu', 'mweka_hazina'].includes(r);
-const isLeader  = r => ['pastor', 'katibu', 'elder', 'group_leader'].includes(r);
-const isMember  = r => !isAdmin(r) && !isFinance(r) && !isLeader(r);
-
-// ─── Pledge data aggregators ──────────────────────────────────────────────────
-/**
- * Accepts the array returned by pledgeApi.getCampaigns() (the v_pledge_summary
- * view rows) and returns the four headline figures for the KPI strip.
- *
- * Field names come from the migration's v_pledge_summary view:
- *   total_pledged, confirmed_amount, pending_amount, balance_due,
- *   pending_confirmations (count of payments awaiting admin approval)
- */
-function aggregatePledges(campaigns = []) {
-  return campaigns.reduce(
-    (acc, c) => {
-      acc.totalPledged      += Number(c.total_pledged      ?? c.target_amount      ?? 0);
-      acc.confirmedPaid     += Number(c.confirmed_amount   ?? c.collected_amount   ?? 0);
-      acc.pendingAmount     += Number(c.pending_amount     ?? 0);
-      acc.balanceDue        += Number(c.balance_due        ?? 0);
-      acc.pendingCount      += Number(c.pending_confirmations ?? 0);
-      return acc;
-    },
-    { totalPledged: 0, confirmedPaid: 0, pendingAmount: 0, balanceDue: 0, pendingCount: 0 },
-  );
-}
-
-// ─── Format helpers ───────────────────────────────────────────────────────────
-function fmtMoney(n) {
-  if (!n && n !== 0) return '—';
-  const v = Number(n);
-  if (v >= 1e9) return 'TShs ' + (v / 1e9).toFixed(1) + 'B';
-  if (v >= 1e6) return 'TShs ' + (v / 1e6).toFixed(1) + 'M';
-  if (v >= 1e3) return 'TShs ' + (v / 1e3).toFixed(0) + 'K';
-  return 'TShs ' + v.toLocaleString();
-}
-
-function fmtDate(d) {
-  if (!d) return '—';
-  try {
-    const s = typeof d === 'string' && !d.includes('T') ? d + 'T00:00:00' : d;
-    return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  } catch { return String(d); }
-}
-
-function fmtTime(t) {
-  if (!t) return '';
-  const [h, m] = t.split(':');
-  const hour = parseInt(h);
-  return `${hour % 12 || 12}:${m} ${hour < 12 ? 'AM' : 'PM'}`;
-}
-
-function parseDuration(iso) {
-  if (!iso) return '';
-  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!m) return '';
-  const h = +(m[1]||0), mn = +(m[2]||0), s = +(m[3]||0);
-  return h ? `${h}:${String(mn).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${mn}:${String(s).padStart(2,'0')}`;
-}
-
-function fmtViews(n) {
-  if (n == null) return null;
-  if (n >= 1_000_000) return `${(n/1_000_000).toFixed(1)}M`;
-  if (n >= 1_000)     return `${(n/1_000).toFixed(1)}K`;
-  return n.toLocaleString();
-}
-
-const MONTHS_ABBR = {
-  en: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
-  sw: ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ago','Sep','Okt','Nov','Des'],
+const GROUP_TYPE_ICONS = {
+  jumuiya: '◉', huduma: '✦', kwaya: '♪', idara: '◈', kamati: '◆', vingine: '◇',
 };
 
-const GROUP_ICONS = {
-  choir:'♫', youth:'◎', elders:'◈', women:'♀', men:'♂', children:'◉', other:'◇',
-  kwaya:'♫', idara:'◉', huduma:'◈', kamati:'◇',
+// Type → accent colour pair [bg, text, border]
+const TYPE_COLORS = {
+  jumuiya: ['#EBF2FF', '#1B3A6B', '#C5D8F5'],
+  huduma:  ['#F0FAF4', '#1A5C38', '#B8E8C8'],
+  kwaya:   ['#FDF6E8', '#7A5A00', '#E8D090'],
+  idara:   ['#F5F0FF', '#4A1A7A', '#D5B8F0'],
+  kamati:  ['#FFF0F0', '#7A1A1A', '#F0B8B8'],
+  vingine: ['#F5F5F7', '#5A5A60', '#DCDCE0'],
 };
 
-const SOCIAL = [
-  { key:'fb',  href:'https://web.facebook.com/profile.php?id=61579436296006', label:'Facebook',
-    icon:<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg> },
-  { key:'ig',  href:'https://www.instagram.com/kkktyombo', label:'Instagram',
-    icon:<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg> },
-  { key:'yt',  href:'https://www.youtube.com/@KKKTDMPYOMBO', label:'YouTube',
-    icon:<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg> },
+const CURRENT_YEAR = new Date().getFullYear();
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function getInitials(name) {
+  if (!name) return '?';
+  return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+}
+
+const AVATAR_PALETTES = [
+  ['#1B3A6B', '#C8A84B'], ['#1A5C38', '#7ED5A0'],
+  ['#5C1A1A', '#E8A0A0'], ['#1A395C', '#7EB5E8'],
+  ['#3D1A5C', '#C0A0E8'], ['#5C3D1A', '#E8C07E'],
 ];
-
-// ─── Shared primitives ────────────────────────────────────────────────────────
-
-function Panel({ children, style }) {
-  return (
-    <div style={{ background:T.card, border:`1px solid ${T.borderLight}`, borderRadius:12, overflow:'hidden', boxShadow:'0 1px 3px rgba(68,64,60,.06)', ...style }}>
-      {children}
-    </div>
-  );
+function avatarPalette(name) {
+  let n = 0;
+  for (let i = 0; i < (name || '').length; i++) n += name.charCodeAt(i);
+  return AVATAR_PALETTES[n % AVATAR_PALETTES.length];
 }
 
-function PanelHead({ title, action, onAction, actionHref }) {
+// ─── Mini avatar stack ────────────────────────────────────────────────────────
+// Shows up to 4 member initials circles stacked, then "+N more"
+function AvatarStack({ members = [], max = 4 }) {
+  const shown = members.slice(0, max);
+  const extra = members.length - shown.length;
+
+  if (!shown.length) return null;
+
   return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'1rem 1.25rem 0.875rem', borderBottom:`1px solid ${T.borderLight}` }}>
-      <span style={{ fontFamily:"'Lora',Georgia,serif", fontSize:15, fontWeight:600, letterSpacing:'-0.015em', color:T.ink }}>{title}</span>
-      {action && (actionHref
-        ? <Link href={actionHref} style={{ fontSize:12, fontWeight:600, color:T.goldDark, textDecoration:'none', padding:'2px 6px', borderRadius:4 }}>{action}</Link>
-        : <button onClick={onAction} style={{ fontSize:12, fontWeight:600, color:T.goldDark, border:'none', background:'none', cursor:'pointer', padding:'2px 6px', borderRadius:4 }}>{action}</button>
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      {shown.map((m, i) => {
+        const url = m.profile_photo_url || m.avatar;
+        const [bg, fg] = avatarPalette(m.full_name);
+        return (
+          <div
+            key={m.id || i}
+            style={{
+              width: 26, height: 26, borderRadius: '50%',
+              border: '2px solid #fff',
+              marginLeft: i === 0 ? 0 : -8,
+              zIndex: shown.length - i,
+              flexShrink: 0,
+              overflow: 'hidden',
+              background: bg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 9, fontWeight: 700, color: fg,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+            }}
+          >
+            {url
+              ? <img src={url} alt={m.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
+              : getInitials(m.full_name)
+            }
+          </div>
+        );
+      })}
+      {extra > 0 && (
+        <div style={{
+          width: 26, height: 26, borderRadius: '50%',
+          border: '2px solid #fff',
+          marginLeft: -8,
+          background: '#F0F0F2',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 8, fontWeight: 700, color: '#8A8A8E',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+        }}>
+          +{extra}
+        </div>
       )}
     </div>
   );
 }
 
-function Badge({ children, variant = 'neutral' }) {
-  const s = {
-    success: { background:T.successBg, color:T.success, border:`1px solid rgba(21,128,61,.2)` },
-    warning: { background:T.warningBg, color:T.warning, border:`1px solid rgba(217,119,6,.2)` },
-    danger:  { background:T.dangerBg,  color:T.danger,  border:`1px solid rgba(220,38,38,.2)` },
-    gold:    { background:T.goldSubtle,color:T.goldDark, border:`1px solid #FEF3C7` },
-    neutral: { background:'#F5F5F4',   color:T.inkSub,  border:`1px solid ${T.border}` },
-    navy:    { background:T.navy,      color:'#fff',     border:'none' },
-    blue:    { background:'#EFF6FF',   color:'#1D4ED8',  border:'1px solid #BFDBFE' },
-  };
-  return <span style={{ display:'inline-flex', alignItems:'center', fontSize:11, fontWeight:600, letterSpacing:'0.03em', borderRadius:4, padding:'2px 7px', ...s[variant] }}>{children}</span>;
+// ─── Group Card ───────────────────────────────────────────────────────────────
+function GroupCard({ g, lang, isManager, onArchive, onDelete }) {
+  const typeLabel = GROUP_TYPE_LABELS[lang]?.[g.type] || g.type;
+  const typeIcon  = GROUP_TYPE_ICONS[g.type] || '◇';
+  const [tBg, tText, tBorder] = TYPE_COLORS[g.type] || TYPE_COLORS.vingine;
+
+  const activeCount = g.active_member_count ?? g.member_count ?? 0;
+  const totalCount  = g.total_member_count  ?? activeCount;
+
+  return (
+    <Link
+      href={`/dashboard/groups/${g.id}`}
+      style={{ textDecoration: 'none', display: 'block' }}
+    >
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #EBEBEC',
+          borderRadius: 12,
+          padding: '18px 20px',
+          transition: 'box-shadow 0.15s, border-color 0.15s',
+          cursor: 'pointer',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.boxShadow = '0 4px 16px rgba(27,58,107,0.10)';
+          e.currentTarget.style.borderColor = '#C5D8F5';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.boxShadow = 'none';
+          e.currentTarget.style.borderColor = '#EBEBEC';
+        }}
+      >
+        {/* Archived banner */}
+        {g.is_archived && (
+          <div style={{
+            position: 'absolute', top: 0, right: 0,
+            background: '#F5F5F7', borderLeft: '1px solid #EBEBEC', borderBottom: '1px solid #EBEBEC',
+            borderRadius: '0 12px 0 8px',
+            padding: '3px 10px',
+            fontSize: 9, fontWeight: 700, color: '#AEADB3', letterSpacing: '0.06em', textTransform: 'uppercase',
+          }}>
+            {lang === 'sw' ? 'Imehifadhiwa' : 'Archived'}
+          </div>
+        )}
+
+        {/* Top row: icon + type badge + actions */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 9,
+              background: tBg, border: `1px solid ${tBorder}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 15, color: tText, flexShrink: 0,
+            }}>
+              {typeIcon}
+            </div>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+              background: tBg, color: tText, border: `1px solid ${tBorder}`,
+              borderRadius: 5, padding: '2px 8px',
+            }}>
+              {typeLabel}
+            </span>
+          </div>
+
+          {/* Manager actions — stop propagation so clicks don't navigate */}
+          {isManager && (
+            <div
+              style={{ display: 'flex', gap: 4 }}
+              onClick={e => e.preventDefault()}
+            >
+              {!g.is_archived && (
+                <button
+                  onClick={e => { e.preventDefault(); onArchive(g.id); }}
+                  style={{
+                    fontSize: 11, color: '#8A8A8E', fontWeight: 500,
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '3px 6px', borderRadius: 5,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F5F5F7'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  {lang === 'sw' ? 'Hifadhi' : 'Archive'}
+                </button>
+              )}
+              <button
+                onClick={e => { e.preventDefault(); onDelete(g.id); }}
+                style={{
+                  fontSize: 11, color: '#DC2626', fontWeight: 500,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '3px 6px', borderRadius: 5,
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = '#FEF2F2'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >
+                {lang === 'sw' ? 'Futa' : 'Delete'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Name */}
+        <p style={{
+          fontSize: 15, fontWeight: 700, color: '#1A1A1E',
+          marginBottom: 3, lineHeight: 1.3,
+        }}>
+          {lang === 'sw' ? (g.name_sw || g.name) : g.name}
+        </p>
+
+        {/* Leader + year meta */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+          {g.leader_name && (
+            <span style={{ fontSize: 11, color: '#8A8A8E', fontWeight: 500 }}>{g.leader_name}</span>
+          )}
+          {g.leader_name && g.year && (
+            <span style={{ color: '#D5D5D8', fontSize: 10 }}>·</span>
+          )}
+          {g.year && (
+            <span style={{ fontSize: 11, color: '#AEADB3', fontVariantNumeric: 'tabular-nums' }}>{g.year}</span>
+          )}
+          {g.description && (
+            <>
+              {(g.leader_name || g.year) && <span style={{ color: '#D5D5D8', fontSize: 10 }}>·</span>}
+              <span style={{
+                fontSize: 11, color: '#AEADB3',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                maxWidth: 160,
+              }}>
+                {g.description}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Bottom row: avatar stack + member count */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <AvatarStack members={g.recent_members || []} max={4} />
+
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+            <span style={{ fontSize: 20, fontWeight: 800, color: '#1A1A1E', lineHeight: 1 }}>
+              {activeCount}
+            </span>
+            <span style={{ fontSize: 11, color: '#AEADB3', fontWeight: 500 }}>
+              {lang === 'sw' ? 'washarika' : 'members'}
+              {totalCount > activeCount && (
+                <span style={{ color: '#D5D5D8', marginLeft: 3 }}>/ {totalCount} {lang === 'sw' ? 'jumla' : 'total'}</span>
+              )}
+            </span>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
 }
 
-function ProgressBar({ pct, color, height = 5 }) {
-  const fill = color || (pct >= 75 ? T.success : pct >= 40 ? T.gold : T.navy);
+// ─── Summary stats ─────────────────────────────────────────────────────────────
+function SummaryBar({ groups, lang }) {
+  const total   = groups.length;
+  const active  = groups.filter(g => !g.is_archived).length;
+  const members = groups.reduce((s, g) => s + (g.active_member_count ?? g.member_count ?? 0), 0);
+
+  // Most populated type
+  const typeTotals = {};
+  groups.forEach(g => {
+    typeTotals[g.type] = (typeTotals[g.type] || 0) + (g.active_member_count ?? g.member_count ?? 0);
+  });
+  const topType = Object.entries(typeTotals).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  const stats = [
+    { value: total,   label: lang === 'sw' ? 'Vikundi vyote' : 'Total groups' },
+    { value: active,  label: lang === 'sw' ? 'Vya sasa'      : 'Active' },
+    { value: members, label: lang === 'sw' ? 'Washarika'     : 'Total members' },
+    {
+      value: topType ? GROUP_TYPE_ICONS[topType] + ' ' + (GROUP_TYPE_LABELS[lang]?.[topType] || topType) : '—',
+      label: lang === 'sw' ? 'Kubwa zaidi' : 'Largest type',
+      text: true,
+    },
+  ];
+
   return (
-    <div style={{ height, background:T.borderLight, borderRadius:999, overflow:'hidden' }}>
-      <div style={{ height:'100%', width:`${Math.min(100,pct)}%`, background:fill, borderRadius:999, transition:'width .4s ease-out' }} />
+    <div style={{
+      display: 'grid', gridTemplateColumns: `repeat(${stats.length}, 1fr)`,
+      background: '#F7F7F9', borderRadius: 10, border: '1px solid #EBEBEC',
+      overflow: 'hidden', marginBottom: 24,
+    }}>
+      {stats.map((s, i) => (
+        <div key={s.label} style={{
+          padding: '14px 10px', textAlign: 'center',
+          borderRight: i < stats.length - 1 ? '1px solid #EBEBEC' : 'none',
+        }}>
+          <p style={{
+            fontSize: s.text ? 13 : 22, fontWeight: 700,
+            color: '#1A1A1E', lineHeight: 1, marginBottom: 4,
+          }}>
+            {s.value}
+          </p>
+          <p style={{ fontSize: 10, color: '#8A8A8E', fontWeight: 500 }}>{s.label}</p>
+        </div>
+      ))}
     </div>
   );
 }
 
-function Spinner() {
-  return <span style={{ display:'inline-block', width:18, height:18, borderRadius:'50%', border:`2px solid ${T.borderLight}`, borderTopColor:T.inkMuted, animation:'kkkt-spin .8s linear infinite' }} />;
-}
+// ─── Main page ────────────────────────────────────────────────────────────────
+export default function GroupsPage() {
+  const { user, lang } = useAuth();
+  const { t } = useTranslation(lang);
 
-function EmptyState({ text }) {
-  return <div style={{ padding:'40px 20px', textAlign:'center', fontSize:13, color:T.inkMuted }}>{text}</div>;
-}
+  const [groups,  setGroups]  = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast,   setToast]   = useState(null);
+  const [search,  setSearch]  = useState('');
 
-// ─── Campaign progress row (used in both elevated sidebar and member panel) ───
-/**
- * Props from v_pledge_summary view columns:
- *   name, total_pledged, confirmed_amount, pending_amount, balance_due,
- *   member_count, is_active, start_date, end_date
- */
-function CampaignRow({ c, lang, showPending = false }) {
-  const pledged   = Number(c.total_pledged    ?? c.target_amount    ?? 0);
-  const confirmed = Number(c.confirmed_amount ?? c.collected_amount ?? 0);
-  const pending   = Number(c.pending_amount   ?? 0);
-  const balance   = Number(c.balance_due      ?? Math.max(0, pledged - confirmed) ?? 0);
-  const pct       = pledged ? Math.round((confirmed / pledged) * 100) : 0;
-  const isActive  = c.is_active || c.status === 'active';
-  const shortCode = (c.name || 'AHD').slice(0, 3).toUpperCase();
+  const [filterType,     setFilterType]     = useState('');
+  const [filterArchived, setFilterArchived] = useState(false);
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [form, setForm] = useState({
+    name: '', name_sw: '', type: 'jumuiya',
+    description: '', year: CURRENT_YEAR,
+    start_date: '', end_date: '',
+  });
+
+  const [archiveId, setArchiveId] = useState(null);
+  const [deleteId,  setDeleteId]  = useState(null);
+
+  const isManager = ['pastor', 'elder'].includes(user?.role);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = {};
+      if (filterType)     params.type        = filterType;
+      if (filterArchived) params.is_archived = 1;
+      const res = await groupApi.getAll(params);
+      setGroups(res.data.data);
+    } catch (_) {
+      showToast(lang === 'sw' ? 'Imeshindwa kupakia vikundi' : 'Failed to load groups', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [filterType, filterArchived, lang]);
+
+  useEffect(() => { fetchGroups(); }, [fetchGroups]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    try {
+      setSaving(true);
+      await groupApi.create({
+        ...form,
+        year:       form.year       || null,
+        start_date: form.start_date || null,
+        end_date:   form.end_date   || null,
+      });
+      showToast(lang === 'sw' ? 'Kikundi kimeundwa' : 'Group created');
+      setCreateOpen(false);
+      setForm({ name: '', name_sw: '', type: 'jumuiya', description: '', year: CURRENT_YEAR, start_date: '', end_date: '' });
+      fetchGroups();
+    } catch (err) {
+      showToast(err.response?.data?.message || err.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleArchive = async (id) => {
+    try {
+      await groupApi.archive(id);
+      showToast(lang === 'sw' ? 'Kikundi kimehifadhiwa' : 'Group archived');
+      setArchiveId(null);
+      fetchGroups();
+    } catch (err) {
+      showToast(err.response?.data?.message || err.message, 'error');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await groupApi.delete(id);
+      showToast(lang === 'sw' ? 'Kikundi kimefutwa' : 'Group deleted');
+      setDeleteId(null);
+      fetchGroups();
+    } catch (err) {
+      showToast(err.response?.data?.message || err.message, 'error');
+    }
+  };
+
+  const set = (f) => (e) => setForm(v => ({ ...v, [f]: e.target.value }));
+
+  // Type counts for filter pills
+  const typeCount = {};
+  groups.forEach(g => { typeCount[g.type] = (typeCount[g.type] || 0) + 1; });
+
+  // Client-side search
+  const filtered = groups.filter(g =>
+    !search ||
+    (g.name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (g.name_sw || '').toLowerCase().includes(search.toLowerCase()) ||
+    (g.leader_name || '').toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <div style={{ padding:'1rem 1.25rem', borderBottom:`1px solid ${T.borderLight}` }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:6 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-          <span style={{ width:34, height:34, borderRadius:8, background:T.navy, color:T.gold, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, flexShrink:0 }}>
-            {shortCode}
-          </span>
-          <div style={{ minWidth:0 }}>
-            <p style={{ fontSize:13, fontWeight:600, color:T.ink, lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.name}</p>
-            <p style={{ fontSize:11, color:T.inkMuted, marginTop:1 }}>
-              {c.member_count ?? '—'} {lang === 'sw' ? 'washrika' : 'members'}
-              {c.end_date ? ` · ${lang === 'sw' ? 'Mwisho' : 'ends'} ${fmtDate(c.end_date)}` : ''}
+    <div>
+      <PageHeader
+        breadcrumb={lang === 'sw' ? 'Watu' : 'People'}
+        title={lang === 'sw' ? 'Vikundi' : 'Groups'}
+        subtitle={`${groups.length} ${lang === 'sw' ? 'vikundi' : 'groups'}`}
+        action={isManager && (
+          <button onClick={() => setCreateOpen(true)} className="btn-primary">
+            + {lang === 'sw' ? 'Kikundi Kipya' : 'New Group'}
+          </button>
+        )}
+      />
+
+      <div className="px-8 py-8 max-w-content">
+
+        {/* Summary bar */}
+        {!loading && groups.length > 0 && (
+          <SummaryBar groups={groups} lang={lang} />
+        )}
+
+        {/* Search + filter row */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Search */}
+          <div style={{ position: 'relative', flex: '0 0 220px' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#AEADB3" strokeWidth="2.5" strokeLinecap="round"
+              style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={lang === 'sw' ? 'Tafuta kikundi…' : 'Search groups…'}
+              style={{
+                width: '100%', paddingLeft: 30, paddingRight: 10,
+                height: 34, borderRadius: 7, border: '1px solid #E5E5E8',
+                background: '#fff', fontSize: 13, color: '#1A1A1E', outline: 'none',
+              }}
+              onFocus={e => e.target.style.borderColor = '#1B3A6B'}
+              onBlur={e => e.target.style.borderColor = '#E5E5E8'}
+            />
+          </div>
+
+          {/* Type filters */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+            <button
+              onClick={() => setFilterType('')}
+              style={{
+                fontSize: 11, fontWeight: 600, padding: '4px 12px',
+                borderRadius: 99, border: `1px solid ${!filterType ? '#1B3A6B' : '#E5E5E8'}`,
+                background: !filterType ? '#1B3A6B' : '#fff',
+                color: !filterType ? '#fff' : '#5A5A60',
+                cursor: 'pointer', transition: 'all 0.12s',
+              }}
+            >
+              {lang === 'sw' ? 'Yote' : 'All'}
+            </button>
+            {GROUP_TYPES.map(type => {
+              const active = filterType === type;
+              const [tBg, tText, tBorder] = TYPE_COLORS[type];
+              return (
+                <button
+                  key={type}
+                  onClick={() => setFilterType(t => t === type ? '' : type)}
+                  style={{
+                    fontSize: 11, fontWeight: 600, padding: '4px 12px',
+                    borderRadius: 99,
+                    border: `1px solid ${active ? tBorder : '#E5E5E8'}`,
+                    background: active ? tBg : '#fff',
+                    color: active ? tText : '#5A5A60',
+                    cursor: 'pointer', transition: 'all 0.12s',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  <span>{GROUP_TYPE_ICONS[type]}</span>
+                  {GROUP_TYPE_LABELS[lang]?.[type]}
+                  {typeCount[type] ? (
+                    <span style={{ opacity: 0.6, fontSize: 10 }}>({typeCount[type]})</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Archived toggle */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', marginLeft: 'auto' }}>
+            <span style={{ fontSize: 11, color: '#8A8A8E', fontWeight: 500 }}>
+              {lang === 'sw' ? 'Zilizohifadhiwa' : 'Show archived'}
+            </span>
+            <input
+              type="checkbox"
+              checked={filterArchived}
+              onChange={e => setFilterArchived(e.target.checked)}
+              style={{ accentColor: '#1B3A6B', width: 14, height: 14 }}
+            />
+          </label>
+        </div>
+
+        {/* Grid */}
+        {loading ? (
+          <div style={{ padding: '64px 0', display: 'flex', justifyContent: 'center' }}>
+            <span className="w-5 h-5 border-2 border-border border-t-ink-muted rounded-full animate-spin" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{
+            padding: '48px 20px', textAlign: 'center',
+            background: '#F7F7F9', borderRadius: 10, border: '1px solid #EBEBEC',
+          }}>
+            <p style={{ fontSize: 13, color: '#8A8A8E' }}>
+              {search
+                ? (lang === 'sw' ? 'Hakuna matokeo' : 'No results found')
+                : (lang === 'sw' ? 'Hakuna vikundi' : 'No groups found')}
             </p>
           </div>
-        </div>
-        <div style={{ textAlign:'right', flexShrink:0 }}>
-          <div style={{ fontFamily:"'Lora',Georgia,serif", fontSize:20, fontWeight:700, color:T.ink, fontVariantNumeric:'tabular-nums', lineHeight:1 }}>{pct}%</div>
-          <div style={{ fontSize:10, color:T.inkMuted, marginTop:2 }}>{fmtMoney(balance)} {lang === 'sw' ? 'iliyobaki' : 'remaining'}</div>
-        </div>
-      </div>
-      <ProgressBar pct={pct} />
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginTop:6, flexWrap:'wrap' }}>
-        <span style={{ fontSize:11, color:T.inkMuted }}>{lang === 'sw' ? 'Imethibitishwa' : 'Confirmed'}: <strong style={{ color:T.ink }}>{fmtMoney(confirmed)}</strong></span>
-        {showPending && pending > 0 && (
-          <span style={{ fontSize:11, color:T.warning, fontWeight:600 }}>
-            + {fmtMoney(pending)} {lang === 'sw' ? 'inasubiri' : 'pending'}
-          </span>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: 14,
+          }}>
+            {filtered.map(g => (
+              <GroupCard
+                key={g.id}
+                g={g}
+                lang={lang}
+                isManager={isManager}
+                onArchive={setArchiveId}
+                onDelete={setDeleteId}
+              />
+            ))}
+          </div>
         )}
-        <Badge variant={isActive ? 'success' : 'neutral'}>{isActive ? (lang === 'sw' ? 'Hai' : 'Active') : (lang === 'sw' ? 'Imefungwa' : 'Closed')}</Badge>
-      </div>
-    </div>
-  );
-}
 
-// ─── Payment approval queue row (elevated → Pledges tab) ─────────────────────
-/**
- * Each item is a pending pledge_payment row joined with member name + campaign.
- * Expected fields from pledgeApi.getPendingPayments() or the report endpoint:
- *   id, member_name, campaign_name, amount, payment_method, payment_date,
- *   reference_number, receipt_url
- */
-function PendingPaymentRow({ p, lang, isLast }) {
-  return (
-    <div style={{ display:'flex', alignItems:'center', gap:12, padding:'0.875rem 1.25rem', borderBottom: isLast ? 'none' : `1px solid ${T.borderLight}` }}>
-      {/* Amount pill */}
-      <div style={{ width:48, height:48, borderRadius:10, background:T.warningBg, border:`1px solid rgba(217,119,6,.2)`, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-        <span style={{ fontSize:9, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', color:T.warning, lineHeight:1 }}>TShs</span>
-        <span style={{ fontSize:11, fontWeight:800, color:T.warning, fontVariantNumeric:'tabular-nums', lineHeight:1.3 }}>
-          {Number(p.amount) >= 1000 ? (Number(p.amount)/1000).toFixed(0)+'K' : Number(p.amount).toLocaleString()}
-        </span>
-      </div>
-      <div style={{ flex:1, minWidth:0 }}>
-        <p style={{ fontSize:13, fontWeight:600, color:T.ink, lineHeight:1.3, marginBottom:2 }}>{p.member_name ?? '—'}</p>
-        <p style={{ fontSize:11, color:T.inkMuted }}>
-          {p.campaign_name ?? '—'}
-          {p.payment_method ? ` · ${p.payment_method}` : ''}
-          {p.reference_number ? ` · ${p.reference_number}` : ''}
-        </p>
-      </div>
-      <div style={{ textAlign:'right', flexShrink:0 }}>
-        <span style={{ fontSize:11, color:T.inkMuted }}>{fmtDate(p.payment_date)}</span>
-        {p.receipt_url && (
-          <a href={p.receipt_url} target="_blank" rel="noopener noreferrer" style={{ display:'block', fontSize:10, fontWeight:600, color:T.goldDark, marginTop:2, textDecoration:'none' }}>
-            {lang === 'sw' ? 'Risiti →' : 'Receipt →'}
-          </a>
+        {filtered.length > 0 && (
+          <p style={{ fontSize: 11, color: '#AEADB3', marginTop: 14, textAlign: 'right' }}>
+            {filtered.length} {lang === 'sw' ? 'vikundi vinavyoonyeshwa' : 'groups shown'}
+          </p>
         )}
       </div>
-    </div>
-  );
-}
 
-// ─── Member's own pledge row ──────────────────────────────────────────────────
-/**
- * From pledgeApi.getMemberPledges(userId) rows joined with campaign:
- *   campaign_name, pledge_amount, confirmed_amount, pending_amount,
- *   balance_due, pledge_status (active/pending/rejected), next_installment_date
- */
-function MemberPledgeRow({ p, lang, isLast }) {
-  const pledged   = Number(p.pledge_amount    ?? 0);
-  const confirmed = Number(p.confirmed_amount ?? 0);
-  const pending   = Number(p.pending_amount   ?? 0);
-  const balance   = Number(p.balance_due      ?? Math.max(0, pledged - confirmed));
-  const pct       = pledged ? Math.round((confirmed / pledged) * 100) : 0;
-
-  const statusVariant = { active:'success', pending:'warning', rejected:'danger' }[p.pledge_status] ?? 'neutral';
-  const statusLabel   = {
-    active:   lang === 'sw' ? 'Hai'        : 'Active',
-    pending:  lang === 'sw' ? 'Inasubiri'  : 'Pending',
-    rejected: lang === 'sw' ? 'Ilikataliwa': 'Rejected',
-  }[p.pledge_status] ?? p.pledge_status ?? '—';
-
-  return (
-    <div style={{ padding:'1rem 1.25rem', borderBottom: isLast ? 'none' : `1px solid ${T.borderLight}` }}>
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:6 }}>
-        <div>
-          <p style={{ fontSize:13, fontWeight:600, color:T.ink, lineHeight:1.3, marginBottom:3 }}>{p.campaign_name ?? '—'}</p>
-          <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-            <Badge variant={statusVariant}>{statusLabel}</Badge>
-            {pending > 0 && <Badge variant="warning">{fmtMoney(pending)} {lang === 'sw' ? 'inasubiri' : 'awaiting'}</Badge>}
+      {/* ── Create Modal ──────────────────────────────────────────────────── */}
+      <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title={lang === 'sw' ? 'Kikundi Kipya' : 'New Group'}>
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="field-label">{lang === 'sw' ? 'Jina (Kiingereza)' : 'Name (English)'}</label>
+              <input value={form.name} onChange={set('name')} className="field-input" required />
+            </div>
+            <div>
+              <label className="field-label">{lang === 'sw' ? 'Jina (Kiswahili)' : 'Name (Swahili)'}</label>
+              <input value={form.name_sw} onChange={set('name_sw')} className="field-input" required />
+            </div>
           </div>
-        </div>
-        <div style={{ textAlign:'right', flexShrink:0 }}>
-          <p style={{ fontSize:11, color:T.inkMuted }}>{lang === 'sw' ? 'Ahadi' : 'Pledged'}</p>
-          <p style={{ fontFamily:"'Lora',Georgia,serif", fontSize:16, fontWeight:700, color:T.ink, fontVariantNumeric:'tabular-nums' }}>{fmtMoney(pledged)}</p>
-        </div>
-      </div>
-      <ProgressBar pct={pct} />
-      <div style={{ display:'flex', gap:16, marginTop:6, flexWrap:'wrap' }}>
-        <span style={{ fontSize:11, color:T.inkMuted }}>{lang === 'sw' ? 'Lililolipwa' : 'Paid'}: <strong style={{ color:T.success }}>{fmtMoney(confirmed)}</strong></span>
-        <span style={{ fontSize:11, color:T.inkMuted }}>{lang === 'sw' ? 'Iliyobaki' : 'Balance'}: <strong style={{ color: balance > 0 ? T.danger : T.success }}>{fmtMoney(balance)}</strong></span>
-        {p.next_installment_date && (
-          <span style={{ fontSize:11, color:T.inkMuted }}>{lang === 'sw' ? 'Awamu ifuatayo' : 'Next'}: <strong style={{ color:T.ink }}>{fmtDate(p.next_installment_date)}</strong></span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Page header ──────────────────────────────────────────────────────────────
-function PageHeader({ eyebrow, title, subtitle, children }) {
-  return (
-    <div style={{ background:T.navy, padding:'2rem 2.5rem 1.75rem', position:'relative', overflow:'hidden' }}>
-      <div style={{ position:'absolute', inset:0, pointerEvents:'none', backgroundImage:"url(\"data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v1H0zM0 0h1v40H0z' fill='%23ffffff' fill-opacity='.04'/%3E%3C/svg%3E\")" }} />
-      <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:`linear-gradient(90deg,${T.goldDark} 0%,${T.goldLight} 50%,${T.goldDark} 100%)` }} />
-      <div style={{ position:'relative', display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:16 }}>
-        <div>
-          {eyebrow && <div style={{ fontSize:11, fontWeight:600, letterSpacing:'0.12em', textTransform:'uppercase', color:'#FBBF24', marginBottom:8 }}>{eyebrow}</div>}
-          <div style={{ fontFamily:"'Lora',Georgia,serif", fontSize:32, fontWeight:700, letterSpacing:'-0.03em', lineHeight:1.1, color:'#fff' }}>{title}</div>
-          {subtitle && <div style={{ marginTop:6, fontSize:15, color:'rgba(255,255,255,.65)' }}>{subtitle}</div>}
-        </div>
-        {children && <div style={{ display:'flex', gap:10, flexShrink:0 }}>{children}</div>}
-      </div>
-    </div>
-  );
-}
-
-// ─── KPI strip ────────────────────────────────────────────────────────────────
-function KpiStrip({ cells }) {
-  return (
-    <div style={{ display:'grid', gridTemplateColumns:`repeat(${cells.length},1fr)`, background:T.card, borderBottom:`1px solid ${T.border}` }}>
-      {cells.map((c, i) => (
-        <div key={i} style={{ padding:'1.25rem 1.5rem', borderRight: i < cells.length-1 ? `1px solid ${T.border}` : 'none', background: c.primary ? T.navy : T.card, position:'relative' }}>
-          <div style={{ fontSize:10, fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', marginBottom:6, color: c.primary ? 'rgba(255,255,255,.5)' : T.inkMuted }}>{c.label}</div>
-          <div style={{ fontFamily:"'Lora',Georgia,serif", fontSize:26, fontWeight:700, letterSpacing:'-0.04em', lineHeight:1, color: c.primary ? '#fff' : T.ink, fontVariantNumeric:'tabular-nums' }}>{c.value}</div>
-          {c.sub && <div style={{ fontSize:11, fontWeight:500, marginTop:6, color: c.primary ? '#FBBF24' : (c.subColor || T.inkMuted) }}>{c.sub}</div>}
-          {c.pct != null && (
-            <div style={{ position:'absolute', bottom:0, left:0, right:0, height:2, background:T.borderLight }}>
-              <div style={{ height:'100%', width:`${c.pct}%`, background:T.gold }} />
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Announcement banner (auto-rotating hero) ─────────────────────────────────
-function AnnouncementsBanner({ announcements, lang }) {
-  const [active, setActive] = useState(0);
-  useEffect(() => {
-    if (announcements.length < 2) return;
-    const id = setInterval(() => setActive(a => (a+1) % announcements.length), 5500);
-    return () => clearInterval(id);
-  }, [announcements.length]);
-
-  if (!announcements.length) return (
-    <div style={{ height:220, display:'flex', alignItems:'center', justifyContent:'center', background:T.navy }}>
-      <span style={{ fontSize:12, color:'rgba(255,255,255,.3)' }}>{lang === 'sw' ? 'Hakuna matangazo' : 'No announcements'}</span>
-    </div>
-  );
-
-  const ev    = announcements[active];
-  const title = lang === 'sw' ? ev.title_sw : ev.title_en;
-  const body  = lang === 'sw' ? ev.body_sw  : ev.body_en;
-
-  return (
-    <div style={{ position:'relative', background:T.navy, overflow:'hidden', minHeight:240, userSelect:'none' }}>
-      {ev.image_url && <div style={{ position:'absolute', inset:0, backgroundImage:`url(${ev.image_url})`, backgroundSize:'cover', backgroundPosition:'center' }} />}
-      <div style={{ position:'absolute', inset:0, background: ev.image_url ? 'linear-gradient(to top,rgba(28,25,23,.97) 0%,rgba(28,25,23,.55) 50%,rgba(28,25,23,.18) 100%)' : `linear-gradient(135deg,${T.navy} 0%,#3D3835 100%)` }} />
-      <div style={{ position:'absolute', top:0, left:0, right:0, height:2, background:`linear-gradient(to right,${T.gold},transparent)` }} />
-      <div style={{ position:'relative', display:'flex', flexDirection:'column', justifyContent:'flex-end', minHeight:240, padding:'0 28px 24px' }}>
-        <div style={{ marginBottom:12 }}>
-          <span style={{ display:'inline-flex', alignItems:'center', gap:5, background:'rgba(245,158,11,.15)', border:'1px solid rgba(245,158,11,.35)', borderRadius:20, padding:'3px 10px', fontSize:9, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', color:T.gold }}>
-            <span style={{ width:4, height:4, borderRadius:'50%', background:T.gold, display:'inline-block' }} />
-            {lang === 'sw' ? 'Tangazo' : 'Announcement'}
-          </span>
-        </div>
-        <p style={{ fontFamily:"'Lora',Georgia,serif", fontSize:22, fontWeight:700, color:'#fff', lineHeight:1.25, letterSpacing:'-0.01em', marginBottom:8, display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{title}</p>
-        <p style={{ fontSize:12, color:'rgba(255,255,255,.5)', lineHeight:1.65, marginBottom:16, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{body}</p>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <span style={{ fontSize:10, color:'rgba(255,255,255,.3)', fontVariantNumeric:'tabular-nums' }}>{new Date(ev.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</span>
-            {ev.author_name && <><span style={{ color:'rgba(255,255,255,.15)' }}>·</span><span style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>{ev.author_name}</span></>}
-          </div>
-          {announcements.length > 1 && (
-            <div style={{ display:'flex', gap:5 }}>
-              {announcements.map((_,i) => (
-                <button key={i} onClick={() => setActive(i)} style={{ width: i===active?20:4, height:4, borderRadius:99, border:'none', cursor:'pointer', padding:0, background: i===active?T.gold:'rgba(255,255,255,.25)', transition:'width .3s ease,background .3s ease' }} />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Announcement card ────────────────────────────────────────────────────────
-function AnnouncementCard({ a, lang, t }) {
-  const title    = lang === 'sw' ? a.title_sw : a.title_en;
-  const body     = lang === 'sw' ? a.body_sw  : a.body_en;
-  const isChurch = a.scope === 'church';
-  return (
-    <div style={{ position:'relative', background:'#1B2F50', borderRadius:10, overflow:'hidden' }}>
-      {a.image_url && <div style={{ position:'absolute', inset:0, backgroundImage:`url(${a.image_url})`, backgroundSize:'cover', backgroundPosition:'center', opacity:0.22, pointerEvents:'none' }} />}
-      <div style={{ position:'absolute', top:0, left:0, bottom:0, width:2, background: isChurch ? T.gold : '#5B8AD4' }} />
-      <div style={{ padding:'14px 16px 14px 20px', position:'relative' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-          <span style={{ fontSize:9, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', color: isChurch ? T.gold : '#5B8AD4' }}>
-            {isChurch ? (lang==='sw'?'Kanisa Lote':'Church-wide') : (a.group_name||(lang==='sw'?'Kikundi':'Group'))}
-          </span>
-          <span style={{ fontSize:9, color:'rgba(255,255,255,.3)', fontVariantNumeric:'tabular-nums' }}>{new Date(a.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'})}</span>
-        </div>
-        <p style={{ fontSize:13, fontWeight:600, color:'#fff', lineHeight:1.35, marginBottom:4 }}>{title}</p>
-        <p style={{ fontSize:11, color:'rgba(255,255,255,.45)', lineHeight:1.6, marginBottom:a.author_name?8:0, display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{body}</p>
-        {a.author_name && <span style={{ fontSize:10, color:'rgba(255,255,255,.25)' }}>{t('posted_by')} {a.author_name}</span>}
-      </div>
-    </div>
-  );
-}
-
-// ─── Events list ──────────────────────────────────────────────────────────────
-function EventsList({ events, lang, loading }) {
-  if (loading) return <div style={{ padding:'32px 16px', display:'flex', justifyContent:'center' }}><Spinner /></div>;
-  if (!events?.length) return <EmptyState text={lang==='sw'?'Hakuna matukio yanayokuja':'No upcoming events'} />;
-  return (
-    <div>
-      {events.slice(0,5).map((ev,i) => {
-        const d     = new Date((ev.event_date?.split('T')[0]||ev.event_date)+'T00:00:00');
-        const title = lang==='sw' ? ev.title_sw : ev.title_en;
-        return (
-          <div key={ev.id}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 20px' }}>
-              <div style={{ flexShrink:0, width:42, textAlign:'center', background:T.page, borderRadius:8, padding:'6px 4px' }}>
-                <div style={{ fontFamily:"'Lora',Georgia,serif", fontSize:20, fontWeight:700, color:T.ink, lineHeight:1, fontVariantNumeric:'tabular-nums' }}>{String(d.getDate()).padStart(2,'0')}</div>
-                <div style={{ fontSize:9, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em', color:T.inkMuted, marginTop:2 }}>{MONTHS_ABBR[lang][d.getMonth()]}</div>
-              </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontSize:13, fontWeight:600, color:T.ink, lineHeight:1.3, marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{title}</p>
-                {(ev.start_time||ev.location) && <p style={{ fontSize:11, color:T.inkMuted }}>{ev.start_time&&fmtTime(ev.start_time)}{ev.start_time&&ev.location&&' · '}{ev.location}</p>}
-              </div>
-            </div>
-            {i < Math.min(events.length,5)-1 && <div style={{ height:1, background:T.borderLight, marginLeft:74 }} />}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Groups list ──────────────────────────────────────────────────────────────
-function GroupsList({ groups, lang }) {
-  if (!groups.length) return <EmptyState text={lang==='sw'?'Hakuna vikundi':'No groups'} />;
-  return (
-    <div>
-      {groups.slice(0,5).map((g,i) => (
-        <div key={g.id}>
-          <Link href={`/dashboard/groups/${g.id}`}
-            style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 20px', textDecoration:'none' }}
-            onMouseEnter={e => e.currentTarget.style.background = T.page}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <span style={{ width:30, height:30, borderRadius:7, flexShrink:0, background:T.page, border:`1px solid ${T.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, color:T.inkMuted }}>{GROUP_ICONS[g.type]||'◇'}</span>
-            <div style={{ flex:1, minWidth:0 }}>
-              <p style={{ fontSize:13, fontWeight:500, color:T.ink, lineHeight:1, marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{lang==='sw'?(g.name_sw||g.name):g.name}</p>
-              <p style={{ fontSize:11, color:T.inkMuted }}>{g.member_count} {lang==='sw'?'washarika':'members'}</p>
-            </div>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke={T.border} strokeWidth="1.5" strokeLinecap="round"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
-          </Link>
-          {i < Math.min(groups.length,5)-1 && <div style={{ height:1, background:T.borderLight, marginLeft:62 }} />}
-        </div>
-      ))}
-      {groups.length > 5 && (
-        <Link href="/dashboard/groups" style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 20px', textDecoration:'none' }}
-          onMouseEnter={e => e.currentTarget.style.background = T.page}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-        >
-          <span style={{ width:30, height:30, borderRadius:7, flexShrink:0, background:T.page, border:`1px dashed ${T.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:T.inkMuted }}>···</span>
-          <span style={{ fontSize:13, fontWeight:500, color:T.inkSub }}>{lang==='sw'?`Vikundi vyote (${groups.length})`:`All groups (${groups.length})`}</span>
-        </Link>
-      )}
-    </div>
-  );
-}
-
-function SocialLinks({ lang }) {
-  return (
-    <div style={{ padding:'14px 20px 20px' }}>
-      <p style={{ fontSize:10, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:T.inkMuted, marginBottom:10 }}>{lang==='sw'?'Mitandao':'Follow us'}</p>
-      <div style={{ display:'flex', gap:6 }}>
-        {SOCIAL.map(({ key,href,label,icon }) => (
-          <a key={key} href={href} target="_blank" rel="noopener noreferrer" title={label}
-            style={{ display:'flex', alignItems:'center', justifyContent:'center', width:32, height:32, borderRadius:8, background:T.page, border:`1px solid ${T.border}`, color:T.inkSub, textDecoration:'none', transition:'background .12s,color .12s' }}
-            onMouseEnter={e=>{e.currentTarget.style.background=T.navy;e.currentTarget.style.color='#fff';e.currentTarget.style.borderColor=T.navy;}}
-            onMouseLeave={e=>{e.currentTarget.style.background=T.page;e.currentTarget.style.color=T.inkSub;e.currentTarget.style.borderColor=T.border;}}
-          >{icon}</a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Mobile tab bar ───────────────────────────────────────────────────────────
-function MobileTabs({ tab, setTab, lang, tabs }) {
-  return (
-    <div style={{ display:'flex', borderBottom:`1px solid ${T.border}`, overflowX:'auto', scrollbarWidth:'none' }}>
-      {tabs.map(({ key,label }) => {
-        const active = tab === key;
-        return (
-          <button key={key} onClick={() => setTab(key)} style={{ flex:'1 0 auto', padding:'12px 16px', fontSize:12, fontWeight:active?700:500, color:active?T.ink:T.inkMuted, background:'none', border:'none', cursor:'pointer', borderBottom:active?`2px solid ${T.gold}`:'2px solid transparent', marginBottom:-1, whiteSpace:'nowrap', transition:'color .15s' }}>
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  MEMBER DASHBOARD
-// ═══════════════════════════════════════════════════════════════════════════════
-function MemberDashboard({ user, lang, t, announcements, videos, groups, upcomingEvents, memberPledges, loading }) {
-  const firstName = user.full_name?.split(' ')[0] ?? '';
-  const [tab, setTab] = useState('announcements');
-
-  const mobileTabs = [
-    { key:'announcements', label: lang==='sw'?'Matangazo':'Announcements' },
-    { key:'pledges',       label: lang==='sw'?'Ahadi':'Pledges' },
-    { key:'videos',        label: 'YouTube' },
-    { key:'groups',        label: lang==='sw'?'Vikundi':'Groups' },
-    { key:'events',        label: lang==='sw'?'Ratiba':'Schedule' },
-  ];
-
-  // Filter to only active/pending pledges for the member
-  const activePledges = memberPledges.filter(p => p.pledge_status !== 'rejected');
-
-  return (
-    <div style={{ background:T.page, minHeight:'100%' }}>
-      <style>{`
-        @keyframes kkkt-spin { to { transform:rotate(360deg); } }
-        .m-mobile  { display:block; }
-        .m-desktop { display:none !important; }
-        .vid-grid  { display:grid; grid-template-columns:1fr; }
-        @media (min-width:900px) {
-          .m-mobile  { display:none !important; }
-          .m-desktop { display:grid !important; grid-template-columns:minmax(0,1.65fr) minmax(0,1fr); gap:24px; padding:24px 2.5rem 2.5rem; }
-          .vid-grid  { grid-template-columns:1fr 1fr; }
-          .desktop-banner { display:block !important; }
-        }
-        .desktop-banner { display:none; }
-      `}</style>
-
-      {/* Greeting */}
-      <div style={{ background:T.card, borderBottom:`1px solid ${T.border}`, padding:'20px 2.5rem 18px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-        <div>
-          <p style={{ fontSize:11, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:T.inkMuted, marginBottom:4 }}>{lang==='sw'?'Dashibodi':'Dashboard'}</p>
-          <h1 style={{ fontFamily:"'Lora',Georgia,serif", fontSize:24, fontWeight:700, letterSpacing:'-0.02em', lineHeight:1.2, color:T.ink }}>{lang==='sw'?`Karibu, ${firstName}`:`Welcome, ${firstName}`}</h1>
-        </div>
-        {user.group_name && <span style={{ fontSize:11, color:T.inkMuted, flexShrink:0 }}>{user.group_name}</span>}
-      </div>
-
-      {/* ── Mobile ── */}
-      <div className="m-mobile">
-        {loading
-          ? <div style={{ height:240, background:T.navy, display:'flex', alignItems:'center', justifyContent:'center' }}><Spinner /></div>
-          : <AnnouncementsBanner announcements={announcements} lang={lang} />
-        }
-        <MobileTabs tab={tab} setTab={setTab} lang={lang} tabs={mobileTabs} />
-        <div style={{ padding:'16px' }}>
-
-          {tab === 'announcements' && (
-            loading
-              ? <div style={{ display:'flex', justifyContent:'center', padding:'40px 0' }}><Spinner /></div>
-              : !announcements.length
-                ? <EmptyState text={lang==='sw'?'Hakuna matangazo':'No announcements'} />
-                : <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                    {announcements.map(a => <AnnouncementCard key={a.id} a={a} lang={lang} t={t} />)}
-                  </div>
-          )}
-
-          {tab === 'pledges' && (
-            <Panel>
-              <PanelHead title={lang==='sw'?'Ahadi Zangu':'My Pledges'} actionHref="/dashboard/pledges" action={lang==='sw'?'Zote →':'All →'} />
-              {loading
-                ? <div style={{ display:'flex', justifyContent:'center', padding:'32px 0' }}><Spinner /></div>
-                : !activePledges.length
-                  ? <EmptyState text={lang==='sw'?'Huna ahadi zilizosajiliwa':'You have no registered pledges'} />
-                  : activePledges.map((p,i) => <MemberPledgeRow key={p.id??i} p={p} lang={lang} isLast={i===activePledges.length-1} />)
-              }
-            </Panel>
-          )}
-
-          {tab === 'videos' && (
-            <Panel>
-              <PanelHead title={lang==='sw'?'Hivi Karibuni':'Latest Videos'} />
-              {videos.slice(0,6).map((v,i) => (
-                <a key={v.id} href={v.url} target="_blank" rel="noopener noreferrer"
-                  style={{ display:'block', textDecoration:'none', borderBottom: i===Math.min(videos.length,6)-1?'none':`1px solid ${T.borderLight}` }}
-                  onMouseEnter={e=>e.currentTarget.style.opacity='0.85'}
-                  onMouseLeave={e=>e.currentTarget.style.opacity='1'}
-                >
-                  <div style={{ position:'relative', aspectRatio:'16/9', background:T.navy, overflow:'hidden' }}>
-                    {v.thumbnail ? <img src={v.thumbnail} alt={v.title} draggable={false} style={{ width:'100%',height:'100%',objectFit:'cover',display:'block' }} /> : <div style={{ width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center' }}><svg width="24" height="24" viewBox="0 0 24 24" fill="rgba(255,255,255,0.2)"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></div>}
-                    <div style={{ position:'absolute', bottom:0, left:0, right:0, height:'65%', background:'linear-gradient(to top,rgba(10,18,34,.95) 0%,transparent 100%)', pointerEvents:'none' }} />
-                    {v.duration && <span style={{ position:'absolute', bottom:28, right:6, background:'rgba(0,0,0,.78)', color:'#fff', fontSize:8, fontWeight:700, borderRadius:3, padding:'1px 4px', fontVariantNumeric:'tabular-nums' }}>{parseDuration(v.duration)}</span>}
-                    <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'0 8px 7px' }}>
-                      <p style={{ fontSize:10, fontWeight:600, color:'#fff', lineHeight:1.3, margin:'0 0 2px', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{v.title}</p>
-                      {v.viewCount!=null && <span style={{ fontSize:8, color:'rgba(255,255,255,.5)', fontVariantNumeric:'tabular-nums' }}>{fmtViews(v.viewCount)} {lang==='sw'?'maoni':'views'}</span>}
-                    </div>
-                  </div>
-                </a>
-              ))}
-              {!videos.length && <EmptyState text={lang==='sw'?'Hakuna video':'No videos yet'} />}
-            </Panel>
-          )}
-
-          {tab === 'groups' && (
-            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-              <Panel><PanelHead title={lang==='sw'?'Vikundi':'Groups'} /><GroupsList groups={groups} lang={lang} /></Panel>
-              <Panel><SocialLinks lang={lang} /></Panel>
-            </div>
-          )}
-
-          {tab === 'events' && (
-            <Panel>
-              <PanelHead title={lang==='sw'?'Ratiba':'Schedule'} action={lang==='sw'?'Zote →':'See all →'} actionHref="/dashboard/events" />
-              <EventsList events={upcomingEvents} lang={lang} loading={loading} />
-            </Panel>
-          )}
-        </div>
-      </div>
-
-      {/* ── Desktop banner (above grid) ── */}
-      <div className="desktop-banner">
-        {loading
-          ? <div style={{ height:260, background:T.navy, display:'flex', alignItems:'center', justifyContent:'center' }}><Spinner /></div>
-          : <AnnouncementsBanner announcements={announcements} lang={lang} />
-        }
-      </div>
-
-      {/* ── Desktop two-column grid ── */}
-      <div className="m-desktop">
-
-        {/* Left: videos + events */}
-        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-          <Panel>
-            <PanelHead title={lang==='sw'?'Hivi Karibuni':'Latest Videos'} action={lang==='sw'?'Zote →':'See all →'} />
-            <div className="vid-grid">
-              {videos.slice(0,6).map((v,i) => {
-                const total   = Math.min(videos.length,6);
-                const isBottom = i >= total-2;
-                const isRight  = i % 2 === 1;
-                return (
-                  <a key={v.id} href={v.url} target="_blank" rel="noopener noreferrer"
-                    style={{ display:'block', textDecoration:'none', borderRight:isRight?'none':`1px solid ${T.borderLight}`, borderBottom:isBottom?'none':`1px solid ${T.borderLight}` }}
-                    onMouseEnter={e=>e.currentTarget.style.opacity='0.85'}
-                    onMouseLeave={e=>e.currentTarget.style.opacity='1'}
-                  >
-                    <div style={{ position:'relative', aspectRatio:'16/9', background:T.navy, overflow:'hidden' }}>
-                      {v.thumbnail ? <img src={v.thumbnail} alt={v.title} draggable={false} style={{ width:'100%',height:'100%',objectFit:'cover',display:'block' }} /> : <div style={{ width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center' }}><svg width="24" height="24" viewBox="0 0 24 24" fill="rgba(255,255,255,0.2)"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></div>}
-                      <div style={{ position:'absolute', bottom:0, left:0, right:0, height:'65%', background:'linear-gradient(to top,rgba(10,18,34,.95) 0%,transparent 100%)', pointerEvents:'none' }} />
-                      {v.duration && <span style={{ position:'absolute', bottom:28, right:6, background:'rgba(0,0,0,.78)', color:'#fff', fontSize:8, fontWeight:700, borderRadius:3, padding:'1px 4px', fontVariantNumeric:'tabular-nums' }}>{parseDuration(v.duration)}</span>}
-                      <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'0 8px 7px' }}>
-                        <p style={{ fontSize:10, fontWeight:600, color:'#fff', lineHeight:1.3, margin:'0 0 2px', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{v.title}</p>
-                        {v.viewCount!=null && <span style={{ fontSize:8, color:'rgba(255,255,255,.5)', fontVariantNumeric:'tabular-nums' }}>{fmtViews(v.viewCount)} {lang==='sw'?'maoni':'views'}</span>}
-                      </div>
-                    </div>
-                  </a>
-                );
-              })}
-              {!videos.length && <div style={{ gridColumn:'1/-1', padding:'32px 16px', textAlign:'center', fontSize:12, color:T.inkMuted }}>{lang==='sw'?'Hakuna video':'No videos yet'}</div>}
-            </div>
-          </Panel>
-
-          <Panel>
-            <PanelHead title={lang==='sw'?'Ratiba':'Upcoming Events'} action={lang==='sw'?'Zote →':'See all →'} actionHref="/dashboard/events" />
-            <EventsList events={upcomingEvents} lang={lang} loading={loading} />
-          </Panel>
-        </div>
-
-        {/* Right: pledges + announcements + groups + social */}
-        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-
-          {/* Member pledge summary */}
-          <Panel>
-            <PanelHead title={lang==='sw'?'Ahadi Zangu':'My Pledges'} action={lang==='sw'?'Zote →':'All →'} actionHref="/dashboard/pledges" />
-            {loading
-              ? <div style={{ display:'flex', justifyContent:'center', padding:'32px 0' }}><Spinner /></div>
-              : !activePledges.length
-                ? <EmptyState text={lang==='sw'?'Huna ahadi zilizosajiliwa':'No pledges registered yet'} />
-                : activePledges.map((p,i) => <MemberPledgeRow key={p.id??i} p={p} lang={lang} isLast={i===activePledges.length-1} />)
-            }
-          </Panel>
-
-          <Panel>
-            <PanelHead title={lang==='sw'?'Matangazo':'Announcements'} />
-            {loading
-              ? <div style={{ display:'flex', justifyContent:'center', padding:'32px 0' }}><Spinner /></div>
-              : !announcements.length
-                ? <EmptyState text={lang==='sw'?'Hakuna matangazo':'No announcements'} />
-                : <div style={{ display:'flex', flexDirection:'column', gap:10, padding:'14px 16px' }}>
-                    {announcements.map(a => <AnnouncementCard key={a.id} a={a} lang={lang} t={t} />)}
-                  </div>
-            }
-          </Panel>
-
-          <Panel>
-            <PanelHead title={lang==='sw'?'Vikundi':'Groups'} action={lang==='sw'?'Zote →':'All →'} actionHref="/dashboard/groups" />
-            <GroupsList groups={groups} lang={lang} />
-          </Panel>
-
-          <Panel><SocialLinks lang={lang} /></Panel>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  ELEVATED DASHBOARD
-// ═══════════════════════════════════════════════════════════════════════════════
-const ROLE_GREETINGS = {
-  en: { pastor:'Pastor', elder:'Elder', group_leader:'Leader', katibu:'Secretary', mweka_hazina:'Treasurer', member:'Welcome' },
-  sw: { pastor:'Mchungaji', elder:'Mzee', group_leader:'Kiongozi', katibu:'Katibu', mweka_hazina:'Mweka Hazina', member:'Karibu' },
-};
-
-function ElevatedDashboard({ user, lang, t, stats, announcements, projects, resolutions, campaigns, pendingPayments, loading }) {
-  const greeting  = ROLE_GREETINGS[lang]?.[user.role] ?? (lang==='sw'?'Karibu':'Welcome');
-  const firstName = user.full_name?.split(' ')[0] ?? '';
-  const [activeTab, setActiveTab] = useState('projects');
-  const now = new Date();
-
-  // Aggregate pledge figures from campaigns (v_pledge_summary rows)
-  const pledgeTotals = aggregatePledges(campaigns);
-
-  // ── KPI strip cells
-  // Finance roles see pledge headline numbers; admin roles see member counts
-  const kpiCells = [
-    ...(isAdmin(user.role) && stats ? [
-      { label: lang==='sw'?'Jumla ya Washrika':'Total Members', value: stats.totalMembers ?? '—', sub:`${stats.youth??0} ${lang==='sw'?'vijana':'youth'}`, primary:true, pct: Math.min(100,(stats.totalMembers??0)/10) },
-      { label: lang==='sw'?'Makundi':'Groups',    value: stats.totalGroups   ?? '—' },
-    ] : []),
-    ...(isFinance(user.role) ? [
-      { label: lang==='sw'?'Jumla Iliyoahidiwa':'Total Pledged',    value: fmtMoney(pledgeTotals.totalPledged),  primary: !isAdmin(user.role) },
-      { label: lang==='sw'?'Imethibitishwa':'Confirmed Paid',       value: fmtMoney(pledgeTotals.confirmedPaid), sub: pledgeTotals.totalPledged ? `${Math.round((pledgeTotals.confirmedPaid/pledgeTotals.totalPledged)*100)}% ${lang==='sw'?'ya lengo':'of target'}` : undefined, subColor: T.success },
-      { label: lang==='sw'?'Iliyobaki':'Balance Due',               value: fmtMoney(pledgeTotals.balanceDue),    subColor: T.danger },
-      { label: lang==='sw'?'Zinazosubiri Idhini':'Pending Approval', value: pledgeTotals.pendingCount, sub: pledgeTotals.pendingAmount ? fmtMoney(pledgeTotals.pendingAmount) : undefined, subColor: T.warning },
-    ] : []),
-    ...(isAdmin(user.role) && stats ? [
-      { label: lang==='sw'?'Miradi':'Projects',       value: stats.activeProjects      ?? '—' },
-      { label: lang==='sw'?'Maamuzi Wazi':'Open Resolutions', value: resolutions.length },
-    ] : []),
-  ].filter(Boolean);
-
-  const tabs = [
-    { key:'projects',      label: lang==='sw'?'Miradi':'Projects' },
-    { key:'resolutions',   label: lang==='sw'?'Maamuzi':'Resolutions' },
-    { key:'pledges',       label: lang==='sw'?'Ahadi':'Pledges', badge: pledgeTotals.pendingCount || null },
-    { key:'announcements', label: lang==='sw'?'Matangazo':'Announcements' },
-  ];
-
-  return (
-    <div style={{ background:T.page, minHeight:'100%' }}>
-      <style>{`
-        @keyframes kkkt-spin { to { transform:rotate(360deg); } }
-        .elevated-grid { display:flex; flex-direction:column; gap:24px; }
-        @media (min-width:1024px) {
-          .elevated-grid { display:grid; grid-template-columns:minmax(0,1.6fr) 320px; gap:24px; }
-        }
-        @media (max-width:900px) {
-          .kpi-responsive { grid-template-columns:repeat(2,1fr) !important; }
-        }
-      `}</style>
-
-      <PageHeader
-        eyebrow={lang==='sw'?'Dashibodi':'Dashboard'}
-        title={`${greeting}, ${firstName}`}
-        subtitle={now.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+' · '+(lang==='sw'?'Muhtasari wa mwaka hadi sasa':'Year-to-date overview')}
-      />
-
-      {kpiCells.length > 0 && <KpiStrip cells={kpiCells} />}
-
-      {/* Member breakdown sub-strip (admin only) */}
-      {isAdmin(user.role) && stats && (
-        <div style={{ background:T.card, borderBottom:`1px solid ${T.border}`, display:'grid', gridTemplateColumns:'repeat(6,1fr)' }} className="kpi-responsive">
-          {[
-            { label:lang==='sw'?'Wanaume':'Men',         value:stats.men      ?? '—' },
-            { label:lang==='sw'?'Wanawake':'Women',      value:stats.women    ?? '—' },
-            { label:lang==='sw'?'Vijana':'Youth',        value:stats.youth    ?? '—' },
-            { label:lang==='sw'?'Watoto':'Children',     value:stats.children ?? '—' },
-            { label:lang==='sw'?'Wazee':'Elders',        value:stats.elders   ?? '—' },
-            { label:lang==='sw'?'Mikataba':'Contracts',  value:stats.activeContracts ?? '—' },
-          ].map((c,i) => (
-            <div key={i} style={{ padding:'0.875rem 1.25rem', borderRight: i<5 ? `1px solid ${T.border}` : 'none' }}>
-              <div style={{ fontSize:10, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:T.inkMuted, marginBottom:4 }}>{c.label}</div>
-              <div style={{ fontFamily:"'Lora',Georgia,serif", fontSize:22, fontWeight:700, letterSpacing:'-0.03em', color:T.ink, fontVariantNumeric:'tabular-nums' }}>{c.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Pending payments alert bar */}
-      {pledgeTotals.pendingCount > 0 && (
-        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'0.75rem 2.5rem', background:T.warningBg, borderBottom:'1px solid #FDE68A' }}>
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke={T.warning} strokeWidth="1.6" strokeLinecap="round"><circle cx="7.5" cy="7.5" r="6"/><path d="M7.5 4.5v3.5"/><circle cx="7.5" cy="10.5" r="0.5" fill={T.warning} stroke="none"/></svg>
-          <span style={{ fontSize:13, color:'#78350F', flex:1 }}>
-            <strong>{pledgeTotals.pendingCount} {lang==='sw'?'malipo ya ahadi':'pledge payments'}</strong> {lang==='sw'?'yanasubiri uthibitisho —':'awaiting confirmation —'} {fmtMoney(pledgeTotals.pendingAmount)} {lang==='sw'?'jumla':'total'}
-          </span>
-          <button onClick={() => setActiveTab('pledges')} style={{ fontSize:12, fontWeight:700, color:'#92400E', background:'rgba(245,158,11,.18)', border:'none', padding:'4px 10px', borderRadius:5, cursor:'pointer' }}>
-            {lang==='sw'?'Kagua →':'Review →'}
-          </button>
-        </div>
-      )}
-
-      <div style={{ padding:'1.5rem 2.5rem' }}>
-        <div className="elevated-grid">
-
-          {/* ── Left: tabbed panel ── */}
-          <Panel>
-            {/* Tab bar */}
-            <div style={{ display:'flex', gap:2, padding:'0.75rem 1.25rem 0', borderBottom:`1px solid ${T.border}` }}>
-              {tabs.map(({ key,label,badge }) => {
-                const active = activeTab === key;
-                return (
-                  <button key={key} onClick={() => setActiveTab(key)} style={{ position:'relative', padding:'8px 14px', border:'none', background:'none', cursor:'pointer', fontSize:13, fontWeight:active?600:500, color:active?T.goldDark:T.inkMuted, borderBottom:active?`2px solid ${T.gold}`:'2px solid transparent', marginBottom:-1, borderRadius:'4px 4px 0 0', transition:'color .12s' }}>
-                    {label}
-                    {badge > 0 && (
-                      <span style={{ position:'absolute', top:4, right:2, minWidth:16, height:16, background:T.warning, color:'#fff', borderRadius:99, fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 3px' }}>{badge}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Tab: Projects */}
-            {activeTab === 'projects' && (
-              loading
-                ? <div style={{ display:'flex', justifyContent:'center', padding:'48px 0' }}><Spinner /></div>
-                : !projects.length
-                  ? <EmptyState text={lang==='sw'?'Hakuna miradi inayoendelea':'No active projects'} />
-                  : projects.map((p,i) => {
-                      const pct = p.progress ?? 0;
-                      return (
-                        <div key={p.id} style={{ padding:'1rem 1.25rem', borderBottom: i<projects.length-1 ? `1px solid ${T.borderLight}` : 'none' }}>
-                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, marginBottom:6 }}>
-                            <span style={{ fontSize:14, fontWeight:600, color:T.ink }}>{p.name}</span>
-                            <span style={{ fontSize:13, fontWeight:700, color:T.inkSub, fontVariantNumeric:'tabular-nums', flexShrink:0 }}>{pct}%</span>
-                          </div>
-                          <ProgressBar pct={pct} />
-                          {p.contractor && <p style={{ fontSize:11, color:T.inkMuted, marginTop:5 }}>{p.contractor}</p>}
-                        </div>
-                      );
-                    })
-            )}
-
-            {/* Tab: Resolutions */}
-            {activeTab === 'resolutions' && (
-              loading
-                ? <div style={{ display:'flex', justifyContent:'center', padding:'48px 0' }}><Spinner /></div>
-                : !resolutions.length
-                  ? <EmptyState text={lang==='sw'?'Hakuna maamuzi yanayosubiri':'No pending resolutions'} />
-                  : resolutions.map((r,i) => {
-                      const dl       = r.deadline ? new Date(r.deadline) : null;
-                      const daysLeft = dl ? Math.round((dl-now)/86400000) : null;
-                      return (
-                        <div key={r.id} style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'0.875rem 1.25rem', borderBottom: i<resolutions.length-1 ? `1px solid ${T.borderLight}` : 'none' }}>
-                          <span style={{ marginTop:5, width:7, height:7, borderRadius:'50%', flexShrink:0, background: r.status==='overdue'?T.danger:T.gold }} />
-                          <div style={{ flex:1, minWidth:0 }}>
-                            <p style={{ fontSize:13, fontWeight:600, color:T.ink, lineHeight:1.4 }}>{r.title}</p>
-                            <p style={{ fontSize:11, color:T.inkMuted, marginTop:2 }}>{new Date(r.meeting_date??r.created_at).toLocaleDateString()}{r.responsible&&<> · {r.responsible}</>}</p>
-                          </div>
-                          {r.deadline && (
-                            <span style={{ fontSize:11, fontWeight:600, padding:'2px 6px', borderRadius:4, flexShrink:0, background: r.status==='overdue'?T.dangerBg:(daysLeft<30?T.warningBg:T.successBg), color: r.status==='overdue'?T.danger:(daysLeft<30?T.warning:T.success) }}>
-                              {new Date(r.deadline).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })
-            )}
-
-            {/* Tab: Pledges — payment approval queue */}
-            {activeTab === 'pledges' && (
-              <div>
-                {/* Campaign progress header */}
-                {campaigns.length > 0 && (
-                  <div style={{ borderBottom:`1px solid ${T.border}` }}>
-                    <div style={{ padding:'10px 1.25rem 6px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                      <span style={{ fontSize:11, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:T.inkMuted }}>{lang==='sw'?'Kampeni za Ahadi':'Pledge Campaigns'}</span>
-                      <Link href="/dashboard/pledges" style={{ fontSize:11, fontWeight:600, color:T.goldDark, textDecoration:'none' }}>{lang==='sw'?'Zote →':'All →'}</Link>
-                    </div>
-                    {campaigns.filter(c => c.is_active||c.status==='active').slice(0,3).map((c,i,arr) => (
-                      <div key={c.id??i} style={{ borderBottom: i<arr.length-1 ? `1px solid ${T.borderLight}` : 'none' }}>
-                        <CampaignRow c={c} lang={lang} showPending />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Pending payments queue */}
-                <div style={{ padding:'10px 1.25rem 6px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                  <span style={{ fontSize:11, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:T.inkMuted }}>
-                    {lang==='sw'?'Malipo Yanayosubiri Idhini':'Payments Awaiting Confirmation'}
-                  </span>
-                  {pledgeTotals.pendingCount > 0 && <Badge variant="warning">{pledgeTotals.pendingCount}</Badge>}
-                </div>
-                {loading
-                  ? <div style={{ display:'flex', justifyContent:'center', padding:'32px 0' }}><Spinner /></div>
-                  : !pendingPayments.length
-                    ? <EmptyState text={lang==='sw'?'Hakuna malipo yanayosubiri idhini':'No payments awaiting confirmation'} />
-                    : pendingPayments.map((p,i) => <PendingPaymentRow key={p.id??i} p={p} lang={lang} isLast={i===pendingPayments.length-1} />)
-                }
-              </div>
-            )}
-
-            {/* Tab: Announcements */}
-            {activeTab === 'announcements' && (
-              <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:10 }}>
-                {loading
-                  ? <div style={{ display:'flex', justifyContent:'center', padding:'32px 0' }}><Spinner /></div>
-                  : !announcements.length
-                    ? <EmptyState text={lang==='sw'?'Hakuna matangazo':'No announcements'} />
-                    : announcements.map(a => <AnnouncementCard key={a.id} a={a} lang={lang} t={t} />)
-                }
-              </div>
-            )}
-          </Panel>
-
-          {/* ── Right: pledge campaigns + glance + quick links ── */}
-          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-
-            {/* Active campaigns with real progress */}
-            {isFinance(user.role) && (
-              <Panel>
-                <PanelHead title={lang==='sw'?'Hali ya Ahadi':'Pledge Status'} action={lang==='sw'?'Zote →':'All →'} actionHref="/dashboard/pledges" />
-                {loading
-                  ? <div style={{ display:'flex', justifyContent:'center', padding:'32px 0' }}><Spinner /></div>
-                  : !campaigns.length
-                    ? <EmptyState text={lang==='sw'?'Hakuna kampeni':'No campaigns'} />
-                    : campaigns.filter(c => c.is_active||c.status==='active').map((c,i,arr) => (
-                        <div key={c.id??i} style={{ borderBottom: i<arr.length-1 ? `1px solid ${T.borderLight}` : 'none' }}>
-                          <CampaignRow c={c} lang={lang} showPending />
-                        </div>
-                      ))
-                }
-              </Panel>
-            )}
-
-            {/* At a glance */}
-            <Panel>
-              <PanelHead title={lang==='sw'?'Hali ya Jumla':'At a Glance'} />
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr' }}>
-                {[
-                  { label:lang==='sw'?'Matangazo':'Announcements', value:announcements.length },
-                  { label:lang==='sw'?'Miradi':'Projects',          value:projects.length },
-                  { label:lang==='sw'?'Maamuzi':'Resolutions',      value:resolutions.length },
-                  { label:lang==='sw'?'Kampeni':'Campaigns',         value:campaigns.length },
-                ].map((c,i) => (
-                  <div key={i} style={{ padding:'1rem 1.25rem', borderRight: i%2===0?`1px solid ${T.borderLight}`:'none', borderBottom: i<2?`1px solid ${T.borderLight}`:'none' }}>
-                    <div style={{ fontSize:10, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:T.inkMuted, marginBottom:4 }}>{c.label}</div>
-                    <div style={{ fontFamily:"'Lora',Georgia,serif", fontSize:24, fontWeight:700, letterSpacing:'-0.03em', color:T.ink, fontVariantNumeric:'tabular-nums' }}>{c.value}</div>
-                  </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="field-label">{lang === 'sw' ? 'Aina' : 'Type'}</label>
+              <select value={form.type} onChange={set('type')} className="field-input">
+                {GROUP_TYPES.map(type => (
+                  <option key={type} value={type}>{GROUP_TYPE_ICONS[type]} {GROUP_TYPE_LABELS.en[type]}</option>
                 ))}
-              </div>
-            </Panel>
-
-            {/* Quick links */}
-            <Panel>
-              <PanelHead title={lang==='sw'?'Viungo vya Haraka':'Quick Links'} />
-              {[
-                { href:'/dashboard/members',      label:lang==='sw'?'Washarika':'Members' },
-                { href:'/dashboard/pledges',       label:lang==='sw'?'Ahadi':'Pledges' },
-                { href:'/dashboard/groups',        label:lang==='sw'?'Makundi':'Groups' },
-                { href:'/dashboard/events',        label:lang==='sw'?'Matukio':'Events' },
-                { href:'/dashboard/announcements', label:lang==='sw'?'Matangazo':'Announcements' },
-              ].map(({ href,label },i,arr) => (
-                <div key={href}>
-                  <Link href={href} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'11px 20px', textDecoration:'none', color:T.ink, fontSize:13, fontWeight:500 }}
-                    onMouseEnter={e=>e.currentTarget.style.background=T.page}
-                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}
-                  >
-                    {label}
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke={T.border} strokeWidth="1.5" strokeLinecap="round"><path d="M4.5 2.5L8 6l-3.5 3.5"/></svg>
-                  </Link>
-                  {i<arr.length-1 && <div style={{ height:1, background:T.borderLight }} />}
-                </div>
-              ))}
-            </Panel>
+              </select>
+            </div>
+            <div>
+              <label className="field-label">{lang === 'sw' ? 'Mwaka' : 'Year'}</label>
+              <input type="number" value={form.year} onChange={set('year')} min="1900" max={CURRENT_YEAR + 5} className="field-input" />
+            </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="field-label">{lang === 'sw' ? 'Tarehe ya Kuanza' : 'Start Date'}</label>
+              <input type="date" value={form.start_date} onChange={set('start_date')} className="field-input" />
+            </div>
+            <div>
+              <label className="field-label">{lang === 'sw' ? 'Tarehe ya Kumaliza' : 'End Date'}</label>
+              <input type="date" value={form.end_date} onChange={set('end_date')} className="field-input" />
+            </div>
+          </div>
+          <div>
+            <label className="field-label">{lang === 'sw' ? 'Maelezo' : 'Description'}</label>
+            <textarea value={form.description} onChange={set('description')} rows={2} className="field-input resize-none" />
+          </div>
+          <div className="hairline" />
+          <div className="flex gap-3 justify-end">
+            <button type="button" onClick={() => setCreateOpen(false)} className="btn-secondary">{t('cancel')}</button>
+            <button type="submit" disabled={saving} className="btn-primary">{saving ? t('loading') : t('save')}</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ── Archive Confirm ───────────────────────────────────────────────── */}
+      <Modal isOpen={!!archiveId} onClose={() => setArchiveId(null)} title={lang === 'sw' ? 'Hifadhi Kikundi?' : 'Archive Group?'}>
+        <p className="text-sm text-ink-muted">
+          {lang === 'sw'
+            ? 'Kikundi kitahifadhiwa. Washarika na historia vitabaki salama.'
+            : 'The group will be archived. Members and history will be preserved.'}
+        </p>
+        <div className="hairline mt-5 mb-4" />
+        <div className="flex gap-3 justify-end">
+          <button onClick={() => setArchiveId(null)} className="btn-secondary">{t('cancel')}</button>
+          <button onClick={() => handleArchive(archiveId)} className="btn-primary">{lang === 'sw' ? 'Hifadhi' : 'Archive'}</button>
         </div>
-      </div>
+      </Modal>
+
+      {/* ── Delete Confirm ────────────────────────────────────────────────── */}
+      <Modal isOpen={!!deleteId} onClose={() => setDeleteId(null)} title={lang === 'sw' ? 'Futa Kikundi?' : 'Delete Group?'}>
+        <p className="text-sm text-ink-muted">{t('confirm_delete')}</p>
+        <div className="hairline mt-5 mb-4" />
+        <div className="flex gap-3 justify-end">
+          <button onClick={() => setDeleteId(null)} className="btn-secondary">{t('cancel')}</button>
+          <button onClick={() => handleDelete(deleteId)} className="btn-danger">{t('delete')}</button>
+        </div>
+      </Modal>
+
+      <Toast toast={toast} />
     </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  MAIN PAGE
-// ═══════════════════════════════════════════════════════════════════════════════
-export default function DashboardPage() {
-  const { user, lang } = useAuth();
-  const { t }          = useTranslation(lang);
-
-  const [stats,           setStats]           = useState(null);
-  const [announcements,   setAnnouncements]   = useState([]);
-  const [videos,          setVideos]          = useState([]);
-  const [groups,          setGroups]          = useState([]);
-  const [upcomingEvents,  setUpcomingEvents]  = useState([]);
-  const [projects,        setProjects]        = useState([]);
-  const [resolutions,     setResolutions]     = useState([]);
-  // Pledge state
-  const [campaigns,       setCampaigns]       = useState([]);  // v_pledge_summary rows
-  const [pendingPayments, setPendingPayments] = useState([]);  // elevated: payment queue
-  const [memberPledges,   setMemberPledges]   = useState([]);  // member: own pledges
-  const [loading,         setLoading]         = useState(true);
-
-  const memberView = isMember(user.role);
-
-  useEffect(() => {
-    const none = Promise.resolve(null);
-
-    const load = async () => {
-      // ── Core calls (always) ──────────────────────────────────────────────────
-      const coreCalls = [
-        /* 0 */ announcementApi.getAll(),
-        /* 1 */ isFinance(user.role)  ? userApi.getStats()                              : none,
-        /* 2 */ isLeader(user.role)   ? api.get('/projects?status=active&limit=4')     : none,
-        /* 3 */ isLeader(user.role)   ? api.get('/resolutions?status=pending&limit=5') : none,
-        /* 4 */ memberView            ? api.get('/youtube/dashboard')                  : none,
-        /* 5 */ memberView            ? groupApi.getAll()                              : none,
-        /* 6 */ memberView            ? eventApi.getAll()                              : none,
-      ];
-
-      // ── Pledge calls (parallel, non-blocking) ───────────────────────────────
-      // For elevated roles: all campaigns (v_pledge_summary) + pending payments queue
-      // For members: their own pledge rows
-      const pledgeCalls = [
-        /* 7 */ isFinance(user.role)
-                  ? pledgeApi.getCampaigns({ limit: 20 })
-                  : none,
-        /* 8 */ isFinance(user.role)
-                  ? pledgeApi.getPendingPayments({ limit: 50 })
-                  : none,
-        /* 9 */ memberView
-                  ? pledgeApi.getMemberPledges(user.id)
-                  : none,
-      ];
-
-      const all = await Promise.allSettled([...coreCalls, ...pledgeCalls]);
-      const get = i => all[i]?.status === 'fulfilled' && all[i].value != null ? all[i].value : null;
-
-      // Core
-      const ann  = get(0); if (ann)  setAnnouncements((ann.data?.data   || []).slice(0, memberView ? 5 : 6));
-      const st   = get(1); if (st)   setStats(st.data?.data);
-      const proj = get(2); if (proj) setProjects(proj.data?.data  || []);
-      const res  = get(3); if (res)  setResolutions(res.data?.data || []);
-      const yt   = get(4); if (yt)   setVideos((yt.data?.data?.latestVideos ?? []).slice(0, 6));
-      const grp  = get(5); if (grp)  setGroups(grp.data?.data || []);
-      const evts = get(6); if (evts) setUpcomingEvents(evts.data?.data || []);
-
-      // Pledges — handle both { data: { data: [] } } and { data: [] } shapes
-      const camp = get(7);
-      if (camp) {
-        const rows = camp.data?.data ?? camp.data ?? [];
-        setCampaigns(Array.isArray(rows) ? rows : []);
-      }
-
-      const ppay = get(8);
-      if (ppay) {
-        const rows = ppay.data?.data ?? ppay.data ?? [];
-        setPendingPayments(Array.isArray(rows) ? rows : []);
-      }
-
-      const mpl = get(9);
-      if (mpl) {
-        const rows = mpl.data?.data ?? mpl.data ?? [];
-        setMemberPledges(Array.isArray(rows) ? rows : []);
-      }
-
-      setLoading(false);
-    };
-
-    load();
-  }, [user.id, user.role, memberView]);
-
-  if (memberView) {
-    return (
-      <MemberDashboard
-        user={user} lang={lang} t={t}
-        announcements={announcements}
-        videos={videos}
-        groups={groups}
-        upcomingEvents={upcomingEvents}
-        memberPledges={memberPledges}
-        loading={loading}
-      />
-    );
-  }
-
-  return (
-    <ElevatedDashboard
-      user={user} lang={lang} t={t}
-      stats={stats}
-      announcements={announcements}
-      projects={projects}
-      resolutions={resolutions}
-      campaigns={campaigns}
-      pendingPayments={pendingPayments}
-      loading={loading}
-    />
   );
 }
