@@ -406,4 +406,77 @@ confirmAttendee: (id, attendanceId, attendance_type) =>
 confirmAll: (id) => api.patch(`/meetings/${id}/attendees/confirm-all`),
 };
 
+export const projectApi = {
+
+  // ── Dashboard summary ─────────────────────────────────────────────────────
+
+  getSummary: () => api.get('/projects/summary'),
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §13 — PROJECTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  getAll:   (params = {}) => api.get(`/projects${qs(params)}`),
+  getById:  (id)          => api.get(`/projects/${id}`),
+  create:   (data)        => api.post('/projects', data),
+  update:   (id, data)    => api.patch(`/projects/${id}`, data),
+  delete:   (id)          => api.delete(`/projects/${id}`),
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §10 — CONTRACTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  getContracts:   (projectId)                       => api.get(`/projects/${projectId}/contracts`),
+  getContract:    (projectId, contractId)           => api.get(`/projects/${projectId}/contracts/${contractId}`),
+  createContract: (projectId, data)                 => api.post(`/projects/${projectId}/contracts`, data),
+  updateContract: (projectId, contractId, data)     => api.patch(`/projects/${projectId}/contracts/${contractId}`, data),
+  deleteContract: (projectId, contractId)           => api.delete(`/projects/${projectId}/contracts/${contractId}`),
+
+  // ── Contract Variations ───────────────────────────────────────────────────
+
+  getVariations:   (projectId, contractId)                    => api.get(`/projects/${projectId}/contracts/${contractId}/variations`),
+  createVariation: (projectId, contractId, data)              => api.post(`/projects/${projectId}/contracts/${contractId}/variations`, data),
+  updateVariation: (projectId, contractId, variationId, data) => api.patch(`/projects/${projectId}/contracts/${contractId}/variations/${variationId}`, data),
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PAYMENTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  getPayments:   (projectId, params = {}) => api.get(`/projects/${projectId}/payments${qs(params)}`),
+  createPayment: (projectId, data)        => api.post(`/projects/${projectId}/payments`, data),
+  updatePayment: (projectId, paymentId, data) => api.patch(`/projects/${projectId}/payments/${paymentId}`, data),
+  deletePayment: (projectId, paymentId)       => api.delete(`/projects/${projectId}/payments/${paymentId}`),
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DOCUMENTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  getDocuments:   (projectId, params = {}) => api.get(`/projects/${projectId}/documents${qs(params)}`),
+  addDocument:    (projectId, data)        => api.post(`/projects/${projectId}/documents`, data),
+  deleteDocument: (projectId, documentId) => api.delete(`/projects/${projectId}/documents/${documentId}`),
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHOTOS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  getPhotos:   (projectId, params = {}) => api.get(`/projects/${projectId}/photos${qs(params)}`),
+  addPhoto:    (projectId, data)        => api.post(`/projects/${projectId}/photos`, data),
+  updatePhoto: (projectId, photoId, data) => api.patch(`/projects/${projectId}/photos/${photoId}`, data),
+  deletePhoto: (projectId, photoId)       => api.delete(`/projects/${projectId}/photos/${photoId}`),
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // §9 — LAND ASSETS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  getLandAssets:  (params = {}) => api.get(`/projects/land-assets${qs(params)}`),
+  getLandAsset:   (id)          => api.get(`/projects/land-assets/${id}`),
+  createLandAsset:(data)        => api.post('/projects/land-assets', data),
+  updateLandAsset:(id, data)    => api.patch(`/projects/land-assets/${id}`, data),
+
+  // ── Land asset documents ──────────────────────────────────────────────────
+
+  addLandAssetDocument:    (id, data)      => api.post(`/projects/land-assets/${id}/documents`, data),
+  deleteLandAssetDocument: (id, docId)     => api.delete(`/projects/land-assets/${id}/documents/${docId}`),
+};
+
 export default api;

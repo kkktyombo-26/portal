@@ -811,7 +811,7 @@ async function runUpload() {
 
             {steps.subtitles === STATUS.DONE && (
               <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${T.navy}, ${T.navyL})`, borderRadius: 12, padding: "20px 24px", textAlign: "center" }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
+               
                 <div style={{ color: T.gold, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Service Published!</div>
                 <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginBottom: 16 }}>
                   Video is live on YouTube with chapters and subtitles.
