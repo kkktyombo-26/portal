@@ -1136,8 +1136,8 @@ export default function DashboardPage() {
       const calls = [
         /* 0 */ announcementApi.getAll(),
         /* 1 */ isFinance(user.role)      ? userApi.getStats()                                : none,
-        /* 2 */ isLeader(user.role)       ? api.get('/projects?status=active&limit=4')        : none,
-        /* 3 */ isLeader(user.role)       ? api.get('/resolutions?status=pending&limit=5')    : none,
+        /* 2 */ isLeader(user.role)       ? api.get('/projects?limit=4')        : none,
+        /* 3 */ isLeader(user.role)       ? api.get('/meetings/dashboard/open-resolutions')    : none,
         /* 4 */ memberView                ? api.get('/youtube/dashboard')                     : none,
         /* 5 */ memberView                ? groupApi.getAll()                                 : none,
         /* 6 */ memberView                ? eventApi.getAll()                                 : none,
@@ -1151,7 +1151,7 @@ export default function DashboardPage() {
 
       const ann  = get(0); if (ann)  setAnnouncements((ann.data?.data   || []).slice(0, memberView ? 5 : 6));
       const st   = get(1); if (st)   setStats(st.data?.data);
-      const proj = get(2); if (proj) setProjects(proj.data?.data  || []);
+      const proj = get(2); if (proj) setProjects(proj.data?.projects  || []);
       const res  = get(3); if (res)  setResolutions(res.data?.data || []);
       const yt   = get(4); if (yt)   setVideos((yt.data?.data?.latestVideos ?? []).slice(0, 6));
       const grp  = get(5); if (grp)  setGroups(grp.data?.data || []);
