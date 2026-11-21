@@ -766,7 +766,7 @@ export default function MeetingsPage() {
             <p className="stat-value">{scheduledCount}</p>
           </div>
           <div className="stat-card">
-            <p className="stat-label">Maazimio Wazi</p>
+            <p className="stat-label">Maazimio</p>
             <p className="stat-value" style={{ color: resSummary.overdue > 0 ? 'var(--danger)' : 'inherit' }}>
               {resSummary.total}
             </p>
@@ -841,7 +841,7 @@ export default function MeetingsPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                 <h2 className="card-title" style={{ fontSize: '1rem' }}>
-                  Maazimio Wazi
+                  Maazimio
                 </h2>
                 <div className="tabs-pill">
                   {['all', 'overdue', 'due_soon'].map(tab => (
@@ -863,7 +863,7 @@ export default function MeetingsPage() {
                   <div className="empty-state">
                     <IconCheckCircle className="empty-state-icon" style={{ color: 'var(--success)' }} />
                     <p className="empty-state-title">Yote Yamekamilika</p>
-                    <p className="empty-state-body">Hakuna maazimio wazi kwa hali uliyochagua.</p>
+                    <p className="empty-state-body">Hakuna maazimio kwa hali uliyochagua.</p>
                   </div>
                 </div>
               ) : (

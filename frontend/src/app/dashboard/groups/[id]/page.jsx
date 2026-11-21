@@ -21,7 +21,7 @@ const GROUP_TYPE_ICONS = {
 
 const MEMBER_ROLE_LABELS = {
   en: { pastor: 'Pastor', elder: 'Elder', group_leader: 'Leader', member: 'Member' },
-  sw: { pastor: 'Mchungaji', elder: 'Mzee', group_leader: 'Kiongozi', member: 'Mshirika' },
+  sw: { pastor: 'Mchungaji', elder: 'Mzee', group_leader: 'Kiongozi', member: 'Msharika' },
 };
 
 const ROLE_IN_GROUP_OPTIONS = [

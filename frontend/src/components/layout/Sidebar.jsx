@@ -7,13 +7,14 @@ import {
 } from '../../lib/auth';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 // ─── Role labels ──────────────────────────────────────────────────────────────
 const ROLE_LABELS = {
   pastor:       { en: 'Pastor',       sw: 'Mchungaji' },
   elder:        { en: 'Elder',        sw: 'Mzee'      },
   group_leader: { en: 'Group Leader', sw: 'Kiongozi'  },
-  member:       { en: 'Member',       sw: 'Mshirika'  },
+  member:       { en: 'Member',       sw: 'Msharika'  },
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -80,7 +81,6 @@ const ICONS = {
       <path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8l-1.5-1.5a1.5 1.5 0 0 0-2 2.2l3.5 3.8A6 6 0 0 0 8 21h8a6 6 0 0 0 6-6v-4a2 2 0 0 0-4 0"/>
     </svg>
   ),
-  // ── NEW: Meetings ──────────────────────────────────────────────────────────
   meetings: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -88,17 +88,28 @@ const ICONS = {
       <path d="M23 11v6M20 14h6"/>
     </svg>
   ),
-  // ── NEW: Resolutions / open action items ───────────────────────────────────
   resolutions: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 11l3 3L22 4"/>
       <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
     </svg>
   ),
+  projects: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 7h20M2 12h20M2 17h20"/>
+      <rect x="2" y="3" width="20" height="18" rx="2"/>
+      <path d="M6 7v14M12 7v14"/>
+    </svg>
+  ),
   logout: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
       <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  ),
+  chevron: (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+      <path d="M2.5 3.5L5 6L7.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
 };
@@ -121,6 +132,89 @@ function NavItem({ active, icon, label }) {
   );
 }
 
+// ─── Accordion section ────────────────────────────────────────────────────────
+function AccordionSection({ label, items, isOpen, onToggle, lang, pathname, onMobileClose }) {
+  const hasActive = items.some(item => pathname === item.href);
+
+  return (
+    <div style={{ marginBottom: '1px' }}>
+      {/* Section header / toggle */}
+      <button
+        onClick={onToggle}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          padding: '5px 20px',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          borderRadius: '4px',
+          transition: 'background 150ms',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+        aria-expanded={isOpen}
+      >
+        <span
+          className="font-sans"
+          style={{
+            fontSize: '0.6375rem',
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: hasActive ? 'var(--gold-dark)' : 'var(--text-tertiary)',
+            transition: 'color 150ms',
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            color: 'var(--text-tertiary)',
+            display: 'flex',
+            alignItems: 'center',
+            transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+            transition: 'transform 200ms ease',
+            opacity: 0.6,
+          }}
+        >
+          {ICONS.chevron}
+        </span>
+      </button>
+
+      {/* Collapsible items */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateRows: isOpen ? '1fr' : '0fr',
+          transition: 'grid-template-rows 200ms ease',
+        }}
+      >
+        <div style={{ overflow: 'hidden' }}>
+          <div style={{ paddingBottom: isOpen ? '4px' : '0' }}>
+            {items.map(item => {
+              const active = pathname === item.href;
+              const label  = lang === 'sw' ? item.labelSw : item.labelEn;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onMobileClose}
+                  className="block no-underline"
+                >
+                  <NavItem active={active} icon={item.icon} label={label} />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 export default function Sidebar({ mobileOpen, onMobileClose }) {
   const { user, logout, lang, switchLang } = useAuth();
@@ -129,17 +223,18 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
 
   if (!user) return null;
 
-  const isActive = (href) => pathname === href;
-
   const canManagePledges = (role) =>
     ['pastor', 'elder', 'group_leader'].includes(role);
 
-  // pastor + elder can see the cross-group open-resolutions view
   const canManageResolutions = (role) =>
     ['pastor', 'elder'].includes(role);
 
+  const canManageProjects = (role) =>
+    role === 'pastor';
+
   const navSections = [
     {
+      key: 'overview',
       labelEn: 'Overview', labelSw: 'Jumla',
       items: [
         { href: '/dashboard',         labelEn: 'Dashboard', labelSw: 'Dashibodi', icon: ICONS.dashboard },
@@ -147,7 +242,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       ],
     },
     {
-      labelEn: 'People', labelSw: 'Watu',
+      key: 'people',
+      labelEn: 'Parish Members', labelSw: 'Washarika',
       items: [
         canManageMembers(user.role) && { href: '/dashboard/members',         labelEn: 'Members',          labelSw: 'Washarika',   icon: ICONS.members },
         canManageMembers(user.role) && { href: '/dashboard/pending-members', labelEn: 'Pending Approval', labelSw: 'Wanaosubiri', icon: ICONS.pending },
@@ -155,33 +251,39 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       ].filter(Boolean),
     },
     {
+      key: 'communication',
       labelEn: 'Communication', labelSw: 'Mawasiliano',
       items: [
         { href: '/dashboard/announcements', labelEn: 'Announcements', labelSw: 'Matangazo', icon: ICONS.announcements },
         { href: '/dashboard/events',        labelEn: 'Schedule',      labelSw: 'Ratiba',    icon: ICONS.schedule     },
       ],
     },
-    // ── NEW: Church governance ────────────────────────────────────────────────
     {
-      labelEn: 'Church', labelSw: 'Kanisa',
+      key: 'church',
+      labelEn: 'Parish', labelSw: 'Usharika',
       items: [
-        // All roles: see meetings scoped to what they can access
         {
           href:    '/dashboard/meetings',
           labelEn: 'Meetings',
           labelSw: 'Vikao',
           icon:    ICONS.meetings,
         },
-        // pastor / elder only: cross-group open-resolutions accountability view
         canManageResolutions(user.role) && {
           href:    '/dashboard/meetings/resolutions',
           labelEn: 'Open Resolutions',
-          labelSw: 'Maazimio Wazi',
+          labelSw: 'Maazimio',
           icon:    ICONS.resolutions,
+        },
+        canManageProjects(user.role) && {
+          href:    '/dashboard/projects',
+          labelEn: 'Projects and Assets',
+          labelSw: 'Miradi na Mali',
+          icon:    ICONS.projects,
         },
       ].filter(Boolean),
     },
     {
+      key: 'finance',
       labelEn: 'Finance', labelSw: 'Fedha',
       items: [
         canManagePledges(user.role) && {
@@ -199,6 +301,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       ].filter(Boolean),
     },
     {
+      key: 'it',
       labelEn: 'IT Desk', labelSw: 'Dawati la IT',
       items: [
         canBroadcast(user.role)         && { href: '/dashboard/it',             labelEn: 'IT Dashboard',   labelSw: 'Dashibodi ya IT',    icon: ICONS.it     },
@@ -207,12 +310,40 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       ].filter(Boolean),
     },
     {
+      key: 'resources',
       labelEn: 'Resources', labelSw: 'Rasilimali',
       items: [
         { href: '/dashboard/forms', labelEn: 'Forms', labelSw: 'Fomu', icon: ICONS.forms },
       ],
     },
   ].filter(s => s.items.length > 0);
+
+  // Determine which section contains the active route (auto-open it)
+  const activeSection = navSections.find(s => s.items.some(i => i.href === pathname));
+
+  const [openSections, setOpenSections] = useState(() => {
+    const initial = {};
+    navSections.forEach(s => {
+      // Open the active section by default; collapse everything else
+      initial[s.key] = s.items.some(i => i.href === pathname);
+    });
+    // If nothing matched (e.g. /dashboard exactly), open 'overview'
+    if (!activeSection) initial['overview'] = true;
+    return initial;
+  });
+
+  // When the route changes (navigation), ensure the matching section opens
+  useEffect(() => {
+    const matched = navSections.find(s => s.items.some(i => i.href === pathname));
+    if (matched) {
+      setOpenSections(prev => ({ ...prev, [matched.key]: true }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  const toggleSection = (key) => {
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const initials = user.full_name
     ?.split(' ')
@@ -223,10 +354,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
 
   return (
     <>
-      {/*
-        Mobile scrim — sits behind the sidebar (z-39) but above page
-        content. Only visible when mobileOpen is true on small screens.
-      */}
       {mobileOpen && (
         <div
           className="fixed inset-0 md:hidden animate-fade-in"
@@ -235,24 +362,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         />
       )}
 
-      {/*
-        The sidebar itself.
-
-        Desktop (md+):
-          - fixed, starts below the topbar, always visible (translate-x-0).
-          - z-30 so it sits under modals/toasts but above page content.
-
-        Mobile (<md):
-          - fixed, starts at top:0 (fills screen top-to-bottom like a drawer).
-          - slides in/out via translate-x; z-39 sits above the scrim.
-          - width: 280px so it doesn't cover the full screen.
-      */}
       <aside
         className={[
-          // shared
           'sidebar-dashboard',
           'transition-transform duration-200 ease-out',
-          // mobile: slide in from left; desktop: always visible
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
           'md:translate-x-0',
         ].join(' ')}
@@ -283,7 +396,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
               </div>
             </div>
 
-            {/* Close button — visible on mobile only */}
             <button
               onClick={onMobileClose}
               className="md:hidden btn btn-ghost btn-icon btn-sm"
@@ -333,31 +445,21 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           </div>
         </Link>
 
-        {/* ── Navigation ────────────────────────────────────────── */}
+        {/* ── Navigation (accordion) ────────────────────────────── */}
         <nav className="flex-1 overflow-y-auto py-3 scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-border scrollbar-track-transparent">
-          {navSections.map((section, si) => {
+          {navSections.map((section) => {
             const sectionLabel = lang === 'sw' ? section.labelSw : section.labelEn;
             return (
-              <div key={sectionLabel} className={si > 0 ? 'mt-3' : ''}>
-                <p className="nav-section-label" style={{ color: 'var(--text-tertiary)' }}>
-                  {sectionLabel}
-                </p>
-
-                {section.items.map(item => {
-                  const active = isActive(item.href);
-                  const label  = lang === 'sw' ? item.labelSw : item.labelEn;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={onMobileClose}
-                      className="block no-underline"
-                    >
-                      <NavItem active={active} icon={item.icon} label={label} />
-                    </Link>
-                  );
-                })}
-              </div>
+              <AccordionSection
+                key={section.key}
+                label={sectionLabel}
+                items={section.items}
+                isOpen={!!openSections[section.key]}
+                onToggle={() => toggleSection(section.key)}
+                lang={lang}
+                pathname={pathname}
+                onMobileClose={onMobileClose}
+              />
             );
           })}
         </nav>

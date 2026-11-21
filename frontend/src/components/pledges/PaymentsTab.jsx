@@ -39,7 +39,7 @@
  *  py_err_delete           Delete failed. / Kufuta kumeshindwa.
  *  py_confirm_delete       Delete this payment record? This cannot be undone. / Futa rekodi hii ya malipo? Haitaweza kurudishwa.
  *  -- Table headers --
- *  py_col_member           Member / Mshirika
+ *  py_col_member           Member / Msharika
  *  py_col_campaign         Campaign / Kampeni
  *  py_col_amount           Amount / Kiasi
  *  py_col_date             Date / Tarehe

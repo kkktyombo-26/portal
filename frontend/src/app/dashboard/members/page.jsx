@@ -958,7 +958,7 @@ export default function MembersPage() {
           user={user}
           lang={lang}
           onClose={() => setEditUser(null)}
-          onSaved={() => { setEditUser(null); fetchMembers(); showToast(lang === 'sw' ? 'Mshirika amesasishwa' : 'Member updated'); }}
+          onSaved={() => { setEditUser(null); fetchMembers(); showToast(lang === 'sw' ? 'Msharika amesasishwa' : 'Member updated'); }}
         />
       )}
 
