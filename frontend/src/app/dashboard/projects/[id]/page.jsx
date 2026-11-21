@@ -30,8 +30,8 @@ import {
   ChevronRight, Download, Eye, Trash2, MoreHorizontal,
 } from 'lucide-react';
 
-import { projectApi } from '../../lib/api';
-import { useAuth } from '../../hooks/useAuth';
+import { projectApi } from '../../../../lib/api';
+import { useAuth } from '../../../../hooks/useAuth';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
