@@ -699,7 +699,8 @@ function DocumentsTab({ projectId, canEdit }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function ProjectDetailPage({ projectId }) {
+export default function ProjectDetailPage({ params }) {
+  const projectId = params.id;
   const router       = useRouter();
   const { user }     = useAuth();
   const [project, setProject]   = useState(null);
