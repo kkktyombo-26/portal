@@ -201,38 +201,124 @@ exports.deleteUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ─── GET /api/users/stats  (pastor only) ─────────────────────────────────────
+// Drop-in replacement for the existing exports.getStats in userController.js.
+//
+// Added fields (all new DB queries run in parallel via Promise.all):
+//   men              — active users with gender = 'Male'
+//   women            — active users with gender = 'Female'
+//   youth            — active users aged 15–35 (date_of_birth present)
+//   children         — active users aged < 15
+//   elders           — active users aged > 60
+//   activeContracts  — rows in project_contracts where status = 'active'
+//   activeProjects   — rows in projects where status = 'active'
+//
+// Existing fields preserved unchanged:
+//   totalMembers, activeMembers, totalGroups,
+//   recentAnnouncements, transferredMembers, deceasedMembers
+
 exports.getStats = async (req, res, next) => {
   try {
     if (req.user.role !== 'pastor')
       return res.status(403).json({ success: false, message: 'Access denied.' });
 
-    const [[total]]         = await db.execute('SELECT COUNT(*) AS count FROM users');
-    const [[active]]        = await db.execute('SELECT COUNT(*) AS count FROM users WHERE is_active = 1');
-    const [[groups]]        = await db.execute('SELECT COUNT(*) AS count FROM `groups`');
-    const [[announcements]] = await db.execute(
-      'SELECT COUNT(*) AS count FROM announcements WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
-    );
-    const [[transferred]] = await db.execute(
-      "SELECT COUNT(*) AS count FROM users WHERE member_status = 'amehamia'"
-    );
-    const [[deceased]] = await db.execute(
-      "SELECT COUNT(*) AS count FROM users WHERE member_status = 'amefariki'"
-    );
+    // Run all queries concurrently — none depend on each other
+    const [
+      [totalRow],
+      [activeRow],
+      [groupsRow],
+      [annRow],
+      [transferredRow],
+      [deceasedRow],
+      [menRow],
+      [womenRow],
+      [youthRow],
+      [childrenRow],
+      [eldersRow],
+      [contractsRow],
+      [projectsRow],
+    ] = await Promise.all([
+
+      // ── existing ──────────────────────────────────────────────────────────
+      db.execute('SELECT COUNT(*) AS count FROM users'),
+      db.execute('SELECT COUNT(*) AS count FROM users WHERE is_active = 1'),
+      db.execute('SELECT COUNT(*) AS count FROM `groups`'),
+      db.execute(
+        'SELECT COUNT(*) AS count FROM announcements WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)'
+      ),
+      db.execute("SELECT COUNT(*) AS count FROM users WHERE member_status = 'amehamia'"),
+      db.execute("SELECT COUNT(*) AS count FROM users WHERE member_status = 'amefariki'"),
+
+      // ── gender (active members only) ──────────────────────────────────────
+      db.execute(
+        "SELECT COUNT(*) AS count FROM users WHERE is_active = 1 AND gender = 'Male'"
+      ),
+      db.execute(
+        "SELECT COUNT(*) AS count FROM users WHERE is_active = 1 AND gender = 'Female'"
+      ),
+
+      // ── age groups (active, date_of_birth present) ────────────────────────
+      // Youth: 15–35 inclusive
+      db.execute(`
+        SELECT COUNT(*) AS count
+        FROM users
+        WHERE is_active = 1
+          AND date_of_birth IS NOT NULL
+          AND TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 15 AND 35
+      `),
+      // Children: under 15
+      db.execute(`
+        SELECT COUNT(*) AS count
+        FROM users
+        WHERE is_active = 1
+          AND date_of_birth IS NOT NULL
+          AND TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) < 15
+      `),
+      // Elders: over 60
+      db.execute(`
+        SELECT COUNT(*) AS count
+        FROM users
+        WHERE is_active = 1
+          AND date_of_birth IS NOT NULL
+          AND TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) > 60
+      `),
+
+      // ── projects (safe: returns [[{count:0}]] if table missing) ──────────
+      db.execute(
+        "SELECT COUNT(*) AS count FROM project_contracts WHERE status = 'active'"
+      ).catch(() => [[{ count: 0 }]]),
+      db.execute(
+        "SELECT COUNT(*) AS count FROM projects WHERE status = 'active'"
+      ).catch(() => [[{ count: 0 }]]),
+    ]);
 
     res.json({
       success: true,
       data: {
-        totalMembers:        total.count,
-        activeMembers:       active.count,
-        totalGroups:         groups.count,
-        recentAnnouncements: announcements.count,
-        transferredMembers:  transferred.count,
-        deceasedMembers:     deceased.count,
+        // ── existing fields (unchanged) ──────────────────────────────────
+        totalMembers:        totalRow[0].count,
+        activeMembers:       activeRow[0].count,
+        totalGroups:         groupsRow[0].count,
+        recentAnnouncements: annRow[0].count,
+        transferredMembers:  transferredRow[0].count,
+        deceasedMembers:     deceasedRow[0].count,
+
+        // ── gender ───────────────────────────────────────────────────────
+        men:   menRow[0].count,
+        women: womenRow[0].count,
+
+        // ── age groups ───────────────────────────────────────────────────
+        youth:    youthRow[0].count,
+        children: childrenRow[0].count,
+        elders:   eldersRow[0].count,
+
+        // ── projects ─────────────────────────────────────────────────────
+        activeContracts: contractsRow[0].count,
+        activeProjects:  projectsRow[0].count,
       },
     });
   } catch (err) { next(err); }
 };
-
 
 // ─── Dependants (Feature 5) ──────────────────────────────────────────────────
 
