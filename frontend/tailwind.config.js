@@ -3,7 +3,7 @@
 /*
  * ============================================================
  * KKKT DMP Yombo — Tailwind Config
- * Two-color palette: Stone #44403C · Amber #D97706
+ * Two-color palette: Plum #403349 · Gold #A8761D
  *
  * LAYOUT PHILOSOPHY
  * ─────────────────
@@ -115,16 +115,16 @@ module.exports = {
       pill: '9999px',
     },
 
-    // ── Two-color palette: Warm Stone + Amber ─────────────────────────────
+    // ── Two-color palette: Liturgical Plum + Gold ─────────────────────────────
     //
     // SURFACE CONVENTION — mirrors the layout philosophy above:
-    //   neutral.50  (#F5F4F0) = --surface-page  — the single root bg for all
+    //   neutral.50  (#F9F5F1) = --surface-page  — the single root bg for all
     //                           content areas; warm parchment, not cool gray.
     //   white       (#FFFFFF) = --surface-card  — interactive/structured
     //                           components only (forms, tables, stat panels).
     //                           Must not be nested inside one another.
-    //   navy.950    (#1C1917) = sidebar chrome  — navigation only.
-    //   navy.900    (#292524) = page-header chrome — page identity only.
+    //   navy.950    (#241330) = sidebar chrome  — navigation only.
+    //   navy.900    (#2E1A3D) = page-header chrome — page identity only.
     //
     // Do not introduce a third content surface (panel, inset, etc.).
     //
@@ -134,77 +134,77 @@ module.exports = {
       white:       '#FFFFFF',  /* --surface-card: interactive components only */
       black:       '#000000',
 
-      // Primary — Warm Stone (replaces cool navy)
-      // The component's chrome (sidebar, topbar) uses deep warm-stone tones.
+      // Primary — Liturgical Plum (replaces cool navy)
+      // Chrome (sidebar, page-header) uses the deepest plum tones.
       navy: {
-        950: '#1C1917',  /* sidebar bg — deep warm stone, near-black */
-        900: '#292524',  /* page-header bg — warm dark stone */
-        800: '#3D3835',  /* strong text on dark surfaces */
-        700: '#57534E',  /* stone-700: secondary on dark */
-        600: '#78716C',  /* stone-600: muted on dark */
-        500: '#A8A29E',  /* stone-400 equivalent: placeholder on dark */
-        400: '#C7C2BE',  /* light stone for borders on dark */
-        300: '#D6D3D1',  /* stone-300 */
-        200: '#E7E5E4',  /* stone-200: border on light surfaces */
-        100: '#F5F5F4',  /* stone-100: subtle dividers */
-        50:  '#FAFAF9',  /* stone-50: near-white tint */
+        950: '#241330',  /* sidebar bg — deepest plum, near-black */
+        900: '#2E1A3D',  /* page-header bg — warm dark plum */
+        800: '#432A56',  /* strong text on dark surfaces */
+        700: '#5A4C63',  /* plum-700: secondary on dark */
+        600: '#7B6E84',  /* plum-600: muted on dark */
+        500: '#A49BAB',  /* plum-400 equivalent: placeholder on dark */
+        400: '#C8C0CE',  /* light plum for borders on dark */
+        300: '#D3CBD8',  /* plum-300 */
+        200: '#E6E0EA',  /* plum-200: border on light surfaces */
+        100: '#F2EEF5',  /* plum-100: subtle dividers */
+        50:  '#FAF8FB',  /* plum-50: near-white tint */
       },
 
-      // Accent — Amber (replaces warm gold; aligns exactly with component)
-      // amber-500 (#F59E0B) is the interactive anchor; amber-600 for hover.
+      // Accent — Antique altar gold (ornament, rules, highlights)
+      // gold-500 (#C9962F) is the ornamental anchor; plum-700 carries interactive fills.
       gold: {
-        950: '#451A03',  /* amber-950 */
-        900: '#78350F',  /* amber-900 */
-        800: '#92400E',  /* amber-800 */
-        700: '#B45309',  /* amber-700 — warning-adjacent, strong cta */
-        600: '#D97706',  /* amber-600 — hover state */
-        500: '#F59E0B',  /* amber-500 — brand accent, primary interactive */
-        400: '#FBBF24',  /* amber-400 — focus ring, highlights */
-        300: '#FCD34D',  /* amber-300 */
-        200: '#FDE68A',  /* amber-200 — soft tints */
-        100: '#FEF3C7',  /* amber-100 — very soft bg tint */
-        50:  '#FFFBEB',  /* amber-50 — icon bg, badge bg */
+        950: '#2E1D05',  /* gold-950 */
+        900: '#4A2F09',  /* gold-900 */
+        800: '#5E3C0C',  /* gold-800 */
+        700: '#8A5A14',  /* gold-700 — warning-adjacent, strong cta */
+        600: '#A8761D',  /* gold-600 — hover state */
+        500: '#C9962F',  /* gold-500 — brand accent, primary interactive */
+        400: '#DDB154',  /* gold-400 — focus ring, highlights */
+        300: '#E9C87E',  /* gold-300 */
+        200: '#F2DEAD',  /* gold-200 — soft tints */
+        100: '#F8EDD2',  /* gold-100 — very soft bg tint */
+        50:  '#FDF8EC',  /* gold-50 — icon bg, badge bg */
       },
 
-      // Pure neutrals — warm-tinted stone (replaces cool-hued neutral)
-      // neutral.50 is the exact page bg from the component (#F5F4F0).
+      // Pure neutrals — warm-tinted plum (replaces cool-hued neutral)
+      // neutral.50 is the exact page bg from the component (#F9F5F1).
       neutral: {
-        950: '#1C1917',  /* stone-950 */
-        900: '#292524',  /* stone-900 */
-        800: '#44403C',  /* stone-800 — primary text */
-        700: '#57534E',  /* stone-700 — secondary text */
-        600: '#78716C',  /* stone-600 — muted text */
-        500: '#A8A29E',  /* stone-500 — placeholder */
-        400: '#A8A29E',  /* stone-400 */
-        300: '#D6D3D1',  /* stone-300 — borders */
-        200: '#E7E5E4',  /* stone-200 — subtle borders */
-        100: '#F5F5F4',  /* stone-100 — dividers */
-        50:  '#F5F4F0',  /* page bg — warm parchment (component's bg-[#F5F4F0]) */
+        950: '#241330',  /* plum-950 */
+        900: '#2E1A3D',  /* plum-900 */
+        800: '#403349',  /* plum-800 — primary text */
+        700: '#5A4C63',  /* plum-700 — secondary text */
+        600: '#7B6E84',  /* plum-600 — muted text */
+        500: '#A49BAB',  /* plum-500 — placeholder */
+        400: '#A49BAB',  /* plum-400 */
+        300: '#D3CBD8',  /* plum-300 — borders */
+        200: '#E6E0EA',  /* plum-200 — subtle borders */
+        100: '#F2EEF5',  /* plum-100 — dividers */
+        50:  '#F9F5F1',  /* page bg — warm parchment (component's bg-[#F9F5F1]) */
       },
 
       // Semantic — shifted to warmer tones to avoid cool-palette clash
-      success: '#15803D',  /* green-700 — warm, not teal */
-      warning: '#D97706',  /* amber-600 — aligns with gold accent */
-      danger:  '#DC2626',  /* red-600 */
-      info:    '#0369A1',  /* sky-700 — the one cool note, for information only */
+      success: '#2F7D52',  /* forest green — warm, not teal */
+      warning: '#A8761D',  /* gold-600 — aligns with gold accent */
+      danger:  '#B3362F',  /* brick red */
+      info:    '#4C4FA3',  /* indigo — the one cool note, for information only */
     },
 
-    // ── Shadows (stone-tinted, not navy-tinted) ────────────────────────────
+    // ── Shadows (plum-tinted, not navy-tinted) ────────────────────────────
     boxShadow: {
       none: 'none',
-      xs:   '0 1px 2px 0 rgba(68,64,60,.05)',
-      sm:   '0 1px 3px 0 rgba(68,64,60,.08), 0 1px 2px -1px rgba(68,64,60,.05)',
-      DEFAULT:'0 4px 6px -1px rgba(68,64,60,.08), 0 2px 4px -2px rgba(68,64,60,.05)',
-      md:   '0 6px 12px -2px rgba(68,64,60,.10), 0 3px 6px -3px rgba(68,64,60,.06)',
-      lg:   '0 10px 24px -4px rgba(68,64,60,.12), 0 4px 8px -4px rgba(68,64,60,.08)',
-      xl:   '0 20px 40px -6px rgba(68,64,60,.14), 0 8px 16px -6px rgba(68,64,60,.08)',
-      '2xl':'0 32px 64px -8px rgba(68,64,60,.18)',
-      inner:'inset 0 2px 4px 0 rgba(68,64,60,.06)',
-      // Focus / brand rings use amber (matches component's ring-amber-400/40)
-      'gold-sm':'0 0 0 2px rgba(245,158,11,.25)',
-      'gold-md':'0 0 0 3px rgba(245,158,11,.35)',
-      'navy-sm':'0 0 0 2px rgba(68,64,60,.20)',
-      'focus':  '0 0 0 3px rgba(245,158,11,.40)',
+      xs:   '0 1px 2px 0 rgba(64,51,73,.05)',
+      sm:   '0 1px 3px 0 rgba(64,51,73,.08), 0 1px 2px -1px rgba(64,51,73,.05)',
+      DEFAULT:'0 4px 6px -1px rgba(64,51,73,.08), 0 2px 4px -2px rgba(64,51,73,.05)',
+      md:   '0 6px 12px -2px rgba(64,51,73,.10), 0 3px 6px -3px rgba(64,51,73,.06)',
+      lg:   '0 10px 24px -4px rgba(64,51,73,.12), 0 4px 8px -4px rgba(64,51,73,.08)',
+      xl:   '0 20px 40px -6px rgba(64,51,73,.14), 0 8px 16px -6px rgba(64,51,73,.08)',
+      '2xl':'0 32px 64px -8px rgba(64,51,73,.18)',
+      inner:'inset 0 2px 4px 0 rgba(64,51,73,.06)',
+      // Focus / brand rings use gold (matches component's ring-gold-400/40)
+      'gold-sm':'0 0 0 2px rgba(201,150,47,.25)',
+      'gold-md':'0 0 0 3px rgba(201,150,47,.35)',
+      'navy-sm':'0 0 0 2px rgba(64,51,73,.20)',
+      'focus':  '0 0 0 3px rgba(122,90,144,.38)',
     },
 
     // ── Z-index scale ──────────────────────────────────────────────────────
@@ -266,10 +266,10 @@ module.exports = {
         from: { backgroundPosition: '-400px 0' },
         to:   { backgroundPosition: '400px 0' },
       },
-      // pulse-gold now pulses amber to match component's amber-400 focus rings
+      // pulse-gold pulses antique gold — ornamental emphasis only
       'pulse-gold': {
-        '0%,100%': { boxShadow: '0 0 0 0 rgba(245,158,11,.35)' },
-        '50%':     { boxShadow: '0 0 0 6px rgba(245,158,11,0)' },
+        '0%,100%': { boxShadow: '0 0 0 0 rgba(201,150,47,.35)' },
+        '50%':     { boxShadow: '0 0 0 6px rgba(201,150,47,0)' },
       },
       'spin-slow': {
         to: { transform: 'rotate(360deg)' },
@@ -278,6 +278,10 @@ module.exports = {
 
     animation: {
       none:        'none',
+      // Restores the `animate-spin` utility. `theme.animation` replaces
+      // Tailwind's defaults rather than extending them, so without this key
+      // `animate-spin` compiles to nothing and spinners sit frozen.
+      spin:        'spin-slow 0.8s linear infinite',
       'fade-in':   'fade-in 200ms ease-out both',
       'slide-up':  'slide-up 250ms ease-out both',
       'slide-down':'slide-down 250ms ease-out both',
@@ -324,15 +328,15 @@ module.exports = {
       },
 
       backgroundImage: {
-        // Stone-tinted grid/dot patterns (replaces navy-tinted)
-        'grid-navy':   "url(\"data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v1H0zM0 0h1v40H0z' fill='%2344403C' fill-opacity='.05'/%3E%3C/svg%3E\")",
-        'cross-navy':  "url(\"data:image/svg+xml,%3Csvg width='32' height='32' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M14 0h4v32h-4zM0 14h32v4H0z' fill='%2344403C' fill-opacity='.04'/%3E%3C/svg%3E\")",
-        'dots-navy':   "url(\"data:image/svg+xml,%3Csvg width='20' height='20' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='2' cy='2' r='1.5' fill='%2344403C' fill-opacity='.06'/%3E%3C/svg%3E\")",
-        // Dark hero gradient — deep warm stone instead of navy
-        'hero-dark':   'linear-gradient(160deg, #1C1917 0%, #292524 55%, #3D3835 100%)',
-        'hero-accent': 'linear-gradient(160deg, #292524 0%, #3D3835 60%, #57534E 100%)',
-        // Gold bar now uses amber ramp
-        'gold-bar':    'linear-gradient(90deg, #D97706 0%, #FCD34D 50%, #D97706 100%)',
+        // Plum-tinted grid/dot patterns (replaces navy-tinted)
+        'grid-navy':   "url(\"data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v1H0zM0 0h1v40H0z' fill='%23403349' fill-opacity='.05'/%3E%3C/svg%3E\")",
+        'cross-navy':  "url(\"data:image/svg+xml,%3Csvg width='32' height='32' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M14 0h4v32h-4zM0 14h32v4H0z' fill='%23403349' fill-opacity='.04'/%3E%3C/svg%3E\")",
+        'dots-navy':   "url(\"data:image/svg+xml,%3Csvg width='20' height='20' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='2' cy='2' r='1.5' fill='%23403349' fill-opacity='.06'/%3E%3C/svg%3E\")",
+        // Dark hero gradient — deep plum ramp
+        'hero-dark':   'linear-gradient(160deg, #241330 0%, #2E1A3D 55%, #432A56 100%)',
+        'hero-accent': 'linear-gradient(160deg, #2E1A3D 0%, #432A56 60%, #5A4C63 100%)',
+        // Gold bar now uses gold ramp
+        'gold-bar':    'linear-gradient(90deg, #A8761D 0%, #E9C87E 50%, #A8761D 100%)',
         'shimmer-bg':  'linear-gradient(90deg, transparent 0%, rgba(255,255,255,.06) 50%, transparent 100%)',
       },
     },

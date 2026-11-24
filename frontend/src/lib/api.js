@@ -479,4 +479,28 @@ export const projectApi = {
   deleteLandAssetDocument: (id, docId)     => api.delete(`/projects/land-assets/${id}/documents/${docId}`),
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Sidebar badge counts
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const dashboardApi = {
+  /**
+   * GET /api/dashboard/counts
+   * Actionable counts for the sidebar badges. The server returns only the
+   * keys the caller's role is entitled to, so a member never receives
+   * pendingMembers at all.
+   *
+   * @returns {Promise<{ data: { success: boolean, counts: {
+   *   pendingMembers?: number,
+   *   newAnnouncements?: number,
+   *   upcomingEvents?: number,
+   *   upcomingMeetings?: number,
+   *   openResolutions?: number,
+   *   overdueResolutions?: number,
+   *   pendingPledgePayments?: number,
+   * } } }>}
+   */
+  getCounts: () => api.get('/dashboard/counts'),
+};
+
 export default api;

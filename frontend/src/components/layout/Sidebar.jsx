@@ -1,6 +1,7 @@
 'use client';
 import { useAuth } from '../../hooks/useAuth';
 import { useTranslation } from '../../lib/i18n';
+import { useSidebarCounts } from '../../hooks/useSidebarCounts';
 import {
   canManageMembers, canManageGroups, canBroadcast,
   canManageContent, canManageSocialMedia,
@@ -114,20 +115,58 @@ const ICONS = {
   ),
 };
 
+// ─── Count badge ──────────────────────────────────────────────────────────────
+// Renders nothing at zero — a badge reading "0" is worse than no badge.
+// `urgent` is for counts that mean someone is waiting (approvals to action,
+// payments to confirm, resolutions past their deadline).
+function Badge({ count, urgent = false, title }) {
+  if (!count || count < 1) return null;
+
+  const label = count > 99 ? '99+' : String(count);
+
+  return (
+    <span
+      title={title}
+      aria-label={title ? `${label} ${title}` : undefined}
+      style={{
+        marginLeft: 'auto',
+        flexShrink: 0,
+        minWidth: '18px',
+        height: '18px',
+        padding: '0 5px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: '9px',
+        fontSize: '0.625rem',
+        fontWeight: 700,
+        lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: '0.01em',
+        background: urgent ? 'var(--danger)'     : 'rgba(91,60,112,.12)',
+        color:      urgent ? '#fff'              : 'var(--navy)',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 // ─── Nav item ─────────────────────────────────────────────────────────────────
-function NavItem({ active, icon, label }) {
+function NavItem({ active, icon, label, badge, urgent, badgeTitle }) {
   return (
     <span
       className={`nav-item ${active ? 'active' : ''}`}
       style={{
         color: active ? 'var(--navy)' : 'var(--text-secondary)',
-        background: active ? 'rgba(196,154,42,.15)' : undefined,
+        background: active ? 'rgba(91,60,112,.10)' : undefined,
       }}
     >
       <span className="nav-item-icon" style={{ opacity: active ? 1 : 0.55 }}>
         {icon}
       </span>
       <span className="font-sans text-sm">{label}</span>
+      <Badge count={badge} urgent={urgent} title={badgeTitle} />
     </span>
   );
 }
@@ -135,6 +174,11 @@ function NavItem({ active, icon, label }) {
 // ─── Accordion section ────────────────────────────────────────────────────────
 function AccordionSection({ label, items, isOpen, onToggle, lang, pathname, onMobileClose }) {
   const hasActive = items.some(item => pathname === item.href);
+
+  // A badge inside a collapsed section is invisible, so roll the section's
+  // counts up onto its header and show them while it's closed.
+  const rollup       = items.reduce((sum, i) => sum + (i.badge || 0), 0);
+  const rollupUrgent = items.some(i => i.urgent && (i.badge || 0) > 0);
 
   return (
     <div style={{ marginBottom: '1px' }}>
@@ -145,6 +189,7 @@ function AccordionSection({ label, items, isOpen, onToggle, lang, pathname, onMo
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: '8px',
           width: '100%',
           padding: '5px 20px',
           background: 'none',
@@ -153,7 +198,7 @@ function AccordionSection({ label, items, isOpen, onToggle, lang, pathname, onMo
           borderRadius: '4px',
           transition: 'background 150ms',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(91,60,112,0.05)'; }}
         onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
         aria-expanded={isOpen}
       >
@@ -170,17 +215,21 @@ function AccordionSection({ label, items, isOpen, onToggle, lang, pathname, onMo
         >
           {label}
         </span>
-        <span
-          style={{
-            color: 'var(--text-tertiary)',
-            display: 'flex',
-            alignItems: 'center',
-            transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
-            transition: 'transform 200ms ease',
-            opacity: 0.6,
-          }}
-        >
-          {ICONS.chevron}
+
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+          {!isOpen && <Badge count={rollup} urgent={rollupUrgent} />}
+          <span
+            style={{
+              color: 'var(--text-tertiary)',
+              display: 'flex',
+              alignItems: 'center',
+              transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+              transition: 'transform 200ms ease',
+              opacity: 0.6,
+            }}
+          >
+            {ICONS.chevron}
+          </span>
         </span>
       </button>
 
@@ -204,7 +253,14 @@ function AccordionSection({ label, items, isOpen, onToggle, lang, pathname, onMo
                   onClick={onMobileClose}
                   className="block no-underline"
                 >
-                  <NavItem active={active} icon={item.icon} label={label} />
+                  <NavItem
+                    active={active}
+                    icon={item.icon}
+                    label={label}
+                    badge={item.badge}
+                    urgent={item.urgent}
+                    badgeTitle={lang === 'sw' ? item.badgeTitleSw : item.badgeTitleEn}
+                  />
                 </Link>
               );
             })}
@@ -220,6 +276,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
   const { user, logout, lang, switchLang } = useAuth();
   const { t } = useTranslation(lang);
   const pathname = usePathname();
+
+  // Hooks must run unconditionally, so this sits above the `!user` return.
+  const { counts } = useSidebarCounts({ enabled: !!user, pollMs: 60000 });
 
   if (!user) return null;
 
@@ -246,7 +305,16 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       labelEn: 'Parish Members', labelSw: 'Washarika',
       items: [
         canManageMembers(user.role) && { href: '/dashboard/members',         labelEn: 'Members',          labelSw: 'Washarika',   icon: ICONS.members },
-        canManageMembers(user.role) && { href: '/dashboard/pending-members', labelEn: 'Pending Approval', labelSw: 'Wanaosubiri', icon: ICONS.pending },
+        canManageMembers(user.role) && {
+          href:    '/dashboard/pending-members',
+          labelEn: 'Pending Approval',
+          labelSw: 'Wanaosubiri',
+          icon:    ICONS.pending,
+          badge:   counts.pendingMembers,
+          urgent:  true,
+          badgeTitleEn: 'awaiting approval',
+          badgeTitleSw: 'wanaosubiri kuidhinishwa',
+        },
         canManageGroups(user.role)  && { href: '/dashboard/groups',          labelEn: 'Groups',           labelSw: 'Vikundi',     icon: ICONS.groups  },
       ].filter(Boolean),
     },
@@ -254,8 +322,24 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       key: 'communication',
       labelEn: 'Communication', labelSw: 'Mawasiliano',
       items: [
-        { href: '/dashboard/announcements', labelEn: 'Announcements', labelSw: 'Matangazo', icon: ICONS.announcements },
-        { href: '/dashboard/events',        labelEn: 'Schedule',      labelSw: 'Ratiba',    icon: ICONS.schedule     },
+        {
+          href:    '/dashboard/announcements',
+          labelEn: 'Announcements',
+          labelSw: 'Matangazo',
+          icon:    ICONS.announcements,
+          badge:   counts.newAnnouncements,
+          badgeTitleEn: 'posted in the last 7 days',
+          badgeTitleSw: 'yaliyowekwa siku 7 zilizopita',
+        },
+        {
+          href:    '/dashboard/events',
+          labelEn: 'Schedule',
+          labelSw: 'Ratiba',
+          icon:    ICONS.schedule,
+          badge:   counts.upcomingEvents,
+          badgeTitleEn: 'upcoming',
+          badgeTitleSw: 'zinazokuja',
+        },
       ],
     },
     {
@@ -267,12 +351,20 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           labelEn: 'Meetings',
           labelSw: 'Vikao',
           icon:    ICONS.meetings,
+          badge:   counts.upcomingMeetings,
+          badgeTitleEn: 'scheduled',
+          badgeTitleSw: 'vilivyopangwa',
         },
         canManageResolutions(user.role) && {
           href:    '/dashboard/meetings/resolutions',
           labelEn: 'Open Resolutions',
           labelSw: 'Maazimio',
           icon:    ICONS.resolutions,
+          badge:   counts.openResolutions,
+          // Red only when something has actually blown its deadline.
+          urgent:  (counts.overdueResolutions || 0) > 0,
+          badgeTitleEn: 'still open',
+          badgeTitleSw: 'ambayo hayajakamilika',
         },
         canManageProjects(user.role) && {
           href:    '/dashboard/projects',
@@ -291,6 +383,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
           labelEn: 'Pledges',
           labelSw: 'Ahadi Washarika',
           icon:    ICONS.pledges,
+          badge:   counts.pendingPledgePayments,
+          urgent:  true,
+          badgeTitleEn: 'payments to confirm',
+          badgeTitleSw: 'malipo yanayosubiri kuthibitishwa',
         },
         {
           href:    '/dashboard/my-pledges',
@@ -357,7 +453,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       {mobileOpen && (
         <div
           className="fixed inset-0 md:hidden animate-fade-in"
-          style={{ zIndex: 38, background: 'rgba(9,9,15,0.50)', backdropFilter: 'blur(4px)' }}
+          style={{ zIndex: 38, background: 'rgba(36,19,48,0.55)', backdropFilter: 'blur(4px)' }}
           onClick={onMobileClose}
         />
       )}

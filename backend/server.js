@@ -7,6 +7,7 @@ const { initSocket } = require('./socket');
 
 const authRoutes          = require('./routes/auth');
 const userRoutes          = require('./routes/users');
+const dashboardRoutes     = require('./routes/dashboard');
 const phoneLoginRoutes = require('./routes/phoneLogin'); 
 const announcementRoutes  = require('./routes/announcements');
 const emailRoutes         = require('./routes/email-routes');
@@ -55,6 +56,7 @@ app.use('/api/pledges', pledgeRoutes);
 app.use('/api/auth', phoneLoginRoutes); 
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/projects',projectsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
 app.use(errorHandler);

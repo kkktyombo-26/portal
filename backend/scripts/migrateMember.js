@@ -1,18 +1,29 @@
 /**
- * migrate-member-profile.js
- * ─────────────────────────
- * Migration: Extend member profile fields
- * Ref: BSS-KKKT-2026-001
+ * migrate-member-profile-02.js
+ * ────────────────────────────
+ * Migration: Sacrament answers + marital_status enum repair
+ * Ref: BSS-KKKT-2026-002
+ * Follows: BSS-KKKT-2026-001 (migrate-member-profile.js)
  *
- * Run once against your existing database.
- * All new columns are nullable so existing rows are unaffected.
+ * Why this exists
+ * ───────────────
+ * 1. The profile screen asks UBATIZO and KIPAIMARA as Ndio/Hapana. Only the
+ *    dates existed, and a date cannot record "yes, date unknown". Two nullable
+ *    booleans carry the answer; the dates stay as optional detail.
+ * 2. marital_status ENUM is missing 'Anaishi na mtu', so the cohabiting branch
+ *    could never be stored even though cohabiting_partner_name exists.
+ * 3. baptism_date / confirmation_date / takes_communion / member_since are
+ *    written by the profile screen but were never created by 001. The adds
+ *    below are skipped as duplicates if an earlier migration made them.
+ *
+ * No AFTER clauses: a missing anchor column raises errno 1054, which is not in
+ * the skip list, and would abort the run. New columns append at the end.
  *
  * Usage (run from project root):
- *   node backend/migrate-member-profile.js
+ *   node backend/migrate-member-profile-02.js
  */
 
 const path = require('path');
-// If .env is in backend/ (portal/backend/.env):
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const pool = require('../config/db');
@@ -20,8 +31,9 @@ const pool = require('../config/db');
 // ── Helper: run a query and log result ──────────────────────────────────────
 async function run(label, sql) {
   try {
-    await pool.query(sql);
-    console.log(`  ✓ ${label}`);
+    const [res] = await pool.query(sql);
+    const extra = res && res.affectedRows != null ? ` (${res.affectedRows} rows)` : '';
+    console.log(`  ✓ ${label}${extra}`);
   } catch (err) {
     // 1060 = Duplicate column, 1061 = Duplicate index — safe to skip
     if ([1060, 1061].includes(err.errno)) {
@@ -38,236 +50,129 @@ async function run(label, sql) {
 
 async function main() {
   console.log('\n╔══════════════════════════════════════════════╗');
-  console.log('║  KKKT — Member Profile Migration            ║');
-  console.log('║  Ref: BSS-KKKT-2026-001                     ║');
+  console.log('║  KKKT — Member Profile Migration 02         ║');
+  console.log('║  Ref: BSS-KKKT-2026-002                     ║');
   console.log('╚══════════════════════════════════════════════╝\n');
 
   try {
 
-    // ── 1. Personal details ──────────────────────────────────
-    console.log('── 1. Personal details');
+    // ── 1. Columns 001 never created but the UI writes ───────
+    console.log('── 1. Missing profile columns');
 
-    await run('ahadi_number column', `
-  ALTER TABLE users
-    ADD COLUMN ahadi_number VARCHAR(20) NULL AFTER namba_ya_usharika
-`);
-
-await run('idx_ahadi_number index', `
-  ALTER TABLE users ADD UNIQUE INDEX idx_ahadi_number (ahadi_number)
-`);
-
-    await run('gender column', `
-      ALTER TABLE users
-        ADD COLUMN gender ENUM('Male','Female') NULL AFTER phone
+    await run('member_since column', `
+      ALTER TABLE users ADD COLUMN member_since DATE NULL
     `);
 
-    await run('email',`ALTER TABLE users MODIFY COLUMN email VARCHAR(255) NULL;`);
-
-    await run('date_of_birth column', `
-      ALTER TABLE users
-        ADD COLUMN date_of_birth DATE NULL AFTER gender
+    await run('baptism_date column', `
+      ALTER TABLE users ADD COLUMN baptism_date DATE NULL
     `);
 
-    await run('place_of_birth column', `
-      ALTER TABLE users
-        ADD COLUMN place_of_birth VARCHAR(255) NULL AFTER date_of_birth
+    await run('confirmation_date column', `
+      ALTER TABLE users ADD COLUMN confirmation_date DATE NULL
     `);
 
-    await run('member_status column', `
-      ALTER TABLE users
-        ADD COLUMN member_status ENUM('hai','amehamia','amefariki')
-          NOT NULL DEFAULT 'hai' AFTER place_of_birth
+    await run('takes_communion column', `
+      ALTER TABLE users ADD COLUMN takes_communion TINYINT(1) NULL
     `);
 
-    // ── 2. Marital information ───────────────────────────────
-    console.log('\n── 2. Marital information');
+    // ── 2. Ndio / Hapana answers ─────────────────────────────
+    console.log('\n── 2. Sacrament answers (Ndio / Hapana)');
 
-    await run('marital_status column', `
+    await run('is_baptized column', `
+      ALTER TABLE users ADD COLUMN is_baptized TINYINT(1) NULL
+    `);
+
+    await run('is_confirmed column', `
+      ALTER TABLE users ADD COLUMN is_confirmed TINYINT(1) NULL
+    `);
+
+    // Backfill: anyone with a recorded date was plainly baptised/confirmed.
+    // Leaves NULL (= not yet answered) where there is no date, so the screen
+    // still prompts for an answer rather than asserting Hapana.
+    await run('backfill is_baptized from baptism_date', `
+      UPDATE users
+         SET is_baptized = 1
+       WHERE baptism_date IS NOT NULL
+         AND is_baptized IS NULL
+    `);
+
+    await run('backfill is_confirmed from confirmation_date', `
+      UPDATE users
+         SET is_confirmed = 1
+       WHERE confirmation_date IS NOT NULL
+         AND is_confirmed IS NULL
+    `);
+
+    // ── 3. marital_status enum repair ────────────────────────
+    console.log('\n── 3. marital_status enum');
+
+    // Adds 'Anaishi na mtu'. Every existing member of the enum is repeated in
+    // the same order, so stored values keep their index and nothing is lost.
+    // The UI sends 'Talikiwa' for divorced (it used to send 'Talaka', which
+    // this enum never accepted).
+    await run("marital_status + 'Anaishi na mtu'", `
       ALTER TABLE users
-        ADD COLUMN marital_status ENUM(
+        MODIFY COLUMN marital_status ENUM(
           'Ameoa','Hajaoa','Ameolewa','Hajaolewa',
-          'Mjane','Mgane','Talikiwa','Tengana'
-        ) NULL AFTER member_status
-    `);
-
-    await run('marriage_type column', `
-      ALTER TABLE users
-        ADD COLUMN marriage_type ENUM('Kikristo','Siya Kikristo')
-          NULL AFTER marital_status
-    `);
-
-    await run('marriage_date column', `
-      ALTER TABLE users
-        ADD COLUMN marriage_date DATE NULL AFTER marriage_type
-    `);
-
-    await run('marriage_place column', `
-      ALTER TABLE users
-        ADD COLUMN marriage_place VARCHAR(255) NULL AFTER marriage_date
-    `);
-
-    await run('spouse_name column', `
-      ALTER TABLE users
-        ADD COLUMN spouse_name VARCHAR(255) NULL AFTER marriage_place
-    `);
-
-    await run('spouse_phone column', `
-      ALTER TABLE users
-        ADD COLUMN spouse_phone VARCHAR(30) NULL AFTER spouse_name
-    `);
-
-    await run('cohabiting_partner_name column', `
-      ALTER TABLE users
-        ADD COLUMN cohabiting_partner_name VARCHAR(255) NULL AFTER spouse_phone
-    `);
-
-    // ── 3. Professional / education ──────────────────────────
-    console.log('\n── 3. Professional / education');
-
-    await run('occupation column', `
-      ALTER TABLE users
-        ADD COLUMN occupation VARCHAR(255) NULL AFTER cohabiting_partner_name
-    `);
-
-    await run('workplace column', `
-      ALTER TABLE users
-        ADD COLUMN workplace VARCHAR(255) NULL AFTER occupation
-    `);
-
-    await run('education column', `
-      ALTER TABLE users
-        ADD COLUMN education VARCHAR(255) NULL AFTER workplace
-    `);
-
-    await run('profession column', `
-      ALTER TABLE users
-        ADD COLUMN profession VARCHAR(255) NULL AFTER education
-    `);
-
-    await run('willing_to_volunteer column', `
-      ALTER TABLE users
-        ADD COLUMN willing_to_volunteer TINYINT(1) NULL AFTER profession
-    `);
-
-    // ── 4. Residence & local contacts ────────────────────────
-    console.log('\n── 4. Residence & local contacts');
-
-    await run('jumuiya column', `
-      ALTER TABLE users
-        ADD COLUMN jumuiya VARCHAR(255) NULL AFTER willing_to_volunteer
-    `);
-
-    await run('block_no column', `
-      ALTER TABLE users
-        ADD COLUMN block_no VARCHAR(50) NULL AFTER jumuiya
-    `);
-
-    await run('area_name column', `
-      ALTER TABLE users
-        ADD COLUMN area_name VARCHAR(255) NULL AFTER block_no
-    `);
-
-    await run('slp column', `
-      ALTER TABLE users
-        ADD COLUMN slp VARCHAR(100) NULL AFTER area_name
-    `);
-
-    await run('neighbour_member_name column', `
-      ALTER TABLE users
-        ADD COLUMN neighbour_member_name VARCHAR(255) NULL AFTER slp
-    `);
-
-    await run('neighbour_member_phone column', `
-      ALTER TABLE users
-        ADD COLUMN neighbour_member_phone VARCHAR(30) NULL AFTER neighbour_member_name
-    `);
-
-    await run('elder_name column', `
-      ALTER TABLE users
-        ADD COLUMN elder_name VARCHAR(255) NULL AFTER neighbour_member_phone
-    `);
-
-    await run('elder_phone column', `
-      ALTER TABLE users
-        ADD COLUMN elder_phone VARCHAR(30) NULL AFTER elder_name
-    `);
-
-    await run('previous_church column', `
-      ALTER TABLE users
-        ADD COLUMN previous_church VARCHAR(255) NULL AFTER elder_phone
-    `);
-
-    // ── 5. Dependants table ──────────────────────────────────
-    console.log('\n── 5. member_dependants table');
-
-    await run('member_dependants table', `
-      CREATE TABLE IF NOT EXISTS member_dependants (
-        id            INT           NOT NULL AUTO_INCREMENT,
-        member_id     INT           NOT NULL,
-        full_name     VARCHAR(255)  NOT NULL,
-        date_of_birth DATE          NULL,
-        relationship  VARCHAR(100)  NULL,
-        created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        CONSTRAINT fk_dep_member FOREIGN KEY (member_id)
-          REFERENCES users (id)
-          ON DELETE CASCADE
-          ON UPDATE CASCADE,
-        INDEX idx_dep_member (member_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-
-    // ── 6. Indexes ───────────────────────────────────────────
-    console.log('\n── 6. Indexes');
-
-    await run('idx_member_status index', `
-      ALTER TABLE users ADD INDEX idx_member_status (member_status)
-    `);
-
-    await run('idx_gender index', `
-      ALTER TABLE users ADD INDEX idx_gender (gender)
-    `);
-
-    await run('idx_date_of_birth index', `
-      ALTER TABLE users ADD INDEX idx_date_of_birth (date_of_birth)
+          'Mjane','Mgane','Talikiwa','Tengana',
+          'Anaishi na mtu'
+        ) NULL
     `);
 
     // ── Verify ───────────────────────────────────────────────
     console.log('\n── Verifying...');
 
-    const [userCols] = await pool.query(`
-      SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+    const WANTED = [
+      'ahadi_number', 'member_since', 'baptism_date', 'confirmation_date',
+      'takes_communion', 'is_baptized', 'is_confirmed', 'marital_status', 'gender',
+    ];
+
+    const [cols] = await pool.query(`
+      SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE
       FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = 'users'
-        AND COLUMN_NAME IN (
-          'gender','date_of_birth','place_of_birth','member_status',
-          'marital_status','marriage_type','marriage_date','marriage_place',
-          'spouse_name','spouse_phone','cohabiting_partner_name',
-          'occupation','workplace','education','profession','willing_to_volunteer',
-          'jumuiya','block_no','area_name','slp',
-          'neighbour_member_name','neighbour_member_phone',
-          'elder_name','elder_phone','previous_church'
-        )
-      ORDER BY ORDINAL_POSITION
-    `);
+        AND COLUMN_NAME IN (${WANTED.map(() => '?').join(',')})
+      ORDER BY FIELD(COLUMN_NAME, ${WANTED.map(() => '?').join(',')})
+    `, [...WANTED, ...WANTED]);
 
-    const [depCols] = await pool.query(`
-      SELECT COLUMN_NAME FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'member_dependants'
-      ORDER BY ORDINAL_POSITION
-    `);
+    const found = new Set(cols.map(c => c.COLUMN_NAME));
+    const missing = WANTED.filter(c => !found.has(c));
 
-    console.log(`\n✅  Migration complete.\n`);
-    console.log(`📋  New columns in users (${userCols.length}/25):`);
-    userCols.forEach(c =>
-      console.log(`   • ${c.COLUMN_NAME.padEnd(28)} ${c.COLUMN_TYPE}`)
+    console.log(`\n📋  Profile columns (${cols.length}/${WANTED.length}):`);
+    cols.forEach(c =>
+      console.log(`   • ${c.COLUMN_NAME.padEnd(20)} ${c.COLUMN_TYPE}`)
     );
+    if (missing.length) {
+      console.log(`\n⚠️   Still missing: ${missing.join(', ')}`);
+    }
 
-    console.log(`\n📋  member_dependants columns (${depCols.length}):`);
-    depCols.forEach(c => console.log(`   • ${c.COLUMN_NAME}`));
-    console.log('');
+    // Rows whose marital_status was blanked by a rejected write. Worth a look:
+    // the UI used to send 'Talaka' and 'Anaishi na mtu', neither of which the
+    // old enum accepted, so those saves either threw or stored ''.
+    const [[blank]] = await pool.query(`
+      SELECT COUNT(*) AS n FROM users WHERE marital_status = ''
+    `);
+    if (blank.n > 0) {
+      console.log(`\n⚠️   ${blank.n} row(s) have marital_status = '' — likely a`);
+      console.log(`     rejected write from the old enum. These need re-entering.`);
+    }
+
+    const [[answered]] = await pool.query(`
+      SELECT
+        SUM(is_baptized  IS NOT NULL) AS baptism_answered,
+        SUM(is_confirmed IS NOT NULL) AS confirmation_answered,
+        COUNT(*)                      AS total
+      FROM users
+    `);
+    console.log(`\n📋  Sacrament answers recorded:`);
+    console.log(`   • Ubatizo    ${answered.baptism_answered ?? 0}/${answered.total}`);
+    console.log(`   • Kipaimara  ${answered.confirmation_answered ?? 0}/${answered.total}`);
+
+    console.log(`\n✅  Migration 002 complete.`);
+    console.log(`\n   Remember: add ahadi_number, is_baptized, is_confirmed,`);
+    console.log(`   member_since, baptism_date, confirmation_date and`);
+    console.log(`   takes_communion to the column whitelist in userApi.update.\n`);
 
   } catch (err) {
     console.error('\n❌  Migration failed:', err.message);
