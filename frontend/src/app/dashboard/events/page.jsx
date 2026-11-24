@@ -19,84 +19,6 @@ function formatTime(t) {
   return `${hour % 12 || 12}:${m} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
-// ─── Events tab panel (mobile dashboard) ─────────────────────────────────────
-const MONTHS_ABBR = {
-  en: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
-  sw: ['Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ago','Sep','Okt','Nov','Des'],
-};
-function EventsTabPanel({ events, lang, loading }) {
-  if (loading) {
-    return (
-      <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-        <span style={{ fontSize: 12, color: '#AEADB3' }}>…</span>
-      </div>
-    );
-  }
-  if (!events || !events.length) {
-    return (
-      <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 12, color: '#AEADB3' }}>
-        {lang === 'sw' ? 'Hakuna matukio yanayokuja' : 'No upcoming events'}
-      </div>
-    );
-  }
-  return (
-    <div style={{ padding: '16px' }}>
-      <div style={{ border: '1px solid #EBEBEC', borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px 10px' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#8A8A8E' }}>
-            {lang === 'sw' ? 'Ratiba' : 'Schedule'}
-          </span>
-          <Link href="/dashboard/events" style={{ fontSize: 10, fontWeight: 600, color: '#C8A84B', textDecoration: 'none' }}>
-            {lang === 'sw' ? 'Zote →' : 'See all →'}
-          </Link>
-        </div>
-        <div style={{ height: 1, background: '#EBEBEC' }} />
-        {events.slice(0, 5).map((ev, i) => {
-          const dateStr = ev.event_date?.split('T')[0] || ev.event_date;
-          const d       = new Date(dateStr + 'T00:00:00');
-          const title   = lang === 'sw' ? ev.title_sw : ev.title_en;
-          const isLast  = i === Math.min(events.length, 5) - 1;
-          return (
-            <div key={ev.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
-                <div style={{
-                  flexShrink: 0, width: 40, textAlign: 'center',
-                  background: '#F0F4FB', borderRadius: 8, padding: '6px 4px',
-                }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#0F1F3D', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-                    {String(d.getDate()).padStart(2, '0')}
-                  </div>
-                  <div style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B70', marginTop: 2 }}>
-                    {MONTHS_ABBR[lang][d.getMonth()]}
-                  </div>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1E', lineHeight: 1.3, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {title}
-                  </p>
-                  {(ev.start_time || ev.location) && (
-                    <p style={{ fontSize: 11, color: '#8A8A8E' }}>
-                      {ev.start_time && formatTime(ev.start_time)}
-                      {ev.start_time && ev.location && ' · '}
-                      {ev.location}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {!isLast && <div style={{ height: 1, background: '#F0F0F2', marginLeft: 66 }} />}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function formatDate(dateStr, lang) {
-  const d = new Date(dateStr + 'T00:00:00');
-  return `${DAYS[lang][d.getDay()]}, ${d.getDate()} ${MONTHS[lang][d.getMonth()]} ${d.getFullYear()}`;
-}
-
 function isUpcoming(dateStr) {
   const today = new Date(); today.setHours(0,0,0,0);
   return new Date(dateStr + 'T00:00:00') >= today;
@@ -113,7 +35,7 @@ function ArcMotif({ opacity = 0.07 }) {
   );
 }
 
-function DotGrid({ cols = 6, rows = 3, gap = 13, opacity = 0.22, color = '#C8A84B' }) {
+function DotGrid({ cols = 6, rows = 3, gap = 13, opacity = 0.22, color = 'var(--gold)' }) {
   return (
     <svg width={cols * gap} height={rows * gap} style={{ opacity, pointerEvents: 'none' }}>
       {Array.from({ length: rows }).map((_, r) =>
@@ -126,6 +48,11 @@ function DotGrid({ cols = 6, rows = 3, gap = 13, opacity = 0.22, color = '#C8A84
 }
 
 // ── Hero card — shown for the first upcoming event only ───────────
+//
+// This card is a deliberately dark navy surface, so the text on it is
+// white-on-dark rather than a theme text token. The brand colours it sits on
+// (--navy, --gold) and the destructive action (--danger) all come from the
+// theme, so re-skinning the palette re-skins this card too.
 function HeroEventCard({ event, lang, canManage, onEdit, onDelete }) {
   const dateStr = event.event_date?.split('T')[0] || event.event_date;
   const d       = new Date(dateStr + 'T00:00:00');
@@ -136,19 +63,19 @@ function HeroEventCard({ event, lang, canManage, onEdit, onDelete }) {
     <div
       style={{
         position: 'relative',
-        background: '#1B3A6B',
+        background: 'var(--navy)',
         borderRadius: 20,
         overflow: 'hidden',
         padding: '28px 28px 24px 36px',
         marginBottom: 20,
-        boxShadow: '0 8px 32px rgba(27,58,107,0.22)',
+        boxShadow: '0 8px 32px color-mix(in srgb, var(--navy) 24%, transparent)',
       }}
     >
       {/* Gold left accent bar */}
       <div style={{
         position: 'absolute', top: 0, left: 0,
         width: 4, height: '100%',
-        background: 'linear-gradient(to bottom, #C8A84B, rgba(200,168,75,0.3))',
+        background: 'linear-gradient(to bottom, var(--gold), color-mix(in srgb, var(--gold) 30%, transparent))',
         borderRadius: '20px 0 0 20px',
       }} />
 
@@ -159,7 +86,7 @@ function HeroEventCard({ event, lang, canManage, onEdit, onDelete }) {
 
       {/* Dot grid — bottom right */}
       <div style={{ position: 'absolute', bottom: 20, right: 24 }}>
-        <DotGrid cols={7} rows={3} gap={13} opacity={0.25} color="#C8A84B" />
+        <DotGrid cols={7} rows={3} gap={13} opacity={0.25} color="var(--gold)" />
       </div>
 
       {/* Admin actions */}
@@ -179,8 +106,10 @@ function HeroEventCard({ event, lang, canManage, onEdit, onDelete }) {
             onClick={() => onDelete(event.id)}
             style={{
               padding: '5px 12px', borderRadius: 8,
-              background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,120,120,0.3)',
-              color: 'rgba(255,120,120,0.8)', fontSize: 11, cursor: 'pointer', fontWeight: 500,
+              background: 'color-mix(in srgb, var(--danger) 14%, transparent)',
+              border: '0.5px solid color-mix(in srgb, var(--danger) 45%, transparent)',
+              color: 'color-mix(in srgb, var(--danger) 55%, white)',
+              fontSize: 11, cursor: 'pointer', fontWeight: 500,
             }}
           >
             {lang === 'sw' ? 'Futa' : 'Delete'}
@@ -191,7 +120,8 @@ function HeroEventCard({ event, lang, canManage, onEdit, onDelete }) {
       {/* "Next up" pill */}
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 5,
-        background: 'rgba(200,168,75,0.18)', color: '#C8A84B',
+        background: 'color-mix(in srgb, var(--gold) 18%, transparent)',
+        color: 'var(--gold)',
         fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
         textTransform: 'uppercase', padding: '3px 10px',
         borderRadius: 99, marginBottom: 14,
@@ -242,7 +172,7 @@ function HeroEventCard({ event, lang, canManage, onEdit, onDelete }) {
       {/* Meta row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         {(event.start_time) && (
-          <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: 'monospace' }}>
+          <span className="font-mono" style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>
             {formatTime(event.start_time)}{event.end_time ? ` – ${formatTime(event.end_time)}` : ''}
           </span>
         )}
@@ -268,12 +198,12 @@ function HeroEventCard({ event, lang, canManage, onEdit, onDelete }) {
 // ── Month section label ───────────────────────────────────────────
 function MonthLabel({ label }) {
   return (
-    <p style={{
-      fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
-      letterSpacing: '0.1em', color: 'var(--tw-color-ink-faint, #9ca3af)',
-      marginBottom: 12, paddingLeft: 2,
-    }}
+    <p
       className="text-ink-faint"
+      style={{
+        fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
+        letterSpacing: '0.1em', marginBottom: 12, paddingLeft: 2,
+      }}
     >
       {label}
     </p>
@@ -317,12 +247,12 @@ function EventRow({ event, lang, canManage, onEdit, onDelete, isPast, animIndex 
               {title}
             </p>
             {isPast && (
-              <span style={{
-                fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em',
-                background: 'var(--tw-color-surface, #f8f7f4)',
-                borderRadius: 99, padding: '2px 8px', flexShrink: 0,
-              }}
+              <span
                 className="bg-surface text-ink-faint"
+                style={{
+                  fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em',
+                  borderRadius: 99, padding: '2px 8px', flexShrink: 0,
+                }}
               >
                 {lang === 'sw' ? 'Imepita' : 'Past'}
               </span>
@@ -394,6 +324,11 @@ function groupByMonth(events, lang) {
 }
 
 const EMPTY_FORM = { title_en:'', title_sw:'', description_en:'', description_sw:'', event_date:'', start_time:'', end_time:'', location:'' };
+
+const TABS = [
+  { id: 'upcoming', en: 'Upcoming', sw: 'Yanayokuja' },
+  { id: 'past',     en: 'Past',     sw: 'Yaliyopita' },
+];
 
 export default function EventsPage() {
   const { user, lang } = useAuth();
@@ -490,31 +425,32 @@ export default function EventsPage() {
       <div className="px-8 py-8 max-w-content">
 
         {/* ── Underline tab bar ── */}
-        <div style={{ display: 'flex', borderBottom: '0.5px solid var(--tw-color-hairline)', marginBottom: 24 }}
-          className="border-hairline"
+        <div
+          className="flex border-hairline"
+          style={{ borderBottomWidth: '0.5px', borderBottomStyle: 'solid', marginBottom: 24 }}
         >
-          {[
-            { id: 'upcoming', en: 'Upcoming', sw: 'Yanayokuja' },
-            { id: 'past',     en: 'Past',     sw: 'Yaliyopita' },
-          ].map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                padding: '10px 20px',
-                fontSize: 13, fontWeight: 500,
-                background: 'none', border: 'none',
-                borderBottom: tab === t.id ? '2px solid #1B3A6B' : '2px solid transparent',
-                color: tab === t.id ? '#1B3A6B' : undefined,
-                cursor: 'pointer',
-                marginBottom: '-0.5px',
-                transition: 'color 0.12s, border-color 0.12s',
-              }}
-              className={tab === t.id ? '' : 'text-ink-muted hover:text-ink'}
-            >
-              {lang === 'sw' ? t.sw : t.en}
-            </button>
-          ))}
+          {TABS.map(t => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={active ? '' : 'text-ink-muted hover:text-ink'}
+                style={{
+                  padding: '10px 20px',
+                  fontSize: 13, fontWeight: 500,
+                  background: 'none', border: 'none',
+                  borderBottom: active ? '2px solid var(--navy)' : '2px solid transparent',
+                  color: active ? 'var(--navy)' : undefined,
+                  cursor: 'pointer',
+                  marginBottom: '-0.5px',
+                  transition: 'color 0.12s, border-color 0.12s',
+                }}
+              >
+                {lang === 'sw' ? t.sw : t.en}
+              </button>
+            );
+          })}
         </div>
 
         {/* ── Content ── */}
